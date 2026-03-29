@@ -120,7 +120,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m chromeModel) View() tea.View {
 	var view tea.View
 	if m.width == 0 || m.height == 0 {
-		view.SetContent("\x1b[HLoading null-space...")
+		view.SetContent("Loading null-space...")
 		view.AltScreen = true
 		return view
 	}
@@ -132,7 +132,7 @@ func (m chromeModel) View() tea.View {
 	chat := fitStyledBlock(m.chat.View(), m.width, chatHeight, chatStyle)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, header, game, status, chat)
-	view.SetContent("\x1b[H" + content)
+	view.SetContent(content)
 	view.AltScreen = true
 	return view
 }
