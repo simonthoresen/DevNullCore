@@ -160,6 +160,23 @@ func (a *App) coreCommands() []common.Command {
 				return nil
 			},
 		},
+		{
+			Name:        "info",
+			Usage:       "/info",
+			Description: "Show connection strings for this server.",
+			Handler: func(ctx common.CommandContext, args []string) error {
+				localCmd, tunnelAddr, tunnelJoin := a.connectionInfo()
+				ctx.AddPrivateMessage(fmt.Sprintf("Local:  %s", localCmd))
+				if tunnelJoin != "" {
+					ctx.AddPrivateMessage(fmt.Sprintf("Tunnel: %s", tunnelJoin))
+				} else if tunnelAddr != "" {
+					ctx.AddPrivateMessage(fmt.Sprintf("Tunnel: %s", tunnelAddr))
+				} else {
+					ctx.AddPrivateMessage("Tunnel: not available")
+				}
+				return nil
+			},
+		},
 	}
 }
 

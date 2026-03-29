@@ -27,55 +27,70 @@ func (a *App) runPinggyLogBridge(ctx context.Context, statusFile string) {
 			slog.Info("pinggy log bridge stopped")
 			return
 		case <-ticker.C:
-			lines, err := readPinggyLogLines(statusFile)
+			status, err := readPinggyStatus(statusFile)
 			if err != nil {
 				slog.Debug("pinggy log bridge read failed", "error", err)
 				continue
 			}
 
-			if seenCount > len(lines) {
+			if status.TcpAddress != "" || status.JoinCommand != "" {
+				a.mu.Lock()
+				a.tunnelAddress = status.TcpAddress
+				a.tunnelJoinCmd = status.JoinCommand
+				a.mu.Unlock()
+			}
+
+			if seenCount > len(status.LogLines) {
 				seenCount = 0
 				seenMessages = make(map[string]struct{})
 			}
 
-			for _, line := range lines[seenCount:] {
+			for _, line := range status.LogLines[seenCount:] {
 				if _, exists := seenMessages[line]; exists {
 					continue
 				}
 				seenMessages[line] = struct{}{}
 				a.addPinggyMessage(line)
 			}
-			seenCount = len(lines)
+			seenCount = len(status.LogLines)
 		}
 	}
 }
 
-func readPinggyLogLines(statusFile string) ([]string, error) {
+type pinggyStatus struct {
+	LogLines    []string
+	TcpAddress  string
+	JoinCommand string
+}
+
+func readPinggyStatus(statusFile string) (*pinggyStatus, error) {
 	file, err := os.Open(statusFile)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close() //nolint:errcheck
 
-	lines := make([]string, 0)
+	status := &pinggyStatus{}
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "PINGGY_LOG=") {
-			continue
+		switch {
+		case strings.HasPrefix(line, "PINGGY_LOG="):
+			message := strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_LOG="))
+			if message != "" {
+				status.LogLines = append(status.LogLines, message)
+			}
+		case strings.HasPrefix(line, "PINGGY_TCP="):
+			status.TcpAddress = strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_TCP="))
+		case strings.HasPrefix(line, "PINGGY_JOIN="):
+			status.JoinCommand = strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_JOIN="))
 		}
-
-		message := strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_LOG="))
-		if message == "" {
-			continue
-		}
-		lines = append(lines, message)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
-	return lines, nil
+	return status, nil
 }

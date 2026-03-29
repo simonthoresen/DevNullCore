@@ -40,6 +40,8 @@ type App struct {
 	consoleWriter   io.Writer
 	consoleProgram  *tea.Program
 	localLogs       []string
+	tunnelAddress   string
+	tunnelJoinCmd   string
 	shutdownFn      context.CancelFunc
 	consoleMu       sync.Mutex
 }
@@ -453,6 +455,31 @@ func (a *App) renderChatForPlayer(playerID string) string {
 
 func (a *App) renderGame(playerID string, width, height int) string {
 	return a.state.ActiveGame.View(playerID, width, height)
+}
+
+func (a *App) localSSHCommand() string {
+	host, port := "localhost", "23234"
+	if a.address != "" {
+		parts := strings.SplitN(a.address, ":", 2)
+		if len(parts) == 2 {
+			if parts[0] != "" {
+				host = parts[0]
+			}
+			if parts[1] != "" {
+				port = parts[1]
+			}
+		}
+	}
+	return fmt.Sprintf("ssh -p %s %s", port, host)
+}
+
+func (a *App) connectionInfo() (localCmd, tunnelAddr, tunnelJoin string) {
+	localCmd = a.localSSHCommand()
+	a.mu.RLock()
+	tunnelAddr = a.tunnelAddress
+	tunnelJoin = a.tunnelJoinCmd
+	a.mu.RUnlock()
+	return
 }
 
 func (a *App) sendToPlayer(playerID string, msg tea.Msg) {

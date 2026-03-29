@@ -55,6 +55,7 @@ func (a *App) EnableLocalConsole(ctx context.Context, cancel context.CancelFunc,
 	slog.Info("local console enabled", "player_id", player.ID, "name", player.Name)
 	a.addSystemMessage("admin joined from the local console.")
 	a.writeConsoleLine(formatPrivateLine("local admin console ready. Type chat text or /help for commands. Press Ctrl+C to stop."))
+	a.writeConsoleLine(formatPrivateLine(fmt.Sprintf("local join: %s", a.localSSHCommand())))
 
 	model := newLocalConsoleModel(a, player.ID, cancel)
 	program := tea.NewProgram(model, tea.WithInput(reader), tea.WithOutput(writer))
