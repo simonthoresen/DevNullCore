@@ -305,6 +305,18 @@ func (a *App) requestShutdown() bool {
 	return true
 }
 
+func (a *App) requestShutdownAfter(delay time.Duration) bool {
+	a.mu.RLock()
+	shutdownFn := a.shutdownFn
+	a.mu.RUnlock()
+	if shutdownFn == nil {
+		return false
+	}
+
+	time.AfterFunc(delay, shutdownFn)
+	return true
+}
+
 func (a *App) renderGlobalChat() string {
 	lines := a.state.ChatLines()
 	if len(lines) == 0 {

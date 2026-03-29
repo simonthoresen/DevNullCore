@@ -152,8 +152,8 @@ func (a *App) coreCommands() []common.Command {
 					ctx.AddPrivateMessage("Usage: /quit")
 					return nil
 				}
-				ctx.AddSystemMessage("Server shutdown requested.")
-				if !a.requestShutdown() {
+				ctx.AddSystemMessage("Server shutdown requested. Disconnecting all players...")
+				if !a.requestShutdownAfter(750 * time.Millisecond) {
 					ctx.AddPrivateMessage("Shutdown handler is not available.")
 				}
 				return nil
