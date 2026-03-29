@@ -161,7 +161,7 @@ func (m localConsoleModel) View() tea.View {
 		return view
 	}
 
-	header := lipgloss.NewStyle().Width(m.width).Reverse(true).Render(truncateRunes(
+	header := lipgloss.NewStyle().Width(m.width).Reverse(true).Render(headerWithSpinner(
 		fmt.Sprintf("[null-space server] | Game: %s | Players: %d | Tunnel: %s", m.app.gameName, m.app.state.PlayerCount(), m.app.uptime()),
 		m.width,
 	))

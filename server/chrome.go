@@ -3,13 +3,22 @@ package server
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"null-space/common"
+)
+
+var (
+	playerHeaderStyle = lipgloss.NewStyle().Width(0).Background(lipgloss.Color("#FFFFFF")).Foreground(lipgloss.Color("#111111"))
+	playerStatusStyle = lipgloss.NewStyle().Width(0).Background(lipgloss.Color("#FFFFFF")).Foreground(lipgloss.Color("#111111"))
+	chatStyle         = lipgloss.NewStyle().Background(lipgloss.Color("#E5E7EB")).Foreground(lipgloss.Color("#111111"))
+	spinnerFrames     = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
 
 type chromeModel struct {
@@ -104,10 +113,10 @@ func (m chromeModel) View() tea.View {
 	gameHeight := maxInt(1, m.height-7)
 	header := m.renderHeader()
 	game := fitBlock(m.app.renderGame(m.playerID, m.width, gameHeight), m.width, gameHeight)
-	chat := fitBlock(m.chat.View(), m.width, 5)
-	input := fitBlock(m.renderInputLine(), m.width, 1)
+	status := fitStyledBlock(m.renderGameStatusBar(), m.width, 1, playerStatusStyle)
+	chat := fitStyledBlock(m.chat.View(), m.width, 5, chatStyle)
 
-	content := lipgloss.JoinVertical(lipgloss.Left, header, game, chat, input)
+	content := lipgloss.JoinVertical(lipgloss.Left, header, game, status, chat)
 	view.SetContent("\x1b[H" + content)
 	view.AltScreen = true
 	return view
@@ -155,24 +164,24 @@ func (m *chromeModel) submitInput() {
 
 func (m chromeModel) renderHeader() string {
 	label := fmt.Sprintf("[null-space] | Game: %s | Players: %d | Tunnel: %s", m.app.gameName, m.app.state.PlayerCount(), m.app.uptime())
-	label = truncateRunes(label, m.width)
-	return lipgloss.NewStyle().Width(m.width).Reverse(true).Render(label)
+	return playerHeaderStyle.Width(m.width).Render(headerWithSpinner(label, m.width))
 }
 
-func (m chromeModel) renderInputLine() string {
-	if !m.chatMode {
-		player := m.app.state.GetPlayer(m.playerID)
-		name := "pilot"
-		if player != nil {
-			name = player.Name
-		}
-		hint := fmt.Sprintf("%s | arrows move, space builds, enter chats, esc cancels", name)
-		return lipgloss.NewStyle().Faint(true).Width(m.width).Render(truncateRunes(hint, m.width))
+func (m chromeModel) renderGameStatusBar() string {
+	if m.chatMode {
+		return m.input.View()
 	}
-	return m.input.View()
+	if statusProvider, ok := m.app.state.ActiveGame.(common.PlayerStatusProvider); ok {
+		return statusProvider.PlayerStatus(m.playerID, m.width)
+	}
+	return "Enter to chat | /help for commands"
 }
 
 func fitBlock(content string, width, height int) string {
+	return fitStyledBlock(content, width, height, lipgloss.NewStyle())
+}
+
+func fitStyledBlock(content string, width, height int, style lipgloss.Style) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -181,21 +190,45 @@ func fitBlock(content string, width, height int) string {
 		lines = lines[:height]
 	}
 	for i, line := range lines {
-		lines[i] = lipgloss.NewStyle().Width(width).MaxWidth(width).Render(truncateRunes(line, width))
+		lines[i] = style.Width(width).MaxWidth(width).Render(truncateStyled(line, width))
 	}
 	for len(lines) < height {
-		lines = append(lines, strings.Repeat(" ", width))
+		lines = append(lines, style.Width(width).Render(strings.Repeat(" ", width)))
 	}
 	return strings.Join(lines, "\n")
 }
 
-func truncateRunes(text string, width int) string {
+func truncateStyled(text string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	runes := []rune(text)
-	if len(runes) <= width {
+	if ansi.StringWidth(text) <= width {
 		return text
 	}
-	return string(runes[:width])
+	return ansi.Truncate(text, width, "")
+}
+
+func headerWithSpinner(text string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+
+	spinner := currentSpinnerFrame()
+	spinnerWidth := ansi.StringWidth(spinner)
+	if width <= spinnerWidth {
+		return truncateStyled(spinner, width)
+	}
+
+	left := truncateStyled(text, width-spinnerWidth-1)
+	spaces := width - ansi.StringWidth(left) - spinnerWidth
+	if spaces < 1 {
+		spaces = 1
+	}
+
+	return left + strings.Repeat(" ", spaces) + spinner
+}
+
+func currentSpinnerFrame() string {
+	frame := (time.Now().UnixMilli() / 100) % int64(len(spinnerFrames))
+	return spinnerFrames[frame]
 }
