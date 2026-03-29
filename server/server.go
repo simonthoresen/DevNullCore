@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,9 @@ type App struct {
 	privateHistory map[string][]string
 	registry       map[string]common.Command
 	paletteIndex   int
+	consolePlayer  string
+	consoleWriter  io.Writer
+	consoleMu      sync.Mutex
 }
 
 func New(address, gameName string, game common.Game, adminPassword string) (*App, error) {
@@ -50,8 +54,8 @@ func New(address, gameName string, game common.Game, adminPassword string) (*App
 		wish.WithAddress(address),
 		wish.WithHostKeyPath("null-space_ed25519"),
 		wish.WithMiddleware(
-			app.sessionMiddleware(),
 			wishbubbletea.MiddlewareWithProgramHandler(app.programHandler),
+			app.sessionMiddleware(),
 			activeterm.Middleware(),
 			logging.Middleware(),
 		),
@@ -132,7 +136,7 @@ func (a *App) registerSession(sess ssh.Session) *common.Player {
 	a.mu.Unlock()
 
 	a.state.AddPlayer(player)
-	a.state.AppendChat(formatSystemLine(fmt.Sprintf("%s joined the tunnel.", player.Name)))
+	a.appendChatLine(formatSystemLine(fmt.Sprintf("%s joined the tunnel.", player.Name)))
 	a.handleGameMessage(common.PlayerJoinedMsg{
 		PlayerID: player.ID,
 		Name:     player.Name,
@@ -146,7 +150,7 @@ func (a *App) registerSession(sess ssh.Session) *common.Player {
 func (a *App) unregisterSession(playerID string) {
 	player := a.state.GetPlayer(playerID)
 	if player != nil {
-		a.state.AppendChat(formatSystemLine(fmt.Sprintf("%s left the tunnel.", player.Name)))
+		a.appendChatLine(formatSystemLine(fmt.Sprintf("%s left the tunnel.", player.Name)))
 	}
 	a.handleGameMessage(common.PlayerLeftMsg{PlayerID: playerID}, playerID)
 	a.state.RemovePlayer(playerID)
@@ -210,18 +214,51 @@ func (a *App) broadcast(msg tea.Msg) {
 }
 
 func (a *App) addSystemMessage(text string) {
-	a.state.AppendChat(formatSystemLine(text))
+	a.appendChatLine(formatSystemLine(text))
 	a.broadcast(common.RefreshMsg{})
 }
 
 func (a *App) addPrivateMessage(playerID, text string) {
+	line := formatPrivateLine(text)
 	a.mu.Lock()
-	a.privateHistory[playerID] = append(a.privateHistory[playerID], formatPrivateLine(text))
+	a.privateHistory[playerID] = append(a.privateHistory[playerID], line)
 	if len(a.privateHistory[playerID]) > 20 {
 		a.privateHistory[playerID] = append([]string(nil), a.privateHistory[playerID][len(a.privateHistory[playerID])-20:]...)
 	}
+	consolePlayer := a.consolePlayer
 	a.mu.Unlock()
+	if playerID == consolePlayer {
+		a.writeConsoleLine(line)
+	}
 	a.sendToPlayer(playerID, common.RefreshMsg{})
+}
+
+func (a *App) addChatMessage(playerID, text string) {
+	player := a.state.GetPlayer(playerID)
+	author := "unknown"
+	if player != nil {
+		author = player.Name
+	}
+	a.appendChatLine(formatChatLine(author, text))
+	a.broadcast(common.RefreshMsg{})
+}
+
+func (a *App) appendChatLine(line string) {
+	a.state.AppendChat(line)
+	a.writeConsoleLine(line)
+}
+
+func (a *App) writeConsoleLine(line string) {
+	a.mu.RLock()
+	writer := a.consoleWriter
+	a.mu.RUnlock()
+	if writer == nil {
+		return
+	}
+
+	a.consoleMu.Lock()
+	defer a.consoleMu.Unlock()
+	_, _ = fmt.Fprintln(writer, line)
 }
 
 func (a *App) renderChatForPlayer(playerID string) string {

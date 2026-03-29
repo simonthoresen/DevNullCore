@@ -159,7 +159,7 @@ func (a *App) executeCommand(playerID, raw string) {
 
 	player := a.state.GetPlayer(playerID)
 	if command.AdminOnly && (player == nil || !player.IsAdmin) {
-		a.addPrivateMessage(playerID, "Permission denied.")
+		a.addPrivateMessage(playerID, "Permission Denied")
 		return
 	}
 

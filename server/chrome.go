@@ -149,13 +149,7 @@ func (m *chromeModel) submitInput() {
 		m.syncChat()
 		return
 	}
-	player := m.app.state.GetPlayer(m.playerID)
-	author := "unknown"
-	if player != nil {
-		author = player.Name
-	}
-	m.app.state.AppendChat(formatChatLine(author, text))
-	m.app.broadcast(common.RefreshMsg{})
+	m.app.addChatMessage(m.playerID, text)
 	m.syncChat()
 }
 

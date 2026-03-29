@@ -22,6 +22,10 @@ bin/
 dist/
 build/
 
+# Wish-generated SSH host keys
+null-space_ed25519
+null-space_ed25519.pub
+
 # Go workspace files
 go.work
 go.work.sum

@@ -4,81 +4,148 @@ param(
 )
 
 $root = Split-Path -Parent $PSScriptRoot
-$serverOut = Join-Path $env:TEMP "null-space-server.out.log"
-$serverErr = Join-Path $env:TEMP "null-space-server.err.log"
+$script:tunnelShell = $null
+$script:tunnelWatcher = $null
 
-$server = Start-Process -FilePath "go" `
-    -ArgumentList @("run", "./cmd/null-space", "--game", $Game, "--password", $Password) `
-    -WorkingDirectory $root `
-    -WindowStyle Hidden `
-    -RedirectStandardOutput $serverOut `
-    -RedirectStandardError $serverErr `
-    -PassThru
-
-Start-Sleep -Seconds 2
-
-$psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "ssh"
-$psi.Arguments = "-p 443 -o ServerAliveInterval=30 -R0:127.0.0.1:23234 tcp@a.pinggy.io"
-$psi.WorkingDirectory = $root
-$psi.UseShellExecute = $false
-$psi.RedirectStandardOutput = $true
-$psi.RedirectStandardError = $true
-$psi.CreateNoWindow = $true
-
-$pinggy = New-Object System.Diagnostics.Process
-$pinggy.StartInfo = $psi
-$null = $pinggy.Start()
-
-$regex = [regex]'tcp://[^\s]+'
-$connection = $null
-
-while (-not $pinggy.HasExited -and -not $connection) {
-    if (-not $pinggy.StandardOutput.EndOfStream) {
-        $line = $pinggy.StandardOutput.ReadLine()
-        $match = $regex.Match($line)
-        if ($match.Success) {
-            $connection = $match.Value
-            break
+function Stop-Tunnel {
+    if ($script:tunnelShell) {
+        $childProcesses = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($script:tunnelShell.Id)" -ErrorAction SilentlyContinue
+        foreach ($child in $childProcesses) {
+            Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue
         }
-    }
 
-    if (-not $pinggy.StandardError.EndOfStream) {
-        $line = $pinggy.StandardError.ReadLine()
-        $match = $regex.Match($line)
-        if ($match.Success) {
-            $connection = $match.Value
-            break
-        }
+        Stop-Process -Id $script:tunnelShell.Id -Force -ErrorAction SilentlyContinue
     }
-
-    Start-Sleep -Milliseconds 100
 }
 
-if (-not $connection) {
-    Write-Error "Pinggy did not return a TCP tunnel address."
-    if (-not $server.HasExited) {
-        Stop-Process -Id $server.Id -Force
+function Stop-TunnelWatcher {
+    if ($script:tunnelWatcher) {
+        Stop-Job -Job $script:tunnelWatcher -ErrorAction SilentlyContinue
+        Remove-Job -Job $script:tunnelWatcher -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Start-TunnelWatcher {
+    param(
+        [int]$TunnelShellPid,
+        [int]$ConsoleShellPid
+    )
+
+    $script:tunnelWatcher = Start-Job -ScriptBlock {
+        param(
+            [int]$ObservedTunnelPid,
+            [int]$ObservedConsolePid
+        )
+
+        function Get-DescendantProcesses {
+            param([int]$RootPid)
+
+            $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
+            if (-not $all) {
+                return @()
+            }
+
+            $childrenByParent = @{}
+            foreach ($proc in $all) {
+                if (-not $childrenByParent.ContainsKey($proc.ParentProcessId)) {
+                    $childrenByParent[$proc.ParentProcessId] = @()
+                }
+                $childrenByParent[$proc.ParentProcessId] += $proc
+            }
+
+            $queue = [System.Collections.Generic.Queue[object]]::new()
+            $results = [System.Collections.Generic.List[object]]::new()
+            $queue.Enqueue($RootPid)
+
+            while ($queue.Count -gt 0) {
+                $parentPid = [int]$queue.Dequeue()
+                foreach ($child in ($childrenByParent[$parentPid] | Select-Object -Unique)) {
+                    $results.Add($child) | Out-Null
+                    $queue.Enqueue([int]$child.ProcessId)
+                }
+            }
+
+            return $results
+        }
+
+        while ($true) {
+            Start-Sleep -Milliseconds 500
+
+            if (-not (Get-Process -Id $ObservedTunnelPid -ErrorAction SilentlyContinue)) {
+                $targets = Get-DescendantProcesses -RootPid $ObservedConsolePid | Where-Object {
+                    $_.Name -in @('go.exe', 'null-space.exe')
+                }
+
+                foreach ($target in $targets) {
+                    Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+                }
+
+                break
+            }
+
+            if (-not (Get-Process -Id $ObservedConsolePid -ErrorAction SilentlyContinue)) {
+                break
+            }
+        }
+    } -ArgumentList $TunnelShellPid, $ConsoleShellPid
+}
+
+$existingListener = Get-NetTCPConnection -LocalPort 23234 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($existingListener) {
+    Write-Error "Port 23234 is already in use by PID $($existingListener.OwningProcess). Stop that process or use a different listen port before starting null-space."
     exit 1
 }
 
-$uri = [Uri]$connection
-$sshCommand = "ssh {0}@{1} -p {2}" -f "your-name", $uri.Host, $uri.Port
+$tunnelCommand = @'
+$Host.UI.RawUI.WindowTitle = "null-space Pinggy Tunnel"
+Write-Host "==============================================" -ForegroundColor Cyan
+Write-Host "            NULL-SPACE PINGGY TUNNEL         " -ForegroundColor Black -BackgroundColor Green
+Write-Host "==============================================" -ForegroundColor Cyan
+Write-Host "Keep this window open while the server is running." -ForegroundColor Cyan
+Write-Host "Copy the tcp://... address shown below and give it to players." -ForegroundColor Cyan
+Write-Host "If prompted for a password, press Enter." -ForegroundColor Cyan
+Write-Host ""
+ssh -p 443 -o ServerAliveInterval=30 -o StrictHostKeyChecking=accept-new -o ExitOnForwardFailure=yes -R0:127.0.0.1:23234 tcp@a.pinggy.io
+'@
+
+$encodedTunnelCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($tunnelCommand))
+
+Write-Host "Opening Pinggy tunnel window..." -ForegroundColor Cyan
+$script:tunnelShell = Start-Process -FilePath "pwsh" `
+    -ArgumentList @("-NoExit", "-EncodedCommand", $encodedTunnelCommand) `
+    -WorkingDirectory $root `
+    -PassThru
+
+Start-TunnelWatcher -TunnelShellPid $script:tunnelShell.Id -ConsoleShellPid $PID
 
 Clear-Host
 Write-Host "==============================================" -ForegroundColor Cyan
 Write-Host "                 LOBBY OPEN                  " -ForegroundColor Black -BackgroundColor Green
 Write-Host "==============================================" -ForegroundColor Cyan
 Write-Host "Game:      $Game"
-Write-Host "Endpoint:  $connection"
-Write-Host "Join with: $sshCommand"
-Write-Host "Server PID: $($server.Id)"
-Write-Host "Tunnel PID: $($pinggy.Id)"
+Write-Host "Tunnel:    a separate PowerShell window is showing the Pinggy tcp:// address"
+Write-Host "Tunnel PID: $($script:tunnelShell.Id)"
+Write-Host ""
+Write-Host "Local admin console is live in this terminal." -ForegroundColor Cyan
+Write-Host "Type chat text to broadcast globally, or use /commands as admin." -ForegroundColor Cyan
+Write-Host "Press Ctrl+C to stop both the server and the tunnel." -ForegroundColor Cyan
 Write-Host ""
 
-Wait-Process -Id $pinggy.Id
+$serverExitCode = 0
 
-if (-not $server.HasExited) {
-    Stop-Process -Id $server.Id -Force
+Push-Location $root
+try {
+    & go run ./cmd/null-space --game $Game --password $Password
+    if ($LASTEXITCODE) {
+        $serverExitCode = $LASTEXITCODE
+    }
+}
+finally {
+    Pop-Location
+    Stop-TunnelWatcher
+    Stop-Tunnel
+}
+
+if ($serverExitCode -ne 0) {
+    exit $serverExitCode
 }

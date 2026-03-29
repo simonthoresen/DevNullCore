@@ -41,6 +41,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	if stdinInfo, err := os.Stdin.Stat(); err == nil && (stdinInfo.Mode()&os.ModeCharDevice) != 0 {
+		app.EnableLocalConsole(ctx, os.Stdin, os.Stdout)
+	}
+
 	if err := app.Start(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		fmt.Fprintf(os.Stderr, "server failed: %v\n", err)
 		os.Exit(1)
