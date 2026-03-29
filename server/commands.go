@@ -168,7 +168,7 @@ func (a *App) coreCommands() []common.Command {
 				localCmd, tunnelAddr, tunnelJoin := a.connectionInfo()
 				ctx.AddPrivateMessage(fmt.Sprintf("Local:  %s", localCmd))
 				if tunnelJoin != "" {
-					ctx.AddPrivateMessage(fmt.Sprintf("Tunnel: %s", tunnelJoin))
+					ctx.AddPrivateMessage(fmt.Sprintf("Tunnel: %s", ensureSSHFlag(tunnelJoin, "-t")))
 				} else if tunnelAddr != "" {
 					ctx.AddPrivateMessage(fmt.Sprintf("Tunnel: %s", tunnelAddr))
 				} else {
@@ -214,6 +214,16 @@ func formatChatLine(author, body string) string {
 
 func formatSystemLine(body string) string {
 	return fmt.Sprintf("[%s] [system] %s", time.Now().Format("15:04:05"), body)
+}
+
+func ensureSSHFlag(cmd, flag string) string {
+	if strings.Contains(cmd, " "+flag+" ") || strings.HasSuffix(cmd, " "+flag) {
+		return cmd
+	}
+	if strings.HasPrefix(cmd, "ssh ") {
+		return "ssh " + flag + " " + cmd[4:]
+	}
+	return cmd
 }
 
 func formatPinggyLine(body string) string {

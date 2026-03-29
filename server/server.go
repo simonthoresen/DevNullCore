@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -96,7 +97,13 @@ func (a *App) Start(ctx context.Context) error {
 	go a.runTicker(ctx)
 	slog.Info("server listen loop starting", "address", a.address)
 	go func() {
-		err := a.server.ListenAndServe()
+		ln, err := newNoDelayListener(a.address)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		slog.Info("TCP_NODELAY listener ready", "address", a.address)
+		err = a.server.Serve(ln)
 		if err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 			errCh <- err
 			return
@@ -158,7 +165,7 @@ func (a *App) sessionProgramOptions(sess ssh.Session) []tea.ProgramOption {
 
 	// Wish does not currently force a color profile for Windows-hosted SSH
 	// sessions, so derive it from the remote environment here.
-	return append(wishbubbletea.MakeOptions(sess), tea.WithColorProfile(colorprofile.Env(envs)))
+	return append(wishbubbletea.MakeOptions(sess), tea.WithFPS(60), tea.WithColorProfile(colorprofile.Env(envs)))
 }
 
 func (a *App) registerSession(sess ssh.Session) *common.Player {
@@ -470,7 +477,7 @@ func (a *App) localSSHCommand() string {
 			}
 		}
 	}
-	return fmt.Sprintf("ssh -p %s %s", port, host)
+	return fmt.Sprintf("ssh -t -p %s -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s", port, host)
 }
 
 func (a *App) connectionInfo() (localCmd, tunnelAddr, tunnelJoin string) {
@@ -625,4 +632,30 @@ func maxInt(aValue, bValue int) int {
 		return aValue
 	}
 	return bValue
+}
+
+// noDelayListener wraps a net.Listener and ensures TCP_NODELAY is set on
+// every accepted connection, disabling Nagle's algorithm so that single
+// keystrokes are sent immediately without waiting for more data.
+type noDelayListener struct {
+	net.Listener
+}
+
+func newNoDelayListener(address string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+	return &noDelayListener{Listener: ln}, nil
+}
+
+func (l *noDelayListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	if tc, ok := conn.(*net.TCPConn); ok {
+		_ = tc.SetNoDelay(true)
+	}
+	return conn, nil
 }

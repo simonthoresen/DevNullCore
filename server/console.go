@@ -58,7 +58,7 @@ func (a *App) EnableLocalConsole(ctx context.Context, cancel context.CancelFunc,
 	a.writeConsoleLine(formatPrivateLine(fmt.Sprintf("local join: %s", a.localSSHCommand())))
 
 	model := newLocalConsoleModel(a, player.ID, cancel)
-	program := tea.NewProgram(model, tea.WithInput(reader), tea.WithOutput(writer))
+	program := tea.NewProgram(model, tea.WithFPS(60), tea.WithInput(reader), tea.WithOutput(writer))
 
 	a.mu.Lock()
 	a.consoleProgram = program

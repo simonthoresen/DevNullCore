@@ -303,6 +303,7 @@ Write-Host "==============================================" -ForegroundColor Cya
 Write-Host "Game:      $Game"
 Write-Host "Tunnel:    $($tunnelInfo.TcpAddress)"
 Write-Host "Join:      $($tunnelInfo.JoinCommand)"
+Write-Host "Local:     ssh -t -p 23234 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null localhost"
 Write-Host "Tunnel PID: $($script:tunnelShell.Id)"
 Write-Host ""
 Write-Host "Local admin console is live in this terminal." -ForegroundColor Cyan
