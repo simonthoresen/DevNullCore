@@ -13,7 +13,6 @@ import (
 	"charm.land/wish/v2"
 	"charm.land/wish/v2/activeterm"
 	wishbubbletea "charm.land/wish/v2/bubbletea"
-	"charm.land/wish/v2/logging"
 	"github.com/charmbracelet/ssh"
 
 	"null-space/common"
@@ -61,7 +60,6 @@ func New(address, gameName string, game common.Game, adminPassword string) (*App
 			wishbubbletea.MiddlewareWithProgramHandler(app.programHandler),
 			app.sessionMiddleware(),
 			activeterm.Middleware(),
-			logging.Middleware(),
 		),
 	)
 	if err != nil {
@@ -216,10 +214,15 @@ func (a *App) broadcast(msg tea.Msg) {
 	for _, program := range a.programs {
 		programs = append(programs, program)
 	}
+	consoleProgram := a.consoleProgram
 	a.mu.RUnlock()
 
 	for _, program := range programs {
 		program.Send(msg)
+	}
+
+	if consoleProgram != nil {
+		go consoleProgram.Send(msg)
 	}
 }
 
