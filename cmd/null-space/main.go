@@ -40,6 +40,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	app.SetShutdownFunc(stop)
 
 	if pinggyStatusFile := os.Getenv("NULL_SPACE_PINGGY_STATUS_FILE"); pinggyStatusFile != "" {
 		app.EnablePinggyLogBridge(ctx, pinggyStatusFile)

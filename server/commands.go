@@ -142,6 +142,23 @@ func (a *App) coreCommands() []common.Command {
 				return nil
 			},
 		},
+		{
+			Name:        "quit",
+			Usage:       "/quit",
+			Description: "Stop the server and disconnect everyone.",
+			AdminOnly:   true,
+			Handler: func(ctx common.CommandContext, args []string) error {
+				if len(args) != 0 {
+					ctx.AddPrivateMessage("Usage: /quit")
+					return nil
+				}
+				ctx.AddSystemMessage("Server shutdown requested.")
+				if !a.requestShutdown() {
+					ctx.AddPrivateMessage("Shutdown handler is not available.")
+				}
+				return nil
+			},
+		},
 	}
 }
 

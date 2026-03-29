@@ -36,6 +36,7 @@ type App struct {
 	consoleWriter  io.Writer
 	consoleProgram *tea.Program
 	localLogs      []string
+	shutdownFn     context.CancelFunc
 	consoleMu      sync.Mutex
 }
 
@@ -103,6 +104,12 @@ func (a *App) Shutdown(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func (a *App) SetShutdownFunc(shutdownFn context.CancelFunc) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.shutdownFn = shutdownFn
 }
 
 func (a *App) sessionMiddleware() wish.Middleware {
@@ -266,7 +273,7 @@ func (a *App) writeConsoleLine(line string) {
 	a.mu.Unlock()
 
 	if program != nil {
-		program.Send(common.RefreshMsg{})
+		go program.Send(common.RefreshMsg{})
 		return
 	}
 	if writer == nil {
@@ -283,8 +290,19 @@ func (a *App) notifyLocalConsole() {
 	program := a.consoleProgram
 	a.mu.RUnlock()
 	if program != nil {
-		program.Send(common.RefreshMsg{})
+		go program.Send(common.RefreshMsg{})
 	}
+}
+
+func (a *App) requestShutdown() bool {
+	a.mu.RLock()
+	shutdownFn := a.shutdownFn
+	a.mu.RUnlock()
+	if shutdownFn == nil {
+		return false
+	}
+	shutdownFn()
+	return true
 }
 
 func (a *App) renderGlobalChat() string {
