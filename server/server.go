@@ -102,17 +102,16 @@ func (a *App) Start(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		slog.Info("server context cancelled, shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return a.Shutdown(shutdownCtx)
+		return a.Shutdown(context.Background())
 	case err := <-errCh:
 		return err
 	}
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
+	_ = ctx
 	slog.Info("server shutdown requested")
-	if err := a.server.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
+	if err := a.server.Close(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		slog.Error("server shutdown failed", "error", err)
 		return err
 	}
@@ -378,19 +377,6 @@ func (a *App) requestShutdown() bool {
 		return false
 	}
 	shutdownFn()
-	return true
-}
-
-func (a *App) requestShutdownAfter(delay time.Duration) bool {
-	a.mu.RLock()
-	shutdownFn := a.shutdownFn
-	a.mu.RUnlock()
-	if shutdownFn == nil {
-		return false
-	}
-
-	slog.Info("scheduled shutdown", "delay", delay)
-	time.AfterFunc(delay, shutdownFn)
 	return true
 }
 

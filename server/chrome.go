@@ -69,9 +69,10 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = maxInt(1, msg.Width)
-		m.height = maxInt(7, msg.Height)
+		m.height = maxInt(8, msg.Height)
 		m.chat.SetWidth(m.width)
-		m.chat.SetHeight(5)
+		_, chatHeight := clientLayoutHeights(m.width, m.height)
+		m.chat.SetHeight(chatHeight)
 		m.input.SetWidth(maxInt(1, m.width-2))
 		m.syncChat()
 		return m, nil
@@ -143,11 +144,11 @@ func (m chromeModel) View() tea.View {
 		return view
 	}
 
-	gameHeight := maxInt(1, m.height-6)
+	gameHeight, chatHeight := clientLayoutHeights(m.width, m.height)
 	header := m.renderHeader()
 	game := fitBlock(m.app.renderGame(m.playerID, m.width, gameHeight), m.width, gameHeight)
 	status := fitStyledBlock(m.renderGameStatusBar(), m.width, 1, playerStatusStyle)
-	chat := fitStyledBlock(m.chat.View(), m.width, 4, chatStyle)
+	chat := fitStyledBlock(m.chat.View(), m.width, chatHeight, chatStyle)
 
 	content := lipgloss.JoinVertical(lipgloss.Left, header, game, status, chat)
 	view.SetContent("\x1b[H" + content)
@@ -269,6 +270,34 @@ func currentSpinnerFrame() string {
 	}
 	frame := (time.Now().UnixMilli() / interval) % int64(len(spinnerFrames))
 	return spinnerFrames[frame]
+}
+
+func clientLayoutHeights(width, height int) (int, int) {
+	const fixedRows = 2
+	const minChatHeight = 5
+	const wideAspectWidth = 16
+	const wideAspectHeight = 9
+	const terminalCellWidthUnits = 2
+
+	availableHeight := maxInt(0, height-fixedRows)
+	chatHeight := minChatHeight
+	if availableHeight <= minChatHeight {
+		return 0, minChatHeight
+	}
+
+	gameHeight := availableHeight - minChatHeight
+	// Terminal cells are taller than they are wide, so use a wider grid ratio
+	// than the visual target to keep the map from growing vertically too fast.
+	targetGameHeight := maxInt(1, width*wideAspectHeight/(wideAspectWidth*terminalCellWidthUnits))
+	if gameHeight > targetGameHeight {
+		gameHeight = targetGameHeight
+	}
+	if gameHeight < 1 {
+		gameHeight = 1
+	}
+
+	chatHeight = maxInt(minChatHeight, availableHeight-gameHeight)
+	return gameHeight, chatHeight
 }
 
 func repeatMoveCmd(direction string) tea.Cmd {

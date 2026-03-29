@@ -18,6 +18,12 @@ import (
 
 const localConsolePlayerID = "local-admin"
 
+var (
+	localConsoleHeaderStyle  = lipgloss.NewStyle().Width(0).Background(lipgloss.Color("#B9D6F2")).Foreground(lipgloss.Color("#102A43")).Bold(true)
+	localConsoleSectionStyle = lipgloss.NewStyle().Width(0).Background(lipgloss.Color("#D9EAF7")).Foreground(lipgloss.Color("#16324F")).Bold(true)
+	localConsoleBodyStyle    = lipgloss.NewStyle().Width(0).Background(lipgloss.Color("#EEF6FC")).Foreground(lipgloss.Color("#16324F"))
+)
+
 type localConsoleModel struct {
 	app      *App
 	playerID string
@@ -160,7 +166,7 @@ func (m localConsoleModel) View() tea.View {
 		return view
 	}
 
-	header := lipgloss.NewStyle().Width(m.width).Reverse(true).Render(headerWithSpinner(
+	header := localConsoleHeaderStyle.Width(m.width).Render(headerWithSpinner(
 		fmt.Sprintf("[null-space server] | Game: %s | Players: %d | Tunnel: %s", m.app.gameName, m.app.state.PlayerCount(), m.app.uptime()),
 		m.width,
 	))
@@ -169,11 +175,11 @@ func (m localConsoleModel) View() tea.View {
 	logsHeight := maxInt(3, availableHeight/2)
 	chatHeight := maxInt(3, availableHeight-logsHeight)
 
-	logsLabel := lipgloss.NewStyle().Bold(true).Width(m.width).Render("Local Output")
-	chatLabel := lipgloss.NewStyle().Bold(true).Width(m.width).Render("Global Chat")
-	logsView := fitBlock(m.logs.View(), m.width, logsHeight)
-	chatView := fitBlock(m.chat.View(), m.width, chatHeight)
-	inputView := fitBlock(m.input.View(), m.width, 1)
+	logsLabel := fitStyledBlock("Local Output", m.width, 1, localConsoleSectionStyle)
+	chatLabel := fitStyledBlock("Global Chat", m.width, 1, chatChromeStyle)
+	logsView := fitStyledBlock(m.logs.View(), m.width, logsHeight, localConsoleBodyStyle)
+	chatView := fitStyledBlock(m.chat.View(), m.width, chatHeight, chatStyle)
+	inputView := fitStyledBlock(m.input.View(), m.width, 1, localConsoleSectionStyle)
 
 	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, header, logsLabel, logsView, chatLabel, chatView, inputView))
 	view.AltScreen = true
