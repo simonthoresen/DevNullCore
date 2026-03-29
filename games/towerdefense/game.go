@@ -2,9 +2,11 @@ package towerdefense
 
 import (
 	"fmt"
+	"math/rand"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -13,68 +15,43 @@ import (
 )
 
 const (
-	worldWidth       = 200
-	worldHeight      = 200
-	defaultCredits   = 12
-	towerCost        = 2
-	enemyHealth      = 4
-	spawnInterval    = 10
-	enemyStepEvery   = 2
-	towerFireEvery   = 4
-	projectileTTL    = 2
-	towerRange       = 6
-	nearbyLegendRows = 1
+	worldWidth  = 256
+	worldHeight = 256
+)
+
+type tileType uint8
+
+const (
+	grassTile tileType = iota
+	forestTile
+	trailTile
+	treeTile
 )
 
 type Game struct {
-	mu          sync.RWMutex
-	path        []common.Point
-	pathCells   map[common.Point]struct{}
-	players     map[string]*playerState
-	towers      map[common.Point]*tower
-	enemies     []*enemy
-	projectiles []*projectile
-	tickCount   int
-	spawnBurst  int
+	mu      sync.RWMutex
+	tiles   []tileType
+	players map[string]*playerState
+	spawn   common.Point
 }
 
 type playerState struct {
-	ID      string
-	Name    string
+	ID       string
+	Name     string
 	Position common.Point
-	Color   string
-	Credits int
-}
-
-type tower struct {
-	Position common.Point
-	Cooldown int
-}
-
-type enemy struct {
-	PathIndex int
-	Health    int
-	Stride    int
-}
-
-type projectile struct {
-	Position common.Point
-	TTL      int
+	Color    string
 }
 
 func New() *Game {
-	path := buildPath()
-	pathCells := make(map[common.Point]struct{}, len(path))
-	for _, point := range path {
-		pathCells[point] = struct{}{}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	game := &Game{
+		tiles:   make([]tileType, worldWidth*worldHeight),
+		players: make(map[string]*playerState),
+		spawn:   common.Point{X: worldWidth / 2, Y: worldHeight / 2},
 	}
-	return &Game{
-		path:      path,
-		pathCells: pathCells,
-		players:   make(map[string]*playerState),
-		towers:    make(map[common.Point]*tower),
-		enemies:   make([]*enemy, 0, 16),
-	}
+	game.generateMap(rng)
+	game.spawn = game.findNearestWalkable(game.spawn)
+	return game
 }
 
 func (g *Game) Init() []tea.Cmd {
@@ -87,44 +64,40 @@ func (g *Game) Update(msg tea.Msg, playerID string) []tea.Cmd {
 
 	switch msg := msg.(type) {
 	case common.PlayerJoinedMsg:
+		spawn := g.findSpawnPosition()
 		g.players[msg.PlayerID] = &playerState{
 			ID:       msg.PlayerID,
 			Name:     msg.Name,
-			Position: msg.Position,
+			Position: spawn,
 			Color:    msg.Color,
-			Credits:  defaultCredits,
 		}
 	case common.PlayerLeftMsg:
 		delete(g.players, msg.PlayerID)
-	case common.TickMsg:
-		g.tickCount++
-		if g.tickCount%spawnInterval == 0 {
-			g.spawnEnemy()
-		}
-		if g.spawnBurst > 0 {
-			g.spawnEnemy()
-			g.spawnBurst--
-		}
-		g.stepEnemies()
-		g.fireTowers()
-		g.stepProjectiles()
 	case tea.KeyPressMsg:
 		player := g.players[playerID]
 		if player == nil {
-			break
+			return nil
 		}
+
+		dx, dy := 0, 0
 		switch msg.String() {
 		case "up":
-			player.Position.Y = maxInt(0, player.Position.Y-1)
+			dy = -1
 		case "down":
-			player.Position.Y = minInt(worldHeight-1, player.Position.Y+1)
+			dy = 1
 		case "left":
-			player.Position.X = maxInt(0, player.Position.X-1)
+			dx = -1
 		case "right":
-			player.Position.X = minInt(worldWidth-1, player.Position.X+1)
-		case "space":
-			g.placeTower(player)
+			dx = 1
+		default:
+			return nil
 		}
+
+		next := common.Point{X: player.Position.X + dx, Y: player.Position.Y + dy}
+		if !g.inBounds(next) || g.tileAt(next) == treeTile {
+			return nil
+		}
+		player.Position = next
 	}
 
 	return nil
@@ -140,238 +113,262 @@ func (g *Game) View(playerID string, width, height int) string {
 
 	player := g.players[playerID]
 	if player == nil {
-		return strings.Repeat(" ", width)
+		return strings.Join(makeBlankRows(width, height), "\n")
 	}
 
-	boardHeight := maxInt(1, height-nearbyLegendRows)
-	halfWidth := width / 2
-	halfHeight := boardHeight / 2
-	minX := clampInt(player.Position.X-halfWidth, 0, maxInt(0, worldWidth-width))
-	minY := clampInt(player.Position.Y-halfHeight, 0, maxInt(0, worldHeight-boardHeight))
-	maxX := minX + width
-	maxY := minY + boardHeight
+	minX, minY := g.cameraOrigin(player.Position, width, height)
+	maxX := minInt(worldWidth, minX+width)
+	maxY := minInt(worldHeight, minY+height)
 
-	enemyMap := make(map[common.Point]struct{}, len(g.enemies))
-	for _, target := range g.enemies {
-		point := g.path[target.PathIndex]
-		enemyMap[point] = struct{}{}
-	}
-
-	projectileMap := make(map[common.Point]struct{}, len(g.projectiles))
-	for _, shot := range g.projectiles {
-		projectileMap[shot.Position] = struct{}{}
-	}
-
-	var rows []string
+	rows := make([]string, 0, height)
 	for y := minY; y < maxY; y++ {
 		var row strings.Builder
 		for x := minX; x < maxX; x++ {
 			point := common.Point{X: x, Y: y}
-			cell := g.renderCell(point, playerID, enemyMap, projectileMap)
-			row.WriteString(cell)
+			row.WriteString(g.renderCell(point, playerID))
 		}
 		rows = append(rows, row.String())
 	}
 
-	legend := g.renderLegend(player, minX, minY, maxX, maxY, width)
-	rows = append(rows, legend)
-	if len(rows) > height {
-		rows = rows[:height]
-	}
 	for len(rows) < height {
 		rows = append(rows, strings.Repeat(" ", width))
 	}
+
 	return strings.Join(rows, "\n")
 }
 
-func (g *Game) GetCommands() []common.Command {
-	return []common.Command{
-		{
-			Name:        "spawnwave",
-			Usage:       "/spawnwave",
-			Description: "Spawn a short enemy wave.",
-			AdminOnly:   true,
-			Handler: func(ctx common.CommandContext, args []string) error {
-				g.mu.Lock()
-				g.spawnBurst += 5
-				g.mu.Unlock()
-				ctx.AddSystemMessage("An admin forced a new wave.")
-				ctx.RequestRefresh()
-				return nil
-			},
-		},
-		{
-			Name:        "center",
-			Usage:       "/center",
-			Description: "Snap your camera anchor back to the center of the map.",
-			Handler: func(ctx common.CommandContext, args []string) error {
-				player := ctx.CurrentPlayer()
-				if player == nil {
-					return nil
-				}
-				g.mu.Lock()
-				if state, ok := g.players[player.ID]; ok {
-					state.Position = common.Point{X: worldWidth / 2, Y: worldHeight / 2}
-				}
-				g.mu.Unlock()
-				ctx.AddPrivateMessage("Camera anchor reset to center.")
-				ctx.RequestRefresh()
-				return nil
-			},
-		},
-	}
-}
+func (g *Game) PlayerStatus(playerID string, width int) string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
 
-func (g *Game) renderCell(point common.Point, currentPlayerID string, enemyMap, projectileMap map[common.Point]struct{}) string {
-	for _, player := range g.players {
-		if player.Position == point {
-			glyph := "X"
-			if player.ID == currentPlayerID {
-				glyph = "@"
-			}
-			return lipgloss.NewStyle().Foreground(lipgloss.Color(player.Color)).Render(glyph)
-		}
+	player := g.players[playerID]
+	if player == nil {
+		return truncateToWidth("world loading", width)
 	}
-	if _, ok := projectileMap[point]; ok {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#F4A261")).Render("*")
-	}
-	if _, ok := enemyMap[point]; ok {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FF4D6D")).Render("e")
-	}
-	if _, ok := g.towers[point]; ok {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD166")).Render("T")
-	}
-	if _, ok := g.pathCells[point]; ok {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#5C677D")).Render("░")
-	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("#1F2933")).Render("·")
-}
 
-func (g *Game) renderLegend(player *playerState, minX, minY, maxX, maxY, width int) string {
+	terrain := terrainName(g.tileAt(player.Position))
 	nearby := make([]string, 0, len(g.players))
 	for _, other := range g.players {
 		if other.ID == player.ID {
 			continue
 		}
-		if other.Position.X >= minX && other.Position.X < maxX && other.Position.Y >= minY && other.Position.Y < maxY {
+		if distance(player.Position, other.Position) <= 12 {
 			nearby = append(nearby, other.Name)
 		}
 	}
 	sort.Strings(nearby)
-	legend := fmt.Sprintf("@ %d,%d | credits %d | towers [T] | enemies e | nearby %s", player.Position.X, player.Position.Y, player.Credits, strings.Join(nearby, ", "))
-	if len(nearby) == 0 {
-		legend = fmt.Sprintf("@ %d,%d | credits %d | towers [T] | enemies e | nearby none", player.Position.X, player.Position.Y, player.Credits)
+	nearbyText := "nearby none"
+	if len(nearby) > 0 {
+		nearbyText = "nearby " + strings.Join(nearby, ", ")
 	}
-	return lipgloss.NewStyle().Faint(true).Width(width).Render(truncateToWidth(legend, width))
+
+	status := fmt.Sprintf("%s at %d,%d | terrain %s | map %dx%d | %s | Enter chats", player.Name, player.Position.X, player.Position.Y, terrain, worldWidth, worldHeight, nearbyText)
+	return truncateToWidth(status, width)
 }
 
-func (g *Game) placeTower(player *playerState) {
-	if player.Credits < towerCost {
-		return
-	}
-	if _, onPath := g.pathCells[player.Position]; onPath {
-		return
-	}
-	if _, exists := g.towers[player.Position]; exists {
-		return
-	}
-	g.towers[player.Position] = &tower{Position: player.Position}
-	player.Credits -= towerCost
+func (g *Game) GetCommands() []common.Command {
+	return nil
 }
 
-func (g *Game) spawnEnemy() {
-	g.enemies = append(g.enemies, &enemy{Health: enemyHealth})
-}
-
-func (g *Game) stepEnemies() {
-	nextEnemies := make([]*enemy, 0, len(g.enemies))
-	for _, target := range g.enemies {
-		target.Stride++
-		if target.Stride%enemyStepEvery == 0 {
-			target.PathIndex++
-		}
-		if target.Health <= 0 {
-			continue
-		}
-		if target.PathIndex >= len(g.path) {
-			continue
-		}
-		nextEnemies = append(nextEnemies, target)
+func (g *Game) generateMap(rng *rand.Rand) {
+	for index := range g.tiles {
+		g.tiles[index] = grassTile
 	}
-	g.enemies = nextEnemies
-}
 
-func (g *Game) fireTowers() {
-	if len(g.enemies) == 0 {
-		return
+	for patch := 0; patch < 180; patch++ {
+		center := common.Point{X: rng.Intn(worldWidth), Y: rng.Intn(worldHeight)}
+		radius := rng.Intn(10) + 4
+		g.paintPatch(center, radius, forestTile)
 	}
-	for _, structure := range g.towers {
-		structure.Cooldown++
-		if structure.Cooldown%towerFireEvery != 0 {
-			continue
-		}
-		for _, target := range g.enemies {
-			point := g.path[target.PathIndex]
-			if distance(structure.Position, point) > towerRange {
+
+	for trail := 0; trail < 18; trail++ {
+		start := common.Point{X: rng.Intn(worldWidth), Y: rng.Intn(worldHeight)}
+		end := common.Point{X: rng.Intn(worldWidth), Y: rng.Intn(worldHeight)}
+		g.carveTrail(start, end, rng.Intn(2)+1)
+	}
+
+	g.clearArea(g.spawn, 8)
+
+	for y := 0; y < worldHeight; y++ {
+		for x := 0; x < worldWidth; x++ {
+			point := common.Point{X: x, Y: y}
+			tile := g.tileAt(point)
+			if tile == trailTile {
 				continue
 			}
-			target.Health--
-			g.projectiles = append(g.projectiles, &projectile{Position: point, TTL: projectileTTL})
-			if target.Health <= 0 {
-				for _, player := range g.players {
-					player.Credits++
+			chance := 0.05
+			if tile == forestTile {
+				chance = 0.24
+			}
+			if rng.Float64() < chance {
+				g.setTile(point, treeTile)
+			}
+		}
+	}
+
+	g.clearArea(g.spawn, 4)
+}
+
+func (g *Game) paintPatch(center common.Point, radius int, tile tileType) {
+	for y := center.Y - radius; y <= center.Y+radius; y++ {
+		for x := center.X - radius; x <= center.X+radius; x++ {
+			point := common.Point{X: x, Y: y}
+			if !g.inBounds(point) {
+				continue
+			}
+			if distance(center, point) <= radius+(radius/3) {
+				g.setTile(point, tile)
+			}
+		}
+	}
+}
+
+func (g *Game) carveTrail(start, end common.Point, halfWidth int) {
+	current := start
+	for current.X != end.X {
+		step := 1
+		if end.X < current.X {
+			step = -1
+		}
+		g.paintTrailWidth(current, halfWidth)
+		current.X += step
+	}
+	for current.Y != end.Y {
+		step := 1
+		if end.Y < current.Y {
+			step = -1
+		}
+		g.paintTrailWidth(current, halfWidth)
+		current.Y += step
+	}
+	g.paintTrailWidth(end, halfWidth)
+}
+
+func (g *Game) paintTrailWidth(center common.Point, halfWidth int) {
+	for y := center.Y - halfWidth; y <= center.Y+halfWidth; y++ {
+		for x := center.X - halfWidth; x <= center.X+halfWidth; x++ {
+			point := common.Point{X: x, Y: y}
+			if g.inBounds(point) {
+				g.setTile(point, trailTile)
+			}
+		}
+	}
+}
+
+func (g *Game) clearArea(center common.Point, radius int) {
+	for y := center.Y - radius; y <= center.Y+radius; y++ {
+		for x := center.X - radius; x <= center.X+radius; x++ {
+			point := common.Point{X: x, Y: y}
+			if !g.inBounds(point) {
+				continue
+			}
+			if distance(center, point) <= radius {
+				g.setTile(point, grassTile)
+			}
+		}
+	}
+}
+
+func (g *Game) renderCell(point common.Point, currentPlayerID string) string {
+	for _, player := range g.players {
+		if player.Position != point {
+			continue
+		}
+		if player.ID == currentPlayerID {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render("☺")
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(player.Color)).Render("☻")
+	}
+
+	switch g.tileAt(point) {
+	case grassTile:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#7CB342")).Render("·")
+	case forestTile:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#2E7D32")).Render("•")
+	case trailTile:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#B08968")).Render("=")
+	case treeTile:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#1B5E20")).Render("♣")
+	default:
+		return " "
+	}
+}
+
+func (g *Game) findSpawnPosition() common.Point {
+	spawn := g.findNearestWalkable(g.spawn)
+	for _, player := range g.players {
+		if player.Position == spawn {
+			return g.findNearestWalkable(common.Point{X: spawn.X + 1, Y: spawn.Y + 1})
+		}
+	}
+	return spawn
+}
+
+func (g *Game) findNearestWalkable(origin common.Point) common.Point {
+	if g.inBounds(origin) && g.tileAt(origin) != treeTile {
+		return origin
+	}
+
+	for radius := 1; radius < maxInt(worldWidth, worldHeight); radius++ {
+		for y := origin.Y - radius; y <= origin.Y+radius; y++ {
+			for x := origin.X - radius; x <= origin.X+radius; x++ {
+				point := common.Point{X: x, Y: y}
+				if !g.inBounds(point) || g.tileAt(point) == treeTile {
+					continue
 				}
+				return point
 			}
-			break
 		}
 	}
 
-	survivors := make([]*enemy, 0, len(g.enemies))
-	for _, target := range g.enemies {
-		if target.Health > 0 {
-			survivors = append(survivors, target)
-		}
-	}
-	g.enemies = survivors
+	return common.Point{X: 0, Y: 0}
 }
 
-func (g *Game) stepProjectiles() {
-	active := make([]*projectile, 0, len(g.projectiles))
-	for _, shot := range g.projectiles {
-		shot.TTL--
-		if shot.TTL > 0 {
-			active = append(active, shot)
-		}
-	}
-	g.projectiles = active
+func (g *Game) cameraOrigin(position common.Point, width, height int) (int, int) {
+	halfWidth := width / 2
+	halfHeight := height / 2
+	minX := clampInt(position.X-halfWidth, 0, maxInt(0, worldWidth-width))
+	minY := clampInt(position.Y-halfHeight, 0, maxInt(0, worldHeight-height))
+	return minX, minY
 }
 
-func buildPath() []common.Point {
-	waypoints := []common.Point{{10, 20}, {190, 20}, {190, 60}, {20, 60}, {20, 110}, {180, 110}, {180, 160}, {30, 160}}
-	path := make([]common.Point, 0, 400)
-	for index := 0; index < len(waypoints)-1; index++ {
-		start := waypoints[index]
-		end := waypoints[index+1]
-		if start.X == end.X {
-			step := 1
-			if end.Y < start.Y {
-				step = -1
-			}
-			for y := start.Y; y != end.Y; y += step {
-				path = append(path, common.Point{X: start.X, Y: y})
-			}
-		} else {
-			step := 1
-			if end.X < start.X {
-				step = -1
-			}
-			for x := start.X; x != end.X; x += step {
-				path = append(path, common.Point{X: x, Y: start.Y})
-			}
-		}
+func (g *Game) inBounds(point common.Point) bool {
+	return point.X >= 0 && point.X < worldWidth && point.Y >= 0 && point.Y < worldHeight
+}
+
+func (g *Game) tileAt(point common.Point) tileType {
+	return g.tiles[g.index(point)]
+}
+
+func (g *Game) setTile(point common.Point, tile tileType) {
+	g.tiles[g.index(point)] = tile
+}
+
+func (g *Game) index(point common.Point) int {
+	return point.Y*worldWidth + point.X
+}
+
+func terrainName(tile tileType) string {
+	switch tile {
+	case grassTile:
+		return "grass"
+	case forestTile:
+		return "forest"
+	case trailTile:
+		return "trail"
+	case treeTile:
+		return "trees"
+	default:
+		return "unknown"
 	}
-	path = append(path, waypoints[len(waypoints)-1])
-	return path
+}
+
+func makeBlankRows(width, height int) []string {
+	rows := make([]string, 0, height)
+	for i := 0; i < height; i++ {
+		rows = append(rows, strings.Repeat(" ", width))
+	}
+	return rows
 }
 
 func distance(a, b common.Point) int {

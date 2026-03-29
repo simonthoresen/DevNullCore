@@ -9,6 +9,10 @@ type Game interface {
 	GetCommands() []Command
 }
 
+type PlayerStatusProvider interface {
+	PlayerStatus(playerID string, width int) string
+}
+
 type CommandHandler func(ctx CommandContext, args []string) error
 
 type Command struct {

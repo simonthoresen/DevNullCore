@@ -218,11 +218,11 @@ func (a *App) broadcast(msg tea.Msg) {
 	a.mu.RUnlock()
 
 	for _, program := range programs {
-		program.Send(msg)
+		a.sendProgram(program, msg)
 	}
 
 	if consoleProgram != nil {
-		go consoleProgram.Send(msg)
+		a.sendProgram(consoleProgram, msg)
 	}
 }
 
@@ -276,7 +276,7 @@ func (a *App) writeConsoleLine(line string) {
 	a.mu.Unlock()
 
 	if program != nil {
-		go program.Send(common.RefreshMsg{})
+		a.sendProgram(program, common.RefreshMsg{})
 		return
 	}
 	if writer == nil {
@@ -293,7 +293,7 @@ func (a *App) notifyLocalConsole() {
 	program := a.consoleProgram
 	a.mu.RUnlock()
 	if program != nil {
-		go program.Send(common.RefreshMsg{})
+		a.sendProgram(program, common.RefreshMsg{})
 	}
 }
 
@@ -359,8 +359,15 @@ func (a *App) sendToPlayer(playerID string, msg tea.Msg) {
 	program := a.programs[playerID]
 	a.mu.RUnlock()
 	if program != nil {
-		program.Send(msg)
+		a.sendProgram(program, msg)
 	}
+}
+
+func (a *App) sendProgram(program *tea.Program, msg tea.Msg) {
+	if program == nil {
+		return
+	}
+	go program.Send(msg)
 }
 
 func (a *App) kickPlayer(playerID string) error {
