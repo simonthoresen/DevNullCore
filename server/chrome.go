@@ -114,6 +114,14 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Forward all other messages to the textinput when in chat mode so that
+	// cursor blink and other internal messages are not silently swallowed.
+	if m.chatMode {
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
+	}
+
 	return m, nil
 }
 
