@@ -479,7 +479,7 @@ func (a *App) unregisterProgramLocked(program *tea.Program) {
 
 func isCoalescableUpdate(msg tea.Msg) bool {
 	switch msg.(type) {
-	case common.RefreshMsg, common.TickMsg:
+	case common.TickMsg:
 		return true
 	default:
 		return false
