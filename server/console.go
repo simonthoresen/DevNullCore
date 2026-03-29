@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -45,6 +46,7 @@ func (a *App) EnableLocalConsole(ctx context.Context, cancel context.CancelFunc,
 	a.mu.Unlock()
 
 	a.state.AddPlayer(player)
+	slog.Info("local console enabled", "player_id", player.ID, "name", player.Name)
 	a.handleGameMessage(common.PlayerJoinedMsg{
 		PlayerID: player.ID,
 		Name:     player.Name,
@@ -59,11 +61,12 @@ func (a *App) EnableLocalConsole(ctx context.Context, cancel context.CancelFunc,
 
 	a.mu.Lock()
 	a.consoleProgram = program
+	a.registerProgramLocked(program)
 	a.mu.Unlock()
 
 	go func() {
 		<-ctx.Done()
-		program.Send(tea.QuitMsg{})
+		a.sendProgram(program, tea.QuitMsg{})
 	}()
 
 	go func() {
@@ -73,9 +76,11 @@ func (a *App) EnableLocalConsole(ctx context.Context, cancel context.CancelFunc,
 		if a.consoleProgram == program {
 			a.consoleProgram = nil
 		}
+		a.unregisterProgramLocked(program)
 		a.mu.Unlock()
 
 		if err != nil && ctx.Err() == nil {
+			slog.Error("local console program failed", "error", err)
 			a.writeConsoleLine(formatPrivateLine(fmt.Sprintf("console error: %v", err)))
 		}
 
@@ -208,10 +213,12 @@ func (m *localConsoleModel) submitInput() {
 		return
 	}
 	if strings.HasPrefix(text, "/") {
+		slog.Info("local console command input", "text", text)
 		m.app.executeCommand(m.playerID, text)
 		m.sync()
 		return
 	}
+	slog.Info("local console chat input", "text", text)
 	m.app.addChatMessage(m.playerID, text)
 	m.sync()
 }
@@ -223,6 +230,7 @@ func (a *App) disableLocalConsole(playerID string, announce bool) {
 	}
 
 	if announce {
+		slog.Info("local console disabled", "player_id", playerID)
 		a.appendChatLine(formatSystemLine(fmt.Sprintf("%s left the local console.", player.Name)))
 	}
 
@@ -231,6 +239,7 @@ func (a *App) disableLocalConsole(playerID string, announce bool) {
 
 	a.mu.Lock()
 	if a.consolePlayer == playerID {
+		a.unregisterProgramLocked(a.consoleProgram)
 		a.consolePlayer = ""
 		a.consoleWriter = nil
 		a.consoleProgram = nil

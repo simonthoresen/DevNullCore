@@ -21,6 +21,8 @@ mem.prof
 bin/
 dist/
 build/
+logs/*
+!logs/.gitkeep
 
 # Wish-generated SSH host keys
 null-space_ed25519

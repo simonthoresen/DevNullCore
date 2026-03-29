@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -79,6 +80,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.enterChatMode()
 				return m, nil
 			default:
+				slog.Debug("client input received", "player_id", m.playerID, "key", msg.String())
 				m.app.handleGameMessage(msg, m.playerID)
 				m.app.broadcast(common.RefreshMsg{})
 				return m, nil

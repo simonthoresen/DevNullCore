@@ -3,12 +3,14 @@ package server
 import (
 	"bufio"
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
 )
 
 func (a *App) EnablePinggyLogBridge(ctx context.Context, statusFile string) {
+	slog.Info("pinggy log bridge enabled", "status_file", statusFile)
 	go a.runPinggyLogBridge(ctx, statusFile)
 }
 
@@ -22,10 +24,12 @@ func (a *App) runPinggyLogBridge(ctx context.Context, statusFile string) {
 	for {
 		select {
 		case <-ctx.Done():
+			slog.Info("pinggy log bridge stopped")
 			return
 		case <-ticker.C:
 			lines, err := readPinggyLogLines(statusFile)
 			if err != nil {
+				slog.Debug("pinggy log bridge read failed", "error", err)
 				continue
 			}
 

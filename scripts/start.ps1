@@ -33,12 +33,40 @@ if ($positionals.Count -ge 2 -and $positionals[1]) {
 }
 
 $root = Split-Path -Parent $PSScriptRoot
+$logsDir = Join-Path $root "logs"
 $script:tunnelShell = $null
 $script:tunnelWatcher = $null
 $script:tunnelStatus = $null
+$script:runLog = $null
+
+function Write-RunLogLine {
+    param([string]$Message)
+
+    if (-not $script:runLog) {
+        return
+    }
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    Add-Content -Path $script:runLog -Value ("{0} [script] {1}" -f $timestamp, $Message)
+}
+
+New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
+$script:runLog = Join-Path $logsDir ((Get-Date -Format "yyyyMMdd-HHmmss") + ".log")
+New-Item -ItemType File -Path $script:runLog -Force | Out-Null
+Write-Host "Log file: $script:runLog" -ForegroundColor DarkGray
+Write-RunLogLine "starting null-space start script"
+
+$previousLogFile = $env:NULL_SPACE_LOG_FILE
+$previousLogLevel = $env:NULL_SPACE_LOG_LEVEL
+$env:NULL_SPACE_LOG_FILE = $script:runLog
+if (-not $env:NULL_SPACE_LOG_LEVEL) {
+    $env:NULL_SPACE_LOG_LEVEL = "info"
+}
+Write-RunLogLine "configured shared log environment"
 
 function Stop-Tunnel {
     if ($script:tunnelShell) {
+        Write-RunLogLine "stopping tunnel process tree"
         $childProcesses = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($script:tunnelShell.Id)" -ErrorAction SilentlyContinue
         foreach ($child in $childProcesses) {
             Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue
@@ -50,6 +78,8 @@ function Stop-Tunnel {
 
 function Stop-ProcessTree {
     param([int]$RootPid)
+
+    Write-RunLogLine "stopping process tree rooted at PID $RootPid"
 
     $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
     if (-not $all) {
@@ -107,6 +137,7 @@ function Read-TunnelState {
 
 function Stop-TunnelWatcher {
     if ($script:tunnelWatcher) {
+        Write-RunLogLine "stopping tunnel watcher"
         Stop-Job -Job $script:tunnelWatcher -ErrorAction SilentlyContinue
         Remove-Job -Job $script:tunnelWatcher -Force -ErrorAction SilentlyContinue
     }
@@ -118,6 +149,7 @@ function Start-TunnelWatcher {
         [int]$ConsoleShellPid
     )
 
+    Write-RunLogLine "starting tunnel watcher for tunnel PID $TunnelShellPid"
     $script:tunnelWatcher = Start-Job -ScriptBlock {
         param(
             [int]$ObservedTunnelPid,
@@ -223,12 +255,14 @@ $existingListener = Get-NetTCPConnection -LocalPort 23234 -State Listen -ErrorAc
 if ($existingListener) {
     if ($Force) {
         Write-Host "Port 23234 is in use by PID $($existingListener.OwningProcess). Stopping it because --force was specified..." -ForegroundColor Yellow
+        Write-RunLogLine "force enabled; stopping existing listener on port 23234 (PID $($existingListener.OwningProcess))"
         Stop-ProcessTree -RootPid $existingListener.OwningProcess
         Start-Sleep -Milliseconds 500
         $existingListener = Get-NetTCPConnection -LocalPort 23234 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
     }
 
     if ($existingListener) {
+        Write-RunLogLine "startup blocked; port 23234 still in use by PID $($existingListener.OwningProcess)"
         Write-Error "Port 23234 is already in use by PID $($existingListener.OwningProcess). Stop that process or use a different listen port before starting null-space."
         exit 1
     }
@@ -237,6 +271,7 @@ if ($existingListener) {
 $script:tunnelStatus = Join-Path ([System.IO.Path]::GetTempPath()) ("null-space-pinggy-{0}.status.log" -f ([guid]::NewGuid().ToString("N")))
 
 Write-Host "Starting Pinggy helper..." -ForegroundColor Cyan
+Write-RunLogLine "starting pinggy helper"
 $script:tunnelShell = Start-Process -FilePath "go" `
     -ArgumentList @("run", "./cmd/pinggy-helper", "--listen", "127.0.0.1:23234", "--status-file", $script:tunnelStatus) `
     -WorkingDirectory $root `
@@ -246,11 +281,14 @@ $script:tunnelShell = Start-Process -FilePath "go" `
 Start-TunnelWatcher -TunnelShellPid $script:tunnelShell.Id -ConsoleShellPid $PID
 
 Write-Host "Waiting for Pinggy to publish the tunnel address..." -ForegroundColor Cyan
+Write-RunLogLine "waiting for pinggy tunnel address"
 
 try {
     $tunnelInfo = Wait-ForTunnelReady -TimeoutSeconds 45
+    Write-RunLogLine "pinggy tunnel ready: $($tunnelInfo.TcpAddress)"
 }
 catch {
+    Write-RunLogLine ("pinggy helper failed to publish address: {0}" -f $_)
     Stop-TunnelWatcher
     Stop-Tunnel
     Remove-TunnelState
@@ -279,6 +317,7 @@ $env:NULL_SPACE_PINGGY_STATUS_FILE = $script:tunnelStatus
 
 Push-Location $root
 try {
+    Write-RunLogLine "starting null-space server"
     & go run ./cmd/null-space --game $Game --password $Password
     if ($LASTEXITCODE) {
         $serverExitCode = $LASTEXITCODE
@@ -286,17 +325,32 @@ try {
 }
 finally {
     Pop-Location
+    Write-RunLogLine "server process finished"
     if ($null -eq $previousPinggyStatusFile) {
         Remove-Item Env:NULL_SPACE_PINGGY_STATUS_FILE -ErrorAction SilentlyContinue
     }
     else {
         $env:NULL_SPACE_PINGGY_STATUS_FILE = $previousPinggyStatusFile
     }
+    if ($null -eq $previousLogFile) {
+        Remove-Item Env:NULL_SPACE_LOG_FILE -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:NULL_SPACE_LOG_FILE = $previousLogFile
+    }
+    if ($null -eq $previousLogLevel) {
+        Remove-Item Env:NULL_SPACE_LOG_LEVEL -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:NULL_SPACE_LOG_LEVEL = $previousLogLevel
+    }
     Stop-TunnelWatcher
     Stop-Tunnel
     Remove-TunnelState
+    Write-RunLogLine "cleanup completed"
 }
 
 if ($serverExitCode -ne 0) {
+    Write-RunLogLine "exiting with non-zero server exit code"
     exit $serverExitCode
 }

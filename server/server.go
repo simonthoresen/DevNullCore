@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -25,30 +26,37 @@ type App struct {
 	state         *CentralState
 	server        *ssh.Server
 
-	mu             sync.RWMutex
-	programs       map[string]*tea.Program
-	sessions       map[string]ssh.Session
-	privateHistory map[string][]string
-	registry       map[string]common.Command
-	paletteIndex   int
-	consolePlayer  string
-	consoleWriter  io.Writer
-	consoleProgram *tea.Program
-	localLogs      []string
-	shutdownFn     context.CancelFunc
-	consoleMu      sync.Mutex
+	mu              sync.RWMutex
+	programs        map[string]*tea.Program
+	programInFlight map[*tea.Program]chan struct{}
+	sessions        map[string]ssh.Session
+	privateHistory  map[string][]string
+	registry        map[string]common.Command
+	paletteIndex    int
+	consolePlayer   string
+	consoleWriter   io.Writer
+	consoleProgram  *tea.Program
+	localLogs       []string
+	shutdownFn      context.CancelFunc
+	consoleMu       sync.Mutex
 }
+
+const (
+	gameTickInterval = 100 * time.Millisecond
+	uiTickInterval   = 500 * time.Millisecond
+)
 
 func New(address, gameName string, game common.Game, adminPassword string) (*App, error) {
 	app := &App{
-		address:        address,
-		gameName:       gameName,
-		adminPassword:  adminPassword,
-		state:          newCentralState(game),
-		programs:       make(map[string]*tea.Program),
-		sessions:       make(map[string]ssh.Session),
-		privateHistory: make(map[string][]string),
-		localLogs:      make([]string, 0, 100),
+		address:         address,
+		gameName:        gameName,
+		adminPassword:   adminPassword,
+		state:           newCentralState(game),
+		programs:        make(map[string]*tea.Program),
+		programInFlight: make(map[*tea.Program]chan struct{}),
+		sessions:        make(map[string]ssh.Session),
+		privateHistory:  make(map[string][]string),
+		localLogs:       make([]string, 0, 100),
 	}
 	app.registerCommands(game.GetCommands())
 
@@ -66,6 +74,7 @@ func New(address, gameName string, game common.Game, adminPassword string) (*App
 		return nil, err
 	}
 	app.server = server
+	slog.Info("server app created", "address", address, "game", gameName)
 
 	for _, cmd := range game.Init() {
 		app.executeCmd(cmd, "")
@@ -78,6 +87,7 @@ func (a *App) Start(ctx context.Context) error {
 	errCh := make(chan error, 1)
 
 	go a.runTicker(ctx)
+	slog.Info("server listen loop starting", "address", a.address)
 	go func() {
 		err := a.server.ListenAndServe()
 		if err != nil && !errors.Is(err, ssh.ErrServerClosed) {
@@ -89,6 +99,7 @@ func (a *App) Start(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		slog.Info("server context cancelled, shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		return a.Shutdown(shutdownCtx)
@@ -98,9 +109,12 @@ func (a *App) Start(ctx context.Context) error {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
+	slog.Info("server shutdown requested")
 	if err := a.server.Shutdown(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
+		slog.Error("server shutdown failed", "error", err)
 		return err
 	}
+	slog.Info("server shutdown completed")
 	return nil
 }
 
@@ -125,6 +139,7 @@ func (a *App) programHandler(sess ssh.Session) *tea.Program {
 	program := tea.NewProgram(newChromeModel(a, playerID), wishbubbletea.MakeOptions(sess)...)
 	a.mu.Lock()
 	a.programs[playerID] = program
+	a.registerProgramLocked(program)
 	a.mu.Unlock()
 	return program
 }
@@ -144,6 +159,7 @@ func (a *App) registerSession(sess ssh.Session) *common.Player {
 	a.mu.Unlock()
 
 	a.state.AddPlayer(player)
+	slog.Info("player joined", "player_id", player.ID, "name", player.Name)
 	a.appendChatLine(formatSystemLine(fmt.Sprintf("%s joined the tunnel.", player.Name)))
 	a.handleGameMessage(common.PlayerJoinedMsg{
 		PlayerID: player.ID,
@@ -158,30 +174,36 @@ func (a *App) registerSession(sess ssh.Session) *common.Player {
 func (a *App) unregisterSession(playerID string) {
 	player := a.state.GetPlayer(playerID)
 	if player != nil {
+		slog.Info("player left", "player_id", playerID, "name", player.Name)
 		a.appendChatLine(formatSystemLine(fmt.Sprintf("%s left the tunnel.", player.Name)))
 	}
 	a.handleGameMessage(common.PlayerLeftMsg{PlayerID: playerID}, playerID)
 	a.state.RemovePlayer(playerID)
 
 	a.mu.Lock()
+	program := a.programs[playerID]
 	delete(a.programs, playerID)
 	delete(a.sessions, playerID)
 	delete(a.privateHistory, playerID)
+	a.unregisterProgramLocked(program)
 	a.mu.Unlock()
 
 	a.broadcast(common.RefreshMsg{})
 }
 
 func (a *App) runTicker(ctx context.Context) {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	gameTicker := time.NewTicker(gameTickInterval)
+	uiTicker := time.NewTicker(uiTickInterval)
+	defer gameTicker.Stop()
+	defer uiTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case tick := <-ticker.C:
+		case tick := <-gameTicker.C:
 			a.handleGameMessage(common.TickMsg{Time: tick}, "")
+		case tick := <-uiTicker.C:
 			a.broadcast(common.TickMsg{Time: tick})
 		}
 	}
@@ -232,10 +254,12 @@ func (a *App) addSystemMessage(text string) {
 }
 
 func (a *App) addPinggyMessage(text string) {
+	slog.Info("pinggy message", "text", text)
 	a.writeConsoleLine(formatPinggyLine(text))
 }
 
 func (a *App) addPrivateMessage(playerID, text string) {
+	slog.Debug("private message", "player_id", playerID, "text", text)
 	line := formatPrivateLine(text)
 	a.mu.Lock()
 	a.privateHistory[playerID] = append(a.privateHistory[playerID], line)
@@ -256,6 +280,7 @@ func (a *App) addChatMessage(playerID, text string) {
 	if player != nil {
 		author = player.Name
 	}
+	slog.Info("chat message", "player_id", playerID, "author", author, "text", text)
 	a.appendChatLine(formatChatLine(author, text))
 	a.broadcast(common.RefreshMsg{})
 }
@@ -316,6 +341,7 @@ func (a *App) requestShutdownAfter(delay time.Duration) bool {
 		return false
 	}
 
+	slog.Info("scheduled shutdown", "delay", delay)
 	time.AfterFunc(delay, shutdownFn)
 	return true
 }
@@ -367,7 +393,63 @@ func (a *App) sendProgram(program *tea.Program, msg tea.Msg) {
 	if program == nil {
 		return
 	}
-	go program.Send(msg)
+
+	if _, ok := msg.(tea.QuitMsg); ok {
+		go program.Send(msg)
+		return
+	}
+
+	a.mu.RLock()
+	inFlight := a.programInFlight[program]
+	a.mu.RUnlock()
+	if inFlight == nil {
+		go program.Send(msg)
+		return
+	}
+
+	if !isCoalescableUpdate(msg) {
+		go program.Send(msg)
+		return
+	}
+
+	select {
+	case inFlight <- struct{}{}:
+		go func() {
+			defer func() { <-inFlight }()
+			program.Send(msg)
+		}()
+	default:
+		return
+	}
+}
+
+func (a *App) registerProgramLocked(program *tea.Program) {
+	if program == nil {
+		return
+	}
+	if _, exists := a.programInFlight[program]; exists {
+		return
+	}
+	a.programInFlight[program] = make(chan struct{}, 1)
+}
+
+func (a *App) unregisterProgramLocked(program *tea.Program) {
+	if program == nil {
+		return
+	}
+	if _, exists := a.programInFlight[program]; !exists {
+		return
+	}
+	delete(a.programInFlight, program)
+}
+
+func isCoalescableUpdate(msg tea.Msg) bool {
+	switch msg.(type) {
+	case common.RefreshMsg, common.TickMsg:
+		return true
+	default:
+		return false
+	}
 }
 
 func (a *App) kickPlayer(playerID string) error {

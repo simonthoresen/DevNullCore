@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -170,18 +171,22 @@ func (a *App) executeCommand(playerID, raw string) {
 
 	command, ok := a.registry[strings.ToLower(parts[0])]
 	if !ok {
+		slog.Warn("unknown command", "player_id", playerID, "raw", raw)
 		a.addPrivateMessage(playerID, "Unknown command. Try /help.")
 		return
 	}
 
 	player := a.state.GetPlayer(playerID)
 	if command.AdminOnly && (player == nil || !player.IsAdmin) {
+		slog.Warn("admin command denied", "player_id", playerID, "command", command.Name)
 		a.addPrivateMessage(playerID, "Permission Denied")
 		return
 	}
 
+	slog.Info("executing command", "player_id", playerID, "command", command.Name, "args", parts[1:])
 	ctx := commandContext{app: a, playerID: playerID}
 	if err := command.Handler(ctx, parts[1:]); err != nil {
+		slog.Error("command failed", "player_id", playerID, "command", command.Name, "error", err)
 		a.addPrivateMessage(playerID, fmt.Sprintf("Command failed: %v", err))
 	}
 }

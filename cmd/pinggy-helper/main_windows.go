@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -22,6 +23,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/xpty"
+
+	"null-space/internal/runlog"
 )
 
 var tcpAddressPattern = regexp.MustCompile(`tcp://([A-Za-z0-9.-]+):(\d+)`)
@@ -64,6 +67,13 @@ type lineEmitter struct {
 }
 
 func main() {
+	cleanupLog, err := runlog.ConfigureFromEnv("pinggy-helper")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not configure logging: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanupLog() //nolint:errcheck
+
 	cfg := config{}
 	flag.StringVar(&cfg.listenAddress, "listen", "127.0.0.1:23234", "local address to forward through Pinggy")
 	flag.StringVar(&cfg.host, "host", "a.pinggy.io", "Pinggy host")
@@ -78,10 +88,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	slog.Info("starting pinggy helper", "listen", cfg.listenAddress, "host", cfg.host, "port", cfg.port, "status_file", cfg.statusFile)
 	if err := run(ctx, cfg); err != nil {
+		slog.Error("pinggy helper failed", "error", err)
 		fmt.Fprintf(os.Stderr, "pinggy helper failed: %v\n", err)
 		os.Exit(1)
 	}
+	slog.Info("pinggy helper stopped")
 }
 
 func run(ctx context.Context, cfg config) error {
@@ -113,8 +126,10 @@ func run(ctx context.Context, cfg config) error {
 
 	if err := pty.Start(cmd); err != nil {
 		reporter.SetError(fmt.Sprintf("start ssh tunnel: %v", err))
+		slog.Error("failed to start ssh tunnel", "error", err)
 		return fmt.Errorf("start ssh tunnel: %w", err)
 	}
+	slog.Info("ssh tunnel process started", "destination", destination)
 
 	reporter.SetStatus("starting")
 	emitPinggyLog(reporter, "starting tunnel helper")
@@ -153,6 +168,7 @@ func run(ctx context.Context, cfg config) error {
 				reporter.SetStatus("password-submitted")
 				emitPinggyLog(reporter, "submitted blank password to Pinggy")
 			}
+			slog.Info("pinggy endpoint ready", "tcp", endpoint.tcpAddress, "join", endpoint.joinCommand)
 			emitPinggyLog(reporter, fmt.Sprintf("public tunnel ready: %s", endpoint.tcpAddress))
 			emitPinggyLog(reporter, fmt.Sprintf("join with: %s", endpoint.joinCommand))
 			reporter.SetStatus("ready")
@@ -166,6 +182,7 @@ func run(ctx context.Context, cfg config) error {
 		case err := <-readErrCh:
 			if err != nil && !errors.Is(err, io.EOF) {
 				reporter.SetError(fmt.Sprintf("read tunnel output: %v", err))
+				slog.Error("failed reading tunnel output", "error", err)
 				return fmt.Errorf("read tunnel output: %w", err)
 			}
 
@@ -176,9 +193,11 @@ func run(ctx context.Context, cfg config) error {
 			if endpointFound {
 				if err != nil {
 					reporter.SetError(fmt.Sprintf("ssh tunnel exited: %v", err))
+					slog.Error("ssh tunnel exited with error", "error", err)
 					return fmt.Errorf("ssh tunnel exited: %w", err)
 				}
 				reporter.SetStatus("exited")
+				slog.Info("ssh tunnel exited cleanly")
 				emitPinggyLog(reporter, "tunnel exited")
 				return nil
 			}
@@ -190,10 +209,12 @@ func run(ctx context.Context, cfg config) error {
 
 			if err != nil {
 				reporter.SetError(fmt.Sprintf("ssh tunnel exited before endpoint was detected: %v | last output: %s", err, squashedOutput(lastOutput)))
+				slog.Error("ssh tunnel exited before endpoint detection", "error", err, "last_output", squashedOutput(lastOutput))
 				return fmt.Errorf("ssh tunnel exited before endpoint was detected: %w\nlast output:\n%s", err, lastOutput)
 			}
 
 			reporter.SetError(fmt.Sprintf("ssh tunnel exited before endpoint was detected | last output: %s", squashedOutput(lastOutput)))
+			slog.Error("ssh tunnel exited before endpoint detection", "last_output", squashedOutput(lastOutput))
 			return fmt.Errorf("ssh tunnel exited before endpoint was detected\nlast output:\n%s", lastOutput)
 
 		case <-timeout.C:
@@ -201,6 +222,7 @@ func run(ctx context.Context, cfg config) error {
 				_ = cmd.Process.Kill()
 			}
 			reporter.SetError(fmt.Sprintf("timed out waiting %s for Pinggy to publish a tunnel address | last output: %s", cfg.readyTimeout, squashedOutput(strings.TrimSpace(tail.String()))))
+			slog.Error("timed out waiting for pinggy endpoint", "timeout", cfg.readyTimeout, "last_output", squashedOutput(strings.TrimSpace(tail.String())))
 			return fmt.Errorf("timed out waiting %s for Pinggy to publish a tunnel address\nlast output:\n%s", cfg.readyTimeout, strings.TrimSpace(tail.String()))
 
 		case <-ctx.Done():
@@ -208,6 +230,7 @@ func run(ctx context.Context, cfg config) error {
 				_ = cmd.Process.Kill()
 			}
 			reporter.SetStatus("stopped")
+			slog.Info("pinggy helper context cancelled")
 			return nil
 		}
 	}
@@ -225,6 +248,7 @@ func monitorOutput(pty xpty.Pty, tail *outputTail, endpointCh chan<- pinggyEndpo
 			if cleaned != "" {
 				tail.Append(cleaned)
 				emitter.Append(cleaned)
+				slog.Debug("received tunnel output", "chunk", squashedOutput(cleaned))
 			}
 
 			snapshot := tail.String()
@@ -233,6 +257,7 @@ func monitorOutput(pty xpty.Pty, tail *outputTail, endpointCh chan<- pinggyEndpo
 				if _, writeErr := pty.Write([]byte("\r\n")); writeErr != nil {
 					return fmt.Errorf("submit blank password: %w", writeErr)
 				}
+				slog.Info("submitted blank password to pinggy")
 				passwordSent = true
 			}
 

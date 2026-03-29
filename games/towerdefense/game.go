@@ -2,6 +2,7 @@ package towerdefense
 
 import (
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"sort"
 	"strings"
@@ -17,6 +18,14 @@ import (
 const (
 	worldWidth  = 256
 	worldHeight = 256
+)
+
+var (
+	currentPlayerGlyph = lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render("☺")
+	grassGlyph         = lipgloss.NewStyle().Foreground(lipgloss.Color("#7CB342")).Render("·")
+	forestGlyph        = lipgloss.NewStyle().Foreground(lipgloss.Color("#2E7D32")).Render("•")
+	trailGlyph         = lipgloss.NewStyle().Foreground(lipgloss.Color("#B08968")).Render("=")
+	treeGlyph          = lipgloss.NewStyle().Foreground(lipgloss.Color("#1B5E20")).Render("♣")
 )
 
 type tileType uint8
@@ -40,6 +49,9 @@ type playerState struct {
 	Name     string
 	Position common.Point
 	Color    string
+	Inputs   int
+	Applied  int
+	Blocked  int
 }
 
 func New() *Game {
@@ -76,6 +88,7 @@ func (g *Game) Update(msg tea.Msg, playerID string) []tea.Cmd {
 	case tea.KeyPressMsg:
 		player := g.players[playerID]
 		if player == nil {
+			slog.Debug("movement ignored for unknown player", "player_id", playerID, "key", msg.String())
 			return nil
 		}
 
@@ -92,12 +105,17 @@ func (g *Game) Update(msg tea.Msg, playerID string) []tea.Cmd {
 		default:
 			return nil
 		}
+		player.Inputs++
 
 		next := common.Point{X: player.Position.X + dx, Y: player.Position.Y + dy}
 		if !g.inBounds(next) || g.tileAt(next) == treeTile {
+			player.Blocked++
+			slog.Debug("movement blocked", "player_id", playerID, "from_x", player.Position.X, "from_y", player.Position.Y, "to_x", next.X, "to_y", next.Y, "key", msg.String())
 			return nil
 		}
 		player.Position = next
+		player.Applied++
+		slog.Debug("movement applied", "player_id", playerID, "x", player.Position.X, "y", player.Position.Y, "key", msg.String())
 	}
 
 	return nil
@@ -162,7 +180,7 @@ func (g *Game) PlayerStatus(playerID string, width int) string {
 		nearbyText = "nearby " + strings.Join(nearby, ", ")
 	}
 
-	status := fmt.Sprintf("%s at %d,%d | terrain %s | map %dx%d | %s | Enter chats", player.Name, player.Position.X, player.Position.Y, terrain, worldWidth, worldHeight, nearbyText)
+	status := fmt.Sprintf("%s at %d,%d | terrain %s | map %dx%d | input %d/%d/%d rx/app/block | %s | Enter chats", player.Name, player.Position.X, player.Position.Y, terrain, worldWidth, worldHeight, player.Inputs, player.Applied, player.Blocked, nearbyText)
 	return truncateToWidth(status, width)
 }
 
@@ -207,6 +225,18 @@ func (g *Game) generateMap(rng *rand.Rand) {
 	}
 
 	g.clearArea(g.spawn, 4)
+	g.clearBorder(1)
+}
+
+func (g *Game) clearBorder(thickness int) {
+	for y := 0; y < worldHeight; y++ {
+		for x := 0; x < worldWidth; x++ {
+			if x >= thickness && x < worldWidth-thickness && y >= thickness && y < worldHeight-thickness {
+				continue
+			}
+			g.setTile(common.Point{X: x, Y: y}, grassTile)
+		}
+	}
 }
 
 func (g *Game) paintPatch(center common.Point, radius int, tile tileType) {
@@ -275,20 +305,20 @@ func (g *Game) renderCell(point common.Point, currentPlayerID string) string {
 			continue
 		}
 		if player.ID == currentPlayerID {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#F59E0B")).Render("☺")
+			return currentPlayerGlyph
 		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color(player.Color)).Render("☻")
 	}
 
 	switch g.tileAt(point) {
 	case grassTile:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#7CB342")).Render("·")
+		return grassGlyph
 	case forestTile:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#2E7D32")).Render("•")
+		return forestGlyph
 	case trailTile:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#B08968")).Render("=")
+		return trailGlyph
 	case treeTile:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#1B5E20")).Render("♣")
+		return treeGlyph
 	default:
 		return " "
 	}
