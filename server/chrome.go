@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
@@ -15,10 +16,31 @@ import (
 )
 
 var (
-	statusBarStyle  = lipgloss.NewStyle().Background(lipgloss.Color("#D8C7A0")).Foreground(lipgloss.Color("#4A2D18")).Bold(true)
-	chatStyle       = lipgloss.NewStyle().Background(lipgloss.Color("#EADFC7")).Foreground(lipgloss.Color("#2C1810"))
-	commandBarStyle = lipgloss.NewStyle().Background(lipgloss.Color("#D8C7A0")).Foreground(lipgloss.Color("#4A2D18"))
+	titleBg = lipgloss.Color("#D8C7A0")
+	titleFg = lipgloss.Color("#4A2D18")
+	cmdBg   = lipgloss.Color("#B8AA88") // dimmer variant of titleBg
+
+	statusBarStyle = lipgloss.NewStyle().Background(titleBg).Foreground(titleFg).Bold(true)
+	chatStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#EADFC7")).Foreground(lipgloss.Color("#2C1810"))
+	cmdIdleStyle   = lipgloss.NewStyle().Background(cmdBg).Foreground(titleFg)
+	cmdActiveStyle = lipgloss.NewStyle().Background(titleBg).Foreground(titleFg)
 )
+
+// setInputStyle applies matching background/foreground to all textinput sub-styles.
+// This ensures the prompt, text, placeholder, and cursor share the same background
+// as the command bar wrapper — no jarring color resets mid-line.
+func setInputStyle(input *textinput.Model, bg, fg color.Color) {
+	base := lipgloss.NewStyle().Background(bg).Foreground(fg)
+	s := input.Styles()
+	s.Focused.Prompt = base
+	s.Focused.Text = base
+	s.Focused.Placeholder = base.Faint(true)
+	s.Blurred.Prompt = base
+	s.Blurred.Text = base
+	s.Blurred.Placeholder = base.Faint(true)
+	s.Cursor.Color = fg
+	input.SetStyles(s)
+}
 
 const (
 	modeIdle  = 0
@@ -67,8 +89,10 @@ func newChromeModel(app *App, playerID string) chromeModel {
 	inGame := app.state.ActiveApp != nil
 	app.state.mu.RUnlock()
 	if inGame {
+		setInputStyle(&m.input, cmdBg, titleFg)
 		m.input.Blur()
 	} else {
+		setInputStyle(&m.input, titleBg, titleFg)
 		m.mode = modeInput
 		m.input.Focus()
 	}
@@ -76,6 +100,9 @@ func newChromeModel(app *App, playerID string) chromeModel {
 }
 
 func (m chromeModel) Init() tea.Cmd {
+	if m.mode == modeInput {
+		return m.input.Focus() // starts cursor blink
+	}
 	return nil
 }
 
@@ -131,6 +158,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.GameLoadedMsg:
 		// App started — switch to game mode (idle so keys route to the game).
+		setInputStyle(&m.input, cmdBg, titleFg)
 		m.mode = modeIdle
 		m.input.Blur()
 		m.syncChat()
@@ -138,10 +166,11 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.GameUnloadedMsg:
 		// Back to lobby — stay in typing mode.
+		setInputStyle(&m.input, titleBg, titleFg)
 		m.mode = modeInput
-		m.input.Focus()
+		cmd := m.input.Focus()
 		m.syncChat()
-		return m, nil
+		return m, cmd
 
 	case tea.KeyPressMsg:
 		if m.mode == modeIdle {
@@ -149,9 +178,10 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				return m, tea.Quit
 			case "enter":
+				setInputStyle(&m.input, titleBg, titleFg)
 				m.mode = modeInput
-				m.input.Focus()
-				return m, nil
+				cmd := m.input.Focus()
+				return m, cmd
 			default:
 				// route to game
 				m.app.state.mu.RLock()
@@ -175,6 +205,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			inGame := m.app.state.ActiveApp != nil
 			m.app.state.mu.RUnlock()
 			if inGame {
+				setInputStyle(&m.input, cmdBg, titleFg)
 				m.mode = modeIdle
 				m.input.Blur()
 			}
@@ -244,7 +275,11 @@ func (m chromeModel) View() tea.View {
 		if m.mode == modeInput {
 			cmdBarText = m.input.View()
 		}
-		cmdBar := commandBarStyle.Width(m.width).Render(truncateStyled(cmdBarText, m.width))
+		cmdBarStyle := cmdIdleStyle
+		if m.mode == modeInput {
+			cmdBarStyle = cmdActiveStyle
+		}
+		cmdBar := cmdBarStyle.Width(m.width).Render(truncateStyled(cmdBarText, m.width))
 
 		content = lipgloss.JoinVertical(lipgloss.Left, statusBar, chatView, cmdBar)
 	} else {
@@ -273,7 +308,11 @@ func (m chromeModel) View() tea.View {
 		if m.mode == modeInput {
 			cmdBarText = m.input.View()
 		}
-		cmdBar := commandBarStyle.Width(m.width).Render(truncateStyled(cmdBarText, m.width))
+		cmdBarStyle := cmdIdleStyle
+		if m.mode == modeInput {
+			cmdBarStyle = cmdActiveStyle
+		}
+		cmdBar := cmdBarStyle.Width(m.width).Render(truncateStyled(cmdBarText, m.width))
 
 		content = lipgloss.JoinVertical(lipgloss.Left, statusBar, gameView, chatView, cmdBar)
 	}
@@ -348,6 +387,7 @@ func (m *chromeModel) submitInput() {
 	inGame := m.app.state.ActiveApp != nil
 	m.app.state.mu.RUnlock()
 	if inGame {
+		setInputStyle(&m.input, cmdBg, titleFg)
 		m.mode = modeIdle
 		m.input.Blur()
 	}
