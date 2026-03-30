@@ -43,7 +43,9 @@ A game file must define a global `Game` object. Only `view` is required; all oth
 ```js
 var Game = {
 
-    // Called when a player connects (or when the game loads if players are already in the lobby).
+    // --- Core hooks (same as before) ---
+
+    // Called when a player connects (or when the game starts after the splash screen).
     onPlayerJoin: function(playerID, playerName) {},
 
     // Called when a player disconnects.
@@ -73,6 +75,54 @@ var Game = {
     // Return "" to show the default hint.
     commandBar: function(playerID) {
         return "";
+    },
+
+    // --- Lifecycle hooks (all optional) ---
+
+    // Display name for splash screen and status bar. If omitted, the filename stem is used.
+    gameName: "My Awesome Game",
+
+    // Supported team count range. The framework blocks loading if the lobby has
+    // fewer or more teams. Zero means no constraint on that end.
+    // Omit to allow any number of teams.
+    teamRange: { min: 2, max: 4 },
+
+    // Called once after the script loads, before onPlayerJoin.
+    // config.teams = [{ name, color, players: [playerID, ...] }, ...]
+    // config.savedState = previously persisted state (or null on first run)
+    // config.players = [{ id, name, isAdmin }, ...] — all connected players
+    init: function(config) {
+        if (config.savedState) {
+            // restore previous state
+        }
+    },
+
+    // Custom splash screen rendered when the game loads.
+    // Return a multi-line string (width × height). If omitted, the framework
+    // renders the game name centered in a box.
+    splashScreen: function(width, height) {
+        return "";
+    },
+
+    // Custom game-over screen. If omitted, the framework renders a default
+    // "GAME OVER" screen using scoreboard() data if available.
+    gameOverScreen: function(width, height) {
+        return "";
+    },
+
+    // Return an array of { playerID, name, score } for the default game-over screen.
+    // Sorted by score descending. Only used when gameOverScreen is not defined.
+    scoreboard: function() {
+        return [
+            { playerID: "abc", name: "Alice", score: 1500 },
+            { playerID: "def", name: "Bob",   score: 1200 }
+        ];
+    },
+
+    // Return an object to persist between game runs. Saved to dist/state/<gamename>.json.
+    // Called on game over and on manual unload. Null/undefined = nothing saved.
+    saveState: function() {
+        return { highScores: [] };
     }
 };
 ```
@@ -244,6 +294,8 @@ These are available in both games and plugins.
 | `chatPlayer(playerID, message)` | Sends a private message to one player. |
 | `players()` | Returns an array of `{ id, name, isAdmin }` for every connected player. |
 | `registerCommand(spec)` | Registers a slash command. See below. |
+| `gameOver()` | Signals that the game has ended. Transitions to the game-over screen. |
+| `gameOver(state)` | Same as above, but also saves the state object for next run (equivalent to `saveState()` returning it). |
 
 ### `registerCommand(spec)`
 
@@ -287,8 +339,75 @@ Keys are passed as Bubble Tea key strings. Common values:
 
 ---
 
+## Game lifecycle
+
+```
+LOBBY (teams panel + chat)
+  │  /game load <name>
+  ▼
+SPLASH (game splash or default, up to 10s — admin presses Enter to start early)
+  │  admin presses Enter or 10s timeout
+  ▼
+PLAYING (game viewport + chat)
+  │  JS calls gameOver()
+  ▼
+GAME OVER (game-over screen or default scoreboard, up to 15s)
+  │  all players press Enter or 15s timeout
+  ▼
+LOBBY (game unloaded, back to teams + chat)
+```
+
+- **Splash screen**: Shown after `/game load`. If the game defines `splashScreen()`, that is rendered. Otherwise, the game name is displayed in a centered box. The admin who loaded the game can press Enter to skip to playing immediately.
+- **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called.
+- **Game over**: Triggered when JS calls `gameOver()`. If the game defines `gameOverScreen()`, that is rendered. Otherwise, a default screen shows "GAME OVER" with scoreboard data from `scoreboard()`. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
+- **Late joiners**: Players who connect while a game is running see the lobby (chat + teams for the next round). They can still chat with in-game players.
+
+## Teams
+
+Players configure teams in the lobby before a game starts. Each player starts in their own solo team and can move between teams using the team panel (Tab to focus, Up/Down to switch teams).
+
+The first player in a team is the team leader:
+- **Enter** — rename the team
+- **Left/Right** — cycle the team color
+
+Games receive team data in `init(config)`:
+```js
+config.teams = [
+    { name: "Red Team", color: "#ff5555", players: ["player1", "player2"] },
+    { name: "Blue Team", color: "#5555ff", players: ["player3"] }
+];
+```
+
+Games can declare a `teamRange` property to enforce a valid team count:
+```js
+Game.teamRange = { min: 2, max: 4 };
+```
+The framework blocks loading if the lobby has too few or too many teams.
+
+## State persistence
+
+Games can persist data between runs. Saved state is stored as JSON in `dist/state/<gamename>.json`.
+
+**Saving**: Return data from `saveState()`, or pass it to `gameOver(state)`. Both are called automatically on game end.
+
+**Loading**: Receive previous state in `init(config)` via `config.savedState` (null on first run).
+
 ## Layout and sizing
 
+**Lobby:**
+```
+┌────────────────────────┬───────────┐
+│ status bar (full width)             │
+├────────────────────────┬───────────┤
+│ chat (70% width)       │ teams     │
+│                        │ panel     │
+│                        │ (30%)     │
+├────────────────────────┴───────────┤
+│ command bar (full width)            │
+└─────────────────────────────────────┘
+```
+
+**In-game (playing):**
 ```
 ┌────────────────────────────────────┐
 │ status bar (1 row)                 │  ← Game.statusBar(); spinner added at right edge

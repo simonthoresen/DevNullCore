@@ -50,6 +50,20 @@ type SkinColors struct {
 	InputFg  string // input box foreground (while typing)
 }
 
+// GameLifecycle is an optional interface that games may implement alongside Game.
+// The framework type-asserts ActiveGame to GameLifecycle for splash screens,
+// game-over screens, scoreboard data, state persistence, and initialization.
+// All methods are optional in JS — return zero values if not defined.
+type GameLifecycle interface {
+	GameName() string                      // display name (fallback: filename stem)
+	TeamRange() TeamRange                  // supported team count range (zero = no constraint)
+	SplashScreen(width, height int) string // custom splash screen content
+	GameOverScreen(width, height int) string // custom game-over screen content
+	Scoreboard() []ScoreEntry              // results for default game-over screen
+	SaveState() any                        // state to persist between runs
+	Init(config map[string]any)            // called after load with teams, savedState, players
+}
+
 // Plugin is a passive extension that runs alongside any game (or in the lobby).
 // Multiple plugins can be active simultaneously and persist across game switches.
 type Plugin interface {

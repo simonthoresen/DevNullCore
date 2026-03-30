@@ -106,12 +106,21 @@ const (
 
 var spinnerFramesChrome = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
+const (
+	lobbyFocusChat  = 0
+	lobbyFocusTeams = 1
+)
+
 type chromeModel struct {
 	app      *Server
 	playerID string
 	width    int
 	height   int
 	mode     int
+
+	// inActiveGame is true when this player is participating in the current game.
+	// Late joiners (connected after GameLoadedMsg) stay in lobby mode.
+	inActiveGame bool
 
 	chat  viewport.Model
 	input textinput.Model
@@ -127,6 +136,14 @@ type chromeModel struct {
 	tabPrefix     string
 	tabCandidates []string
 	tabIndex      int
+
+	// Lobby team panel state
+	lobbyFocus    int  // lobbyFocusChat or lobbyFocusTeams
+	teamEditing   bool // true when renaming a team
+	teamEditInput textinput.Model
+
+	// Game-over countdown tracking
+	gameOverStart time.Time
 }
 
 func newChromeModel(app *Server, playerID string) chromeModel {
@@ -140,26 +157,25 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 	input.CharLimit = 256
 	input.SetWidth(78)
 
+	teamInput := textinput.New()
+	teamInput.Prompt = ""
+	teamInput.CharLimit = 20
+	teamInput.SetWidth(20)
+
 	m := chromeModel{
-		app:        app,
-		playerID:   playerID,
-		chat:       chat,
-		input:      input,
-		historyIdx: -1,
+		app:           app,
+		playerID:      playerID,
+		chat:          chat,
+		input:         input,
+		teamEditInput: teamInput,
+		historyIdx:    -1,
 	}
 	m.syncChat()
-	// Start in input mode when in the lobby; idle mode when a game is active.
-	app.state.mu.RLock()
-	inGame := app.state.ActiveGame != nil
-	app.state.mu.RUnlock()
-	if inGame {
-		setInputStyle(&m.input, cmdBg, titleFg)
-		m.input.Blur()
-	} else {
-		setInputStyle(&m.input, titleBg, titleFg)
-		m.mode = modeInput
-		m.input.Focus()
-	}
+	// Always start in lobby/input mode. GameLoadedMsg will transition
+	// participating players into game mode. Late joiners stay in lobby.
+	setInputStyle(&m.input, titleBg, titleFg)
+	m.mode = modeInput
+	m.input.Focus()
 	return m
 }
 
@@ -184,7 +200,6 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.ChatMsg:
 		chatMsg := msg.Msg
-		// filter private messages
 		if chatMsg.IsPrivate {
 			if chatMsg.ToID != m.playerID && chatMsg.FromID != m.playerID {
 				return m, nil
@@ -222,17 +237,22 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncChat()
 		return m, nil
 
+	case common.TeamUpdatedMsg:
+		return m, nil // just triggers re-render
+
 	case common.GameLoadedMsg:
-		// Game started — switch to game mode (idle so keys route to the game).
+		// This player was connected when the game loaded — they're in the game.
+		m.inActiveGame = true
 		setInputStyle(&m.input, cmdBg, titleFg)
 		m.mode = modeIdle
+		m.lobbyFocus = lobbyFocusChat
 		m.input.Blur()
 		m.resizeViewports()
 		m.syncChat()
 		return m, nil
 
 	case common.GameUnloadedMsg:
-		// Back to lobby — stay in typing mode.
+		m.inActiveGame = false
 		setInputStyle(&m.input, titleBg, titleFg)
 		m.mode = modeInput
 		cmd := m.input.Focus()
@@ -240,119 +260,23 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncChat()
 		return m, cmd
 
-	case tea.KeyPressMsg:
-		// Chat scroll — handled in both idle and input modes.
-		switch msg.String() {
-		case "pgup":
-			chatH := maxInt(1, m.chatH)
-			m.chatScrollOffset += chatH - 1
-			maxOffset := len(m.chatLines) - chatH
-			if maxOffset < 0 {
-				maxOffset = 0
-			}
-			if m.chatScrollOffset > maxOffset {
-				m.chatScrollOffset = maxOffset
-			}
-			return m, nil
-		case "pgdown":
-			chatH := maxInt(1, m.chatH)
-			m.chatScrollOffset -= chatH - 1
-			if m.chatScrollOffset < 0 {
-				m.chatScrollOffset = 0
-			}
-			return m, nil
+	case common.GamePhaseMsg:
+		if msg.Phase == common.PhaseGameOver {
+			m.gameOverStart = time.Now()
 		}
-
-		if m.mode == modeIdle {
-			switch msg.String() {
-			case "ctrl+c":
-				return m, tea.Quit
-			case "enter":
-				setInputStyle(&m.input, titleBg, titleFg)
-				m.mode = modeInput
-				cmd := m.input.Focus()
-				return m, cmd
-			default:
-				// route to game
-				m.app.state.mu.RLock()
-				game := m.app.state.ActiveGame
-				m.app.state.mu.RUnlock()
-				if game != nil {
-					game.OnInput(m.playerID, msg.String())
-				}
-				return m, nil
-			}
-		}
-
-		// modeInput
-		switch msg.String() {
-		case "esc":
-			m.tabCandidates = nil
-			m.historyIdx = -1
-			m.historyDraft = ""
-			m.input.SetValue("")
-			// In-game: return to idle so keys route to the game.
-			// Lobby: stay in input mode.
-			m.app.state.mu.RLock()
-			inGame := m.app.state.ActiveGame != nil
-			m.app.state.mu.RUnlock()
-			if inGame {
-				setInputStyle(&m.input, cmdBg, titleFg)
-				m.mode = modeIdle
-				m.input.Blur()
-			}
-			return m, nil
-		case "enter":
-			m.tabCandidates = nil
-			m.historyIdx = -1
-			m.historyDraft = ""
-			m.submitInput()
-			return m, nil
-		case "up":
-			if len(m.inputHistory) == 0 {
-				return m, nil
-			}
-			if m.historyIdx == -1 {
-				m.historyDraft = m.input.Value()
-				m.historyIdx = len(m.inputHistory) - 1
-			} else if m.historyIdx > 0 {
-				m.historyIdx--
-			}
-			m.input.SetValue(m.inputHistory[m.historyIdx])
-			m.input.CursorEnd()
-			return m, nil
-		case "down":
-			if m.historyIdx == -1 {
-				return m, nil
-			}
-			if m.historyIdx < len(m.inputHistory)-1 {
-				m.historyIdx++
-				m.input.SetValue(m.inputHistory[m.historyIdx])
-			} else {
-				m.historyIdx = -1
-				m.input.SetValue(m.historyDraft)
-			}
-			m.input.CursorEnd()
-			return m, nil
-		case "tab":
-			if strings.HasPrefix(m.input.Value(), "/") {
-				if m.tabCandidates == nil {
-					m.tabPrefix, m.tabCandidates = m.app.registry.TabCandidates(m.input.Value(), m.app.state.PlayerNames())
-					m.tabIndex = 0
-				}
-				if len(m.tabCandidates) > 0 {
-					m.input.SetValue(m.tabPrefix + m.tabCandidates[m.tabIndex])
-					m.input.CursorEnd()
-					m.tabIndex = (m.tabIndex + 1) % len(m.tabCandidates)
-				}
-			}
-			return m, nil
-		default:
-			m.tabCandidates = nil
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
+		if msg.Phase == common.PhaseNone {
+			m.inActiveGame = false
+			setInputStyle(&m.input, titleBg, titleFg)
+			m.mode = modeInput
+			cmd := m.input.Focus()
+			m.resizeViewports()
 			return m, cmd
 		}
+		m.resizeViewports()
+		return m, nil
+
+	case tea.KeyPressMsg:
+		return m.handleKey(msg)
 	}
 
 	// Forward other messages to textinput in input mode (cursor blink etc.)
@@ -363,6 +287,242 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	phase := m.app.state.GetGamePhase()
+
+	// Chat scroll — handled in all modes.
+	switch msg.String() {
+	case "pgup":
+		chatH := maxInt(1, m.chatH)
+		m.chatScrollOffset += chatH - 1
+		maxOffset := len(m.chatLines) - chatH
+		if maxOffset < 0 {
+			maxOffset = 0
+		}
+		if m.chatScrollOffset > maxOffset {
+			m.chatScrollOffset = maxOffset
+		}
+		return m, nil
+	case "pgdown":
+		chatH := maxInt(1, m.chatH)
+		m.chatScrollOffset -= chatH - 1
+		if m.chatScrollOffset < 0 {
+			m.chatScrollOffset = 0
+		}
+		return m, nil
+	}
+
+	// Team rename mode — capture all keys for the team name input.
+	if m.teamEditing {
+		return m.handleTeamEditKey(msg)
+	}
+
+	// Lobby team panel focus — handle team navigation keys.
+	if !m.inActiveGame && m.lobbyFocus == lobbyFocusTeams {
+		return m.handleTeamKey(msg)
+	}
+
+	// Splash phase — admin can press Enter to start, others wait.
+	if m.inActiveGame && phase == common.PhaseSplash {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "enter":
+			player := m.app.state.GetPlayer(m.playerID)
+			if player != nil && player.IsAdmin {
+				m.app.StartGame()
+			}
+		}
+		return m, nil
+	}
+
+	// Game-over phase — Enter acknowledges.
+	if m.inActiveGame && phase == common.PhaseGameOver {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "enter":
+			m.app.AcknowledgeGameOver(m.playerID)
+		}
+		return m, nil
+	}
+
+	if m.mode == modeIdle {
+		switch msg.String() {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "enter":
+			setInputStyle(&m.input, titleBg, titleFg)
+			m.mode = modeInput
+			cmd := m.input.Focus()
+			return m, cmd
+		default:
+			// route to game
+			m.app.state.mu.RLock()
+			game := m.app.state.ActiveGame
+			m.app.state.mu.RUnlock()
+			if game != nil {
+				game.OnInput(m.playerID, msg.String())
+			}
+			return m, nil
+		}
+	}
+
+	// modeInput
+	switch msg.String() {
+	case "esc":
+		m.tabCandidates = nil
+		m.historyIdx = -1
+		m.historyDraft = ""
+		m.input.SetValue("")
+		if m.inActiveGame {
+			setInputStyle(&m.input, cmdBg, titleFg)
+			m.mode = modeIdle
+			m.input.Blur()
+		}
+		return m, nil
+	case "enter":
+		m.tabCandidates = nil
+		m.historyIdx = -1
+		m.historyDraft = ""
+		m.submitInput()
+		return m, nil
+	case "up":
+		if len(m.inputHistory) == 0 {
+			return m, nil
+		}
+		if m.historyIdx == -1 {
+			m.historyDraft = m.input.Value()
+			m.historyIdx = len(m.inputHistory) - 1
+		} else if m.historyIdx > 0 {
+			m.historyIdx--
+		}
+		m.input.SetValue(m.inputHistory[m.historyIdx])
+		m.input.CursorEnd()
+		return m, nil
+	case "down":
+		if m.historyIdx == -1 {
+			return m, nil
+		}
+		if m.historyIdx < len(m.inputHistory)-1 {
+			m.historyIdx++
+			m.input.SetValue(m.inputHistory[m.historyIdx])
+		} else {
+			m.historyIdx = -1
+			m.input.SetValue(m.historyDraft)
+		}
+		m.input.CursorEnd()
+		return m, nil
+	case "tab":
+		// In lobby with chat focused: toggle to team panel (if input is empty).
+		if !m.inActiveGame && m.input.Value() == "" {
+			m.lobbyFocus = lobbyFocusTeams
+			m.input.Blur()
+			return m, nil
+		}
+		if strings.HasPrefix(m.input.Value(), "/") {
+			if m.tabCandidates == nil {
+				m.tabPrefix, m.tabCandidates = m.app.registry.TabCandidates(m.input.Value(), m.app.state.PlayerNames())
+				m.tabIndex = 0
+			}
+			if len(m.tabCandidates) > 0 {
+				m.input.SetValue(m.tabPrefix + m.tabCandidates[m.tabIndex])
+				m.input.CursorEnd()
+				m.tabIndex = (m.tabIndex + 1) % len(m.tabCandidates)
+			}
+		}
+		return m, nil
+	default:
+		m.tabCandidates = nil
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		return m, cmd
+	}
+}
+
+func (m chromeModel) handleTeamKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab", "esc":
+		// Switch back to chat.
+		m.lobbyFocus = lobbyFocusChat
+		m.mode = modeInput
+		cmd := m.input.Focus()
+		return m, cmd
+	case "up":
+		// Move player to the team above.
+		idx := m.app.state.PlayerTeamIndex(m.playerID)
+		if idx > 0 {
+			m.app.state.MovePlayerToTeam(m.playerID, idx-1)
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		}
+		return m, nil
+	case "down":
+		// Move player to the team below, or create a new solo team.
+		idx := m.app.state.PlayerTeamIndex(m.playerID)
+		teamCount := m.app.state.TeamCount()
+		if idx >= 0 && idx < teamCount-1 {
+			m.app.state.MovePlayerToTeam(m.playerID, idx+1)
+		} else {
+			// Below last team — create new solo team.
+			m.app.state.MovePlayerToTeam(m.playerID, teamCount)
+		}
+		m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		return m, nil
+	case "enter":
+		// If first player of team, start renaming.
+		if m.app.state.IsFirstInTeam(m.playerID) {
+			idx := m.app.state.PlayerTeamIndex(m.playerID)
+			teams := m.app.state.GetTeams()
+			if idx >= 0 && idx < len(teams) {
+				m.teamEditing = true
+				m.teamEditInput.SetValue(teams[idx].Name)
+				m.teamEditInput.Focus()
+				m.teamEditInput.CursorEnd()
+			}
+		}
+		return m, nil
+	case "left":
+		if m.app.state.IsFirstInTeam(m.playerID) {
+			idx := m.app.state.PlayerTeamIndex(m.playerID)
+			m.app.state.NextTeamColor(idx, -1)
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		}
+		return m, nil
+	case "right":
+		if m.app.state.IsFirstInTeam(m.playerID) {
+			idx := m.app.state.PlayerTeamIndex(m.playerID)
+			m.app.state.NextTeamColor(idx, 1)
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m chromeModel) handleTeamEditKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		name := strings.TrimSpace(m.teamEditInput.Value())
+		if name != "" {
+			idx := m.app.state.PlayerTeamIndex(m.playerID)
+			if m.app.state.RenameTeam(idx, name) {
+				m.app.broadcastMsg(common.TeamUpdatedMsg{})
+			}
+		}
+		m.teamEditing = false
+		m.teamEditInput.Blur()
+		return m, nil
+	case "esc":
+		m.teamEditing = false
+		m.teamEditInput.Blur()
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.teamEditInput, cmd = m.teamEditInput.Update(msg)
+		return m, cmd
+	}
 }
 
 func (m chromeModel) View() tea.View {
@@ -376,6 +536,7 @@ func (m chromeModel) View() tea.View {
 	m.app.state.mu.RLock()
 	game := m.app.state.ActiveGame
 	gameName := m.app.state.GameName
+	phase := m.app.state.GamePhase
 	spinChar := string(m.app.state.SpinnerChar())
 	m.app.state.mu.RUnlock()
 
@@ -384,7 +545,6 @@ func (m chromeModel) View() tea.View {
 	chStyle := lipgloss.NewStyle().Background(col.chatBg).Foreground(col.chatFg)
 	ciStyle := lipgloss.NewStyle().Background(col.cmdBg).Foreground(col.cmdFg)
 
-	// Apply current skin to the input box (m is a value copy in View, safe to mutate).
 	if m.mode == modeInput {
 		setInputStyle(&m.input, col.inputBg, col.inputFg)
 	} else {
@@ -392,68 +552,331 @@ func (m chromeModel) View() tea.View {
 	}
 
 	var content string
-	if game == nil {
-		// Lobby layout
-		statusText := fmt.Sprintf("null-space | %d players | uptime %s", m.app.state.PlayerCount(), m.app.uptime())
-		statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
 
-		chatH := m.height - 2
-		if chatH < 1 {
-			chatH = 1
-		}
-		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
-
-		var cmdBar string
-		if m.mode == modeInput {
-			cmdBar = truncateStyled(m.input.View(), m.width)
-		} else {
-			cmdBar = ciStyle.Width(m.width).Render("[Enter] to chat  /help for commands")
-		}
-
-		content = lipgloss.JoinVertical(lipgloss.Left, statusBar, chatView, cmdBar)
+	if !m.inActiveGame || phase == common.PhaseNone {
+		// === LOBBY LAYOUT (with team panel) ===
+		content = m.viewLobby(sbStyle, chStyle, ciStyle, spinChar)
+	} else if phase == common.PhaseSplash {
+		content = m.viewSplash(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
+	} else if phase == common.PhaseGameOver {
+		content = m.viewGameOver(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
 	} else {
-		// In-game layout
-		statusText := game.StatusBar(m.playerID)
-		statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
-
-		gameH := m.width * 9 / 16
-		chatH := m.height - 1 - gameH - 1
-		minChatH := maxInt(5, (m.height-2)/3)
-		if chatH < minChatH {
-			chatH = minChatH
-			gameH = m.height - 1 - chatH - 1
-			if gameH < 0 {
-				gameH = 0
-			}
-		}
-
-		gameView := fitBlock(game.View(m.playerID, m.width, gameH), m.width, gameH)
-		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
-
-		var cmdBar string
-		if m.mode == modeInput {
-			cmdBar = truncateStyled(m.input.View(), m.width)
-		} else {
-			idleText := game.CommandBar(m.playerID)
-			if idleText == "" {
-				idleText = fmt.Sprintf("[Enter] to chat  | game: %s", gameName)
-			}
-			cmdBar = ciStyle.Width(m.width).Render(idleText)
-		}
-
-		content = lipgloss.JoinVertical(lipgloss.Left, statusBar, gameView, chatView, cmdBar)
+		// === PLAYING LAYOUT ===
+		content = m.viewPlaying(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
 	}
 
 	view.SetContent(content)
 	view.AltScreen = true
-	// Position the real terminal cursor on the command bar (last row).
 	if m.mode == modeInput {
 		if cursor := m.input.Cursor(); cursor != nil {
 			cursor.Position.Y = m.height - 1
 			view.Cursor = cursor
 		}
 	}
+	if m.teamEditing {
+		if cursor := m.teamEditInput.Cursor(); cursor != nil {
+			// Position on the team panel — approximate row
+			cursor.Position.Y = m.height / 2
+			cursor.Position.X = m.width * 7 / 10
+			view.Cursor = cursor
+		}
+	}
 	return view
+}
+
+func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+	statusText := fmt.Sprintf("null-space | %d players | uptime %s", m.app.state.PlayerCount(), m.app.uptime())
+	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+
+	contentH := m.height - 2 // status bar + command bar
+	if contentH < 1 {
+		contentH = 1
+	}
+
+	// Split horizontally: 70% chat, 30% teams (min 20 chars for teams).
+	teamPanelW := m.width * 3 / 10
+	if teamPanelW < 20 {
+		teamPanelW = 20
+	}
+	if teamPanelW > m.width-10 {
+		teamPanelW = m.width - 10
+	}
+	chatW := m.width - teamPanelW
+
+	chatView := renderChatLines(m.chatLines, chatW, contentH, m.chatScrollOffset, chStyle)
+	teamView := m.renderTeamPanel(teamPanelW, contentH, chStyle)
+
+	middle := lipgloss.JoinHorizontal(lipgloss.Top, chatView, teamView)
+
+	var cmdBar string
+	if m.teamEditing {
+		cmdBar = ciStyle.Width(m.width).Render("Rename team: " + m.teamEditInput.View())
+	} else if m.lobbyFocus == lobbyFocusTeams {
+		hint := "[↑↓] Switch team  [←→] Color  [Enter] Rename  [Tab] Chat"
+		cmdBar = ciStyle.Width(m.width).Render(hint)
+	} else if m.mode == modeInput {
+		cmdBar = truncateStyled(m.input.View(), m.width)
+	} else {
+		cmdBar = ciStyle.Width(m.width).Render("[Enter] to chat  [Tab] Teams  /help for commands")
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, statusBar, middle, cmdBar)
+}
+
+func (m chromeModel) viewSplash(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+	displayName := gameName
+	if lc, ok := game.(common.GameLifecycle); ok && lc.GameName() != "" {
+		displayName = lc.GameName()
+	}
+
+	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(displayName, m.width, spinChar))
+
+	viewportH := m.height - 2
+	if viewportH < 1 {
+		viewportH = 1
+	}
+
+	var splashContent string
+	if lc, ok := game.(common.GameLifecycle); ok {
+		splashContent = lc.SplashScreen(m.width, viewportH)
+	}
+	if splashContent == "" {
+		splashContent = m.defaultSplashScreen(displayName, m.width, viewportH)
+	}
+
+	viewport := fitBlock(splashContent, m.width, viewportH)
+
+	player := m.app.state.GetPlayer(m.playerID)
+	isAdmin := player != nil && player.IsAdmin
+	var cmdBar string
+	if isAdmin {
+		cmdBar = ciStyle.Width(m.width).Render("[Enter] Start game")
+	} else {
+		cmdBar = ciStyle.Width(m.width).Render("Waiting for host to start...")
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, statusBar, viewport, cmdBar)
+}
+
+func (m chromeModel) viewGameOver(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+	displayName := gameName
+	if lc, ok := game.(common.GameLifecycle); ok && lc.GameName() != "" {
+		displayName = lc.GameName()
+	}
+
+	statusText := displayName + " - Game Over"
+	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+
+	viewportH := m.height - 2
+	if viewportH < 1 {
+		viewportH = 1
+	}
+
+	var goContent string
+	if lc, ok := game.(common.GameLifecycle); ok {
+		goContent = lc.GameOverScreen(m.width, viewportH)
+	}
+	if goContent == "" {
+		var scores []common.ScoreEntry
+		if lc, ok := game.(common.GameLifecycle); ok {
+			scores = lc.Scoreboard()
+		}
+		goContent = m.defaultGameOverScreen(scores, m.width, viewportH)
+	}
+
+	viewport := fitBlock(goContent, m.width, viewportH)
+
+	remaining := 15 - int(time.Since(m.gameOverStart).Seconds())
+	if remaining < 0 {
+		remaining = 0
+	}
+	cmdText := fmt.Sprintf("[Enter] Continue to lobby (%ds remaining)", remaining)
+	cmdBar := ciStyle.Width(m.width).Render(cmdText)
+
+	return lipgloss.JoinVertical(lipgloss.Left, statusBar, viewport, cmdBar)
+}
+
+func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+	statusText := game.StatusBar(m.playerID)
+	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+
+	gameH := m.width * 9 / 16
+	chatH := m.height - 1 - gameH - 1
+	minChatH := maxInt(5, (m.height-2)/3)
+	if chatH < minChatH {
+		chatH = minChatH
+		gameH = m.height - 1 - chatH - 1
+		if gameH < 0 {
+			gameH = 0
+		}
+	}
+
+	gameView := fitBlock(game.View(m.playerID, m.width, gameH), m.width, gameH)
+	chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
+
+	var cmdBar string
+	if m.mode == modeInput {
+		cmdBar = truncateStyled(m.input.View(), m.width)
+	} else {
+		idleText := game.CommandBar(m.playerID)
+		if idleText == "" {
+			idleText = fmt.Sprintf("[Enter] to chat  | game: %s", gameName)
+		}
+		cmdBar = ciStyle.Width(m.width).Render(idleText)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, statusBar, gameView, chatView, cmdBar)
+}
+
+// renderTeamPanel draws the team list panel for the lobby.
+func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style) string {
+	teams := m.app.state.GetTeams()
+	myTeamIdx := m.app.state.PlayerTeamIndex(m.playerID)
+	focused := m.lobbyFocus == lobbyFocusTeams
+
+	var lines []string
+
+	headerStyle := baseStyle.Bold(true)
+	lines = append(lines, headerStyle.Width(width).Render(" Teams"))
+	lines = append(lines, baseStyle.Width(width).Render(strings.Repeat("─", width)))
+
+	for i, team := range teams {
+		teamColor := lipgloss.Color(team.Color)
+		colorBlock := lipgloss.NewStyle().Background(teamColor).Render("  ")
+		nameText := fmt.Sprintf(" %s %s", colorBlock, team.Name)
+		if m.teamEditing && i == myTeamIdx {
+			nameText = fmt.Sprintf(" %s %s", colorBlock, m.teamEditInput.View())
+		}
+		teamStyle := baseStyle
+		if focused && i == myTeamIdx {
+			teamStyle = teamStyle.Bold(true)
+		}
+		lines = append(lines, teamStyle.Width(width).Render(truncateStyled(nameText, width)))
+
+		for _, pid := range team.Players {
+			p := m.app.state.GetPlayer(pid)
+			name := pid
+			if p != nil {
+				name = p.Name
+			}
+			prefix := "    "
+			if pid == m.playerID {
+				prefix = "  > "
+			}
+			lines = append(lines, baseStyle.Width(width).Render(truncateStyled(prefix+name, width)))
+		}
+	}
+
+	// Pad to fill height.
+	for len(lines) < height {
+		lines = append(lines, baseStyle.Width(width).Render(""))
+	}
+	if len(lines) > height {
+		lines = lines[:height]
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// defaultSplashScreen renders a simple splash screen with the game name centered in a box.
+func (m chromeModel) defaultSplashScreen(name string, width, height int) string {
+	boxW := len(name) + 6
+	if boxW > width-4 {
+		boxW = width - 4
+	}
+	if boxW < 10 {
+		boxW = 10
+	}
+
+	border := "+" + strings.Repeat("-", boxW-2) + "+"
+	pad := boxW - 2 - len(name)
+	leftPad := pad / 2
+	rightPad := pad - leftPad
+	middle := "|" + strings.Repeat(" ", leftPad) + name + strings.Repeat(" ", rightPad) + "|"
+
+	boxLines := []string{border, middle, border}
+
+	// Center vertically.
+	topPad := (height - len(boxLines)) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+
+	var lines []string
+	for i := 0; i < topPad; i++ {
+		lines = append(lines, "")
+	}
+	// Center horizontally.
+	leftMargin := (width - boxW) / 2
+	if leftMargin < 0 {
+		leftMargin = 0
+	}
+	prefix := strings.Repeat(" ", leftMargin)
+	for _, bl := range boxLines {
+		lines = append(lines, prefix+bl)
+	}
+	for len(lines) < height {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// defaultGameOverScreen renders a "GAME OVER" screen with an optional scoreboard.
+func (m chromeModel) defaultGameOverScreen(scores []common.ScoreEntry, width, height int) string {
+	var lines []string
+
+	title := "G A M E   O V E R"
+	titlePad := (width - len(title)) / 2
+	if titlePad < 0 {
+		titlePad = 0
+	}
+	lines = append(lines, "")
+	lines = append(lines, strings.Repeat(" ", titlePad)+title)
+	lines = append(lines, "")
+
+	if len(scores) > 0 {
+		lines = append(lines, "")
+		// Find max name length for alignment.
+		maxNameLen := 4 // "Name" header
+		for _, s := range scores {
+			if len(s.Name) > maxNameLen {
+				maxNameLen = len(s.Name)
+			}
+		}
+		header := fmt.Sprintf("  %-*s  %s", maxNameLen, "Name", "Score")
+		lines = append(lines, header)
+		lines = append(lines, "  "+strings.Repeat("─", maxNameLen+10))
+		for i, s := range scores {
+			medal := "  "
+			if i == 0 {
+				medal = "1."
+			} else if i == 1 {
+				medal = "2."
+			} else if i == 2 {
+				medal = "3."
+			} else {
+				medal = fmt.Sprintf("%d.", i+1)
+			}
+			line := fmt.Sprintf("  %s %-*s  %.0f", medal, maxNameLen, s.Name, s.Score)
+			lines = append(lines, line)
+		}
+	}
+
+	// Center vertically.
+	totalLines := len(lines)
+	topPad := (height - totalLines) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+	var result []string
+	for i := 0; i < topPad; i++ {
+		result = append(result, "")
+	}
+	result = append(result, lines...)
+	for len(result) < height {
+		result = append(result, "")
+	}
+	return strings.Join(result, "\n")
 }
 
 func (m *chromeModel) syncChat() {
@@ -495,32 +918,38 @@ func (m *chromeModel) syncChat() {
 }
 
 func (m *chromeModel) resizeViewports() {
-	m.app.state.mu.RLock()
-	game := m.app.state.ActiveGame
-	m.app.state.mu.RUnlock()
+	phase := m.app.state.GetGamePhase()
 
-	if game == nil {
+	if !m.inActiveGame || phase == common.PhaseNone {
+		// Lobby — chat shares space with team panel.
+		teamPanelW := m.width * 3 / 10
+		if teamPanelW < 20 {
+			teamPanelW = 20
+		}
+		if teamPanelW > m.width-10 {
+			teamPanelW = m.width - 10
+		}
+		chatW := m.width - teamPanelW
 		chatH := m.height - 2
 		if chatH < 1 {
 			chatH = 1
 		}
 		m.chatH = chatH
-		m.chat.SetWidth(m.width)
+		m.chat.SetWidth(chatW)
 		m.chat.SetHeight(chatH)
-	} else {
+	} else if phase == common.PhasePlaying {
 		gameH := m.width * 9 / 16
 		chatH := m.height - 1 - gameH - 1
 		minChatH := maxInt(5, (m.height-2)/3)
 		if chatH < minChatH {
 			chatH = minChatH
-			gameH = m.height - 1 - chatH - 1
-			if gameH < 0 {
-				gameH = 0
-			}
 		}
 		m.chatH = chatH
 		m.chat.SetWidth(m.width)
 		m.chat.SetHeight(chatH)
+	} else {
+		// Splash or GameOver — no chat viewport needed.
+		m.chatH = 0
 	}
 	m.input.SetWidth(maxInt(1, m.width-2))
 }
@@ -538,10 +967,7 @@ func (m *chromeModel) submitInput() {
 	}
 	// In-game: return to idle after submit so keys route to the game.
 	// Lobby: stay in input mode.
-	m.app.state.mu.RLock()
-	inGame := m.app.state.ActiveGame != nil
-	m.app.state.mu.RUnlock()
-	if inGame {
+	if m.inActiveGame {
 		setInputStyle(&m.input, cmdBg, titleFg)
 		m.mode = modeIdle
 		m.input.Blur()

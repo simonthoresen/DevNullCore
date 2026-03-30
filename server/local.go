@@ -41,6 +41,7 @@ func (a *Server) RunLocal(ctx context.Context, playerName, gameName string, plug
 		IsAdmin: true,
 	}
 	a.state.AddPlayer(player)
+	a.state.EnsurePlayerTeam(playerID)
 
 	for _, name := range pluginNames {
 		var path string

@@ -47,8 +47,23 @@ go run ./cmd/null-space --local --data-dir dist --game example --player alice
 - **Central 100ms ticker** sends `TickMsg` to all programs simultaneously → synchronized real-time rendering
 - **The server terminal is management-only.** The host joins as a player via SSH like everyone else.
 
-### Lobby vs. In-Game
-Players start in the **server lobby** — chat only, no game running. An admin uses `/game load <name>` to load a game from `dist/games/`. This transitions all players into the game view.
+### Game Lifecycle
+```
+LOBBY (teams + chat) → SPLASH → PLAYING → GAME OVER → LOBBY
+```
+1. **Lobby**: Players configure teams, chat. Admin loads game with `/game load <name>`.
+2. **Splash**: Shows game splash screen (custom or default with game name). Admin presses Enter to start, or auto-starts after 10s.
+3. **Playing**: Normal game mode. Game calls `gameOver()` when done.
+4. **Game Over**: Shows game-over screen (custom or default scoreboard). All players press Enter or 15s auto-transition.
+5. Back to **Lobby** — game unloaded, teams preserved for next round.
+
+Late joiners during any game phase see the lobby and can chat but don't join the active game.
+
+### Teams
+Players manage teams in the lobby panel (right side, 30% width). Each player starts in a solo team. Tab switches focus between chat and team panel. In team panel: Up/Down moves between teams, first player can Enter to rename and Left/Right to cycle color. Teams are passed to games via `init(config)`. Games can declare `teamRange: {min, max}` to enforce valid team counts.
+
+### State Persistence
+Games can persist state between runs via `saveState()` and `init(config.savedState)`. State files are stored as JSON in `dist/state/<gamename>.json`.
 
 ### UI Layout
 
@@ -56,13 +71,16 @@ Players start in the **server lobby** — chat only, no game running. An admin u
 ```
 ┌─────────────────────────────────────┐
 │ Status bar (1 row) — framework      │  e.g. "null-space | 3 players online | 00:42 ⠹"
-├─────────────────────────────────────┤
-│                                     │
-│ Chat (fills remaining rows)         │
-│                                     │
-├─────────────────────────────────────┤
-│ Command bar (1 row) — dual-purpose  │  idle: "[Enter] to chat  /help for commands"
-└─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
+├──────────────────────┬──────────────┤
+│ Chat (70% width)     │ Teams (30%)  │
+│                      │  Red Team    │
+│                      │   > alice    │
+│                      │     bob      │
+│                      │  Blue Team   │
+│                      │     charlie  │
+├──────────────────────┴──────────────┤
+│ Command bar (1 row) — dual-purpose  │  [Tab] toggles chat/teams focus
+└─────────────────────────────────────┘  In teams: [↑↓] move, [←→] color, [Enter] rename
 ```
 
 **In-game:**
@@ -94,12 +112,13 @@ Players start in the **server lobby** — chat only, no game running. An admin u
 
 | Package | Role |
 |---------|------|
-| `server/server.go` | Wish SSH server setup, session lifecycle, tick broadcast, `Server` orchestrator |
-| `server/chrome.go` | Per-user `chromeModel`: renders lobby or game chrome depending on state |
-| `server/state.go` | `CentralState`: players map, chat history (max 50), active game, plugins |
+| `server/server.go` | Wish SSH server setup, session lifecycle, tick broadcast, `Server` orchestrator, game lifecycle (splash/gameOver) |
+| `server/chrome.go` | Per-user `chromeModel`: renders lobby (with teams panel), splash, game, game-over screens |
+| `server/state.go` | `CentralState`: players, chat, active game, plugins, teams, game phase, game-over readiness |
+| `server/state_persist.go` | Load/save game state JSON files in `dist/state/` |
 | `server/commands.go` | `/` command registry, tab completion, permission checks |
 | `server/console.go` | Local server management terminal (not for playing) |
-| `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
+| `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` + `common.GameLifecycle` |
 | `server/plugin.go` | JS plugin runtime (goja): loads `dist/plugins/*.js`, implements `common.Plugin` |
 | `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
@@ -123,6 +142,20 @@ type Game interface {
     Unload()
 }
 ```
+
+### The `GameLifecycle` Interface (optional, `common/interfaces.go`)
+```go
+type GameLifecycle interface {
+    GameName() string                      // display name (fallback: filename stem)
+    TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
+    SplashScreen(width, height int) string // custom splash screen
+    GameOverScreen(width, height int) string // custom game-over screen
+    Scoreboard() []ScoreEntry              // results for default game-over screen
+    SaveState() any                        // state to persist between runs
+    Init(config map[string]any)            // called after load with teams, savedState, players
+}
+```
+`jsRuntime` implements both `Game` and `GameLifecycle`. Chrome type-asserts to `GameLifecycle` for lifecycle features. All JS methods are optional — zero values returned when not defined.
 
 ### The `Plugin` Interface
 ```go
@@ -170,9 +203,11 @@ type Message struct {
 
 Both are single `.js` files in `dist/games/` or `dist/plugins/`. Loaded at runtime via `/game load <name>` / `/plugin load <name>`. A HTTPS URL can be given instead of a name — the file is downloaded and cached in `dist/games/.cache/` or `dist/plugins/.cache/`. GitHub blob URLs are converted to raw automatically.
 
-**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Loaded one at a time; owns the viewport.
+**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Optional lifecycle hooks: `gameName`, `teamRange`, `init`, `splashScreen`, `gameOverScreen`, `scoreboard`, `saveState`. Loaded one at a time; owns the viewport.
 
 **Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`. Multiple active simultaneously; persistent across game switches.
+
+**Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `players()`, `registerCommand()`, `gameOver()` / `gameOver(state)`.
 
 The chat pipeline runs all active plugin `onChatMessage` hooks (in load order) before committing a message to history. Return `null` to drop.
 

@@ -49,6 +49,9 @@ type Server struct {
 	consoleProgram   *tea.Program
 
 	upnpMapping *upnpMapping
+
+	splashDone    chan struct{} // closed to end splash phase early
+	gameOverTimer chan struct{} // closed to end game-over phase early
 }
 
 func New(address, password, dataDir string) (*Server, error) {
@@ -262,8 +265,14 @@ func (a *Server) registerSession(sess ssh.Session) *common.Player {
 	a.broadcastChat(joinMsg)
 	a.broadcastMsg(common.PlayerJoinedMsg{Player: player})
 
-	// notify active app and all plugins
-	if a.state.ActiveGame != nil {
+	// Create a solo team for the new player in the lobby.
+	a.state.EnsurePlayerTeam(player.ID)
+	a.broadcastMsg(common.TeamUpdatedMsg{})
+
+	// Only notify the active game if we're in the playing phase.
+	// Late joiners during splash/playing/gameover go to lobby and wait.
+	phase := a.state.GetGamePhase()
+	if phase == common.PhasePlaying && a.state.ActiveGame != nil {
 		a.state.ActiveGame.OnPlayerJoin(player.ID, player.Name)
 	}
 	plugins, _ := a.state.GetPlugins()
@@ -293,6 +302,8 @@ func (a *Server) unregisterSession(playerID string) {
 		p.OnPlayerLeave(playerID)
 	}
 	a.state.RemovePlayer(playerID)
+	a.state.RemovePlayerFromTeams(playerID)
+	a.broadcastMsg(common.TeamUpdatedMsg{})
 
 	a.programsMu.Lock()
 	delete(a.programs, playerID)
@@ -318,6 +329,72 @@ func (a *Server) runTicker(ctx context.Context) {
 			n := a.state.TickN
 			a.state.mu.Unlock()
 			a.broadcastMsg(common.TickMsg{N: n})
+
+			// Check if JS called gameOver().
+			a.checkGameOver()
+		}
+	}
+}
+
+// checkGameOver detects if the JS runtime signaled game over and initiates the transition.
+func (a *Server) checkGameOver() {
+	a.state.mu.RLock()
+	game := a.state.ActiveGame
+	phase := a.state.GamePhase
+	a.state.mu.RUnlock()
+
+	if game == nil || phase != common.PhasePlaying {
+		return
+	}
+	rt, ok := game.(*jsRuntime)
+	if !ok || !rt.IsGameOverPending() {
+		return
+	}
+
+	// Save the state that was passed to gameOver() directly.
+	gameOverState := rt.GameOverStateExport()
+
+	a.state.mu.RLock()
+	gameName := a.state.GameName
+	a.state.mu.RUnlock()
+
+	if gameOverState != nil {
+		if err := saveGameState(a.dataDir, gameName, gameOverState); err != nil {
+			a.serverLog(fmt.Sprintf("warning: could not save game state: %v", err))
+		} else {
+			a.serverLog(fmt.Sprintf("game state saved: %s", gameName))
+		}
+	}
+
+	a.state.SetGamePhase(common.PhaseGameOver)
+	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhaseGameOver})
+	a.broadcastChat(common.Message{Text: "Game over!"})
+	a.serverLog("game over — waiting for players to acknowledge")
+
+	// Start 15s timeout for game-over acknowledgment.
+	a.gameOverTimer = make(chan struct{})
+	go a.gameOverTimeout()
+}
+
+func (a *Server) gameOverTimeout() {
+	select {
+	case <-time.After(15 * time.Second):
+	case <-a.gameOverTimer:
+	}
+	// Only unload if still in game-over phase.
+	if a.state.GetGamePhase() == common.PhaseGameOver {
+		a.unloadGame()
+	}
+}
+
+// AcknowledgeGameOver marks a player as ready and ends game-over if all are ready.
+func (a *Server) AcknowledgeGameOver(playerID string) {
+	a.state.MarkPlayerReady(playerID)
+	if a.state.AllPlayersReady() {
+		select {
+		case <-a.gameOverTimer:
+		default:
+			close(a.gameOverTimer)
 		}
 	}
 }
@@ -429,45 +506,117 @@ func (a *Server) loadGame(path string) error {
 		a.unloadGame()
 	}
 
+	name := strings.TrimSuffix(filepath.Base(path), ".js")
+
+	// Load saved state for this game (if any).
+	savedState, err := loadGameState(a.dataDir, name)
+	if err != nil {
+		a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
+	}
+
+	// Get current team configuration from lobby.
+	teams := a.state.GetTeams()
+
 	rt, err := LoadGame(path, a.state, a.serverLog, func(msg common.Message) {
 		a.broadcastChat(msg)
-	})
+	}, savedState, teams)
 	if err != nil {
 		return err
 	}
 
-	name := strings.TrimSuffix(filepath.Base(path), ".js")
+	// Validate team count against game's declared range.
+	if lc, ok := rt.(common.GameLifecycle); ok {
+		tr := lc.TeamRange()
+		teamCount := len(teams)
+		if tr.Min > 0 && teamCount < tr.Min {
+			return fmt.Errorf("game requires at least %d teams (have %d)", tr.Min, teamCount)
+		}
+		if tr.Max > 0 && teamCount > tr.Max {
+			return fmt.Errorf("game supports at most %d teams (have %d)", tr.Max, teamCount)
+		}
+	}
 
 	a.state.mu.Lock()
 	a.state.ActiveGame = rt
 	a.state.GameName = name
+	a.state.GamePhase = common.PhaseSplash
 	a.state.mu.Unlock()
 
-	// register game commands
+	// Register game commands.
 	for _, cmd := range rt.Commands() {
 		a.registry.Register(cmd)
 	}
 
-	// notify existing players
-	players := a.state.ListPlayers()
-	for _, p := range players {
-		rt.OnPlayerJoin(p.ID, p.Name)
-	}
-
 	a.broadcastMsg(common.GameLoadedMsg{Name: name})
+	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhaseSplash})
 	a.broadcastChat(common.Message{Text: fmt.Sprintf("Game loaded: %s", name)})
-	a.serverLog(fmt.Sprintf("game loaded: %s", name))
+	a.serverLog(fmt.Sprintf("game loaded: %s (splash)", name))
+
+	// Start splash goroutine: waits up to 10s or until admin triggers start.
+	a.splashDone = make(chan struct{})
+	go a.splashTimer()
+
 	return nil
+}
+
+func (a *Server) splashTimer() {
+	select {
+	case <-time.After(10 * time.Second):
+	case <-a.splashDone:
+	}
+	// Only transition if still in splash phase.
+	a.state.mu.Lock()
+	if a.state.GamePhase != common.PhaseSplash {
+		a.state.mu.Unlock()
+		return
+	}
+	a.state.GamePhase = common.PhasePlaying
+	game := a.state.ActiveGame
+	a.state.mu.Unlock()
+
+	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhasePlaying})
+	a.serverLog("game started (playing)")
+
+	// Notify existing players now that game is playing.
+	if game != nil {
+		players := a.state.ListPlayers()
+		for _, p := range players {
+			game.OnPlayerJoin(p.ID, p.Name)
+		}
+	}
+}
+
+// StartGame is called when an admin acknowledges the splash screen.
+func (a *Server) StartGame() {
+	select {
+	case <-a.splashDone:
+		// already closed
+	default:
+		close(a.splashDone)
+	}
 }
 
 func (a *Server) unloadGame() {
 	a.state.mu.Lock()
 	game := a.state.ActiveGame
+	gameName := a.state.GameName
 	a.state.ActiveGame = nil
 	a.state.GameName = ""
+	a.state.GamePhase = common.PhaseNone
+	a.state.GameOverReady = nil
 	a.state.mu.Unlock()
 
 	if game != nil {
+		// Persist state before unloading.
+		if lc, ok := game.(common.GameLifecycle); ok {
+			if state := lc.SaveState(); state != nil {
+				if err := saveGameState(a.dataDir, gameName, state); err != nil {
+					a.serverLog(fmt.Sprintf("warning: could not save game state: %v", err))
+				} else {
+					a.serverLog(fmt.Sprintf("game state saved: %s", gameName))
+				}
+			}
+		}
 		for _, cmd := range game.Commands() {
 			a.registry.Unregister(cmd.Name)
 		}
@@ -475,6 +624,7 @@ func (a *Server) unloadGame() {
 	}
 
 	a.broadcastMsg(common.GameUnloadedMsg{})
+	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhaseNone})
 	a.broadcastChat(common.Message{Text: "Game unloaded."})
 	a.serverLog("game unloaded")
 }

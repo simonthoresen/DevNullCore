@@ -28,6 +28,13 @@ type CentralState struct {
 
 	ActiveGame common.Game
 	GameName   string
+	GamePhase  common.GamePhase
+
+	// GameOverReady tracks which players have acknowledged the game-over screen.
+	GameOverReady map[string]bool
+
+	// Teams configured in the lobby before a game starts.
+	Teams []common.Team
 
 	Plugins     []common.Plugin
 	PluginNames []string // parallel to Plugins; name = filename stem
@@ -178,6 +185,262 @@ func (s *CentralState) GetPlugins() ([]common.Plugin, []string) {
 	copy(ps, s.Plugins)
 	copy(ns, s.PluginNames)
 	return ps, ns
+}
+
+// --- Game phase helpers ---
+
+func (s *CentralState) SetGamePhase(phase common.GamePhase) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.GamePhase = phase
+	if phase == common.PhaseGameOver {
+		s.GameOverReady = make(map[string]bool)
+	} else {
+		s.GameOverReady = nil
+	}
+}
+
+func (s *CentralState) GetGamePhase() common.GamePhase {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.GamePhase
+}
+
+func (s *CentralState) MarkPlayerReady(playerID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.GameOverReady != nil {
+		s.GameOverReady[playerID] = true
+	}
+}
+
+// AllPlayersReady returns true if every connected player has acknowledged.
+func (s *CentralState) AllPlayersReady() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.GameOverReady == nil {
+		return false
+	}
+	for id := range s.Players {
+		if !s.GameOverReady[id] {
+			return false
+		}
+	}
+	return true
+}
+
+// --- Team helpers ---
+
+// teamColors is the palette of available team colors.
+var teamColors = []string{
+	"#ff5555", // red
+	"#5555ff", // blue
+	"#55ff55", // green
+	"#ffff55", // yellow
+	"#55ffff", // cyan
+	"#ff55ff", // magenta
+	"#ffaa00", // orange
+	"#aa55ff", // purple
+}
+
+func (s *CentralState) GetTeams() []common.Team {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	teams := make([]common.Team, len(s.Teams))
+	for i, t := range s.Teams {
+		teams[i] = common.Team{
+			Name:    t.Name,
+			Color:   t.Color,
+			Players: append([]string(nil), t.Players...),
+		}
+	}
+	return teams
+}
+
+// nextAvailableColor returns the first team color not already used.
+func (s *CentralState) nextAvailableColor() string {
+	used := make(map[string]bool)
+	for _, t := range s.Teams {
+		used[t.Color] = true
+	}
+	for _, c := range teamColors {
+		if !used[c] {
+			return c
+		}
+	}
+	// all taken — just recycle the first one
+	return teamColors[0]
+}
+
+// EnsurePlayerTeam creates a solo team for a player if they aren't in any team.
+func (s *CentralState) EnsurePlayerTeam(playerID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.Teams {
+		for _, id := range t.Players {
+			if id == playerID {
+				return // already in a team
+			}
+		}
+	}
+	p := s.Players[playerID]
+	name := playerID
+	if p != nil {
+		name = p.Name
+	}
+	s.Teams = append(s.Teams, common.Team{
+		Name:    name,
+		Color:   s.nextAvailableColor(),
+		Players: []string{playerID},
+	})
+}
+
+// RemovePlayerFromTeams removes a player from all teams and cleans up empty teams.
+func (s *CentralState) RemovePlayerFromTeams(playerID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.removePlayerFromTeamsLocked(playerID)
+}
+
+func (s *CentralState) removePlayerFromTeamsLocked(playerID string) {
+	for i := range s.Teams {
+		for j, id := range s.Teams[i].Players {
+			if id == playerID {
+				s.Teams[i].Players = append(s.Teams[i].Players[:j], s.Teams[i].Players[j+1:]...)
+				break
+			}
+		}
+	}
+	// remove empty teams
+	filtered := s.Teams[:0]
+	for _, t := range s.Teams {
+		if len(t.Players) > 0 {
+			filtered = append(filtered, t)
+		}
+	}
+	s.Teams = filtered
+}
+
+// MovePlayerToTeam moves a player to the team at the given index.
+// If teamIndex == len(Teams), a new solo team is created at the end.
+func (s *CentralState) MovePlayerToTeam(playerID string, teamIndex int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.removePlayerFromTeamsLocked(playerID)
+	if teamIndex >= len(s.Teams) {
+		// create new solo team at the end
+		p := s.Players[playerID]
+		name := playerID
+		if p != nil {
+			name = p.Name
+		}
+		s.Teams = append(s.Teams, common.Team{
+			Name:    name,
+			Color:   s.nextAvailableColor(),
+			Players: []string{playerID},
+		})
+		return
+	}
+	if teamIndex < 0 {
+		teamIndex = 0
+	}
+	s.Teams[teamIndex].Players = append(s.Teams[teamIndex].Players, playerID)
+}
+
+// RenameTeam renames the team at the given index. Returns false if name is taken.
+func (s *CentralState) RenameTeam(teamIndex int, name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if teamIndex < 0 || teamIndex >= len(s.Teams) {
+		return false
+	}
+	for i, t := range s.Teams {
+		if i != teamIndex && strings.EqualFold(t.Name, name) {
+			return false // name taken
+		}
+	}
+	s.Teams[teamIndex].Name = name
+	return true
+}
+
+// SetTeamColor sets the color of the team at the given index. Returns false if color is taken.
+func (s *CentralState) SetTeamColor(teamIndex int, color string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if teamIndex < 0 || teamIndex >= len(s.Teams) {
+		return false
+	}
+	for i, t := range s.Teams {
+		if i != teamIndex && t.Color == color {
+			return false
+		}
+	}
+	s.Teams[teamIndex].Color = color
+	return true
+}
+
+// NextTeamColor cycles to the next available color for the team at the given index.
+// direction: +1 = forward, -1 = backward.
+func (s *CentralState) NextTeamColor(teamIndex, direction int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if teamIndex < 0 || teamIndex >= len(s.Teams) {
+		return
+	}
+	used := make(map[string]bool)
+	for i, t := range s.Teams {
+		if i != teamIndex {
+			used[t.Color] = true
+		}
+	}
+	current := s.Teams[teamIndex].Color
+	idx := 0
+	for i, c := range teamColors {
+		if c == current {
+			idx = i
+			break
+		}
+	}
+	for range teamColors {
+		idx = (idx + direction + len(teamColors)) % len(teamColors)
+		if !used[teamColors[idx]] {
+			s.Teams[teamIndex].Color = teamColors[idx]
+			return
+		}
+	}
+}
+
+// PlayerTeamIndex returns the index of the team the player belongs to, or -1.
+func (s *CentralState) PlayerTeamIndex(playerID string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i, t := range s.Teams {
+		for _, id := range t.Players {
+			if id == playerID {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// IsFirstInTeam returns true if playerID is the first player in their team.
+func (s *CentralState) IsFirstInTeam(playerID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, t := range s.Teams {
+		if len(t.Players) > 0 && t.Players[0] == playerID {
+			return true
+		}
+	}
+	return false
+}
+
+// TeamCount returns the number of non-empty teams.
+func (s *CentralState) TeamCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.Teams)
 }
 
 // RLock/RUnlock for external readers (e.g. main.go reading Net).
