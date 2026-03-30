@@ -103,9 +103,11 @@ function Write-RunLogLine {
 
 Write-RunLogLine "starting null-space start script"
 
-$previousLogFile  = $env:NULL_SPACE_LOG_FILE
-$previousLogLevel = $env:NULL_SPACE_LOG_LEVEL
-$env:NULL_SPACE_LOG_FILE = $script:runLog
+$previousLogFile      = $env:NULL_SPACE_LOG_FILE
+$previousLogLevel     = $env:NULL_SPACE_LOG_LEVEL
+$previousTermWidth    = $env:NULL_SPACE_TERM_WIDTH
+$env:NULL_SPACE_LOG_FILE    = $script:runLog
+$env:NULL_SPACE_TERM_WIDTH  = Get-TermWidth
 if (-not $env:NULL_SPACE_LOG_LEVEL) { $env:NULL_SPACE_LOG_LEVEL = "info" }
 
 # ── cleanup helpers ──────────────────────────────────────────────────────────
@@ -227,10 +229,12 @@ if ($Local) {
     } finally {
         Pop-Location
         Write-RunLogLine "local session ended"
-        if ($null -eq $previousLogFile)  { Remove-Item Env:NULL_SPACE_LOG_FILE  -ErrorAction SilentlyContinue }
+        if ($null -eq $previousLogFile)    { Remove-Item Env:NULL_SPACE_LOG_FILE    -ErrorAction SilentlyContinue }
         else { $env:NULL_SPACE_LOG_FILE = $previousLogFile }
-        if ($null -eq $previousLogLevel) { Remove-Item Env:NULL_SPACE_LOG_LEVEL -ErrorAction SilentlyContinue }
+        if ($null -eq $previousLogLevel)  { Remove-Item Env:NULL_SPACE_LOG_LEVEL  -ErrorAction SilentlyContinue }
         else { $env:NULL_SPACE_LOG_LEVEL = $previousLogLevel }
+        if ($null -eq $previousTermWidth) { Remove-Item Env:NULL_SPACE_TERM_WIDTH -ErrorAction SilentlyContinue }
+        else { $env:NULL_SPACE_TERM_WIDTH = $previousTermWidth }
     }
     return
 }
@@ -300,10 +304,12 @@ try {
     Write-RunLogLine "server process finished"
     if ($null -eq $previousPinggyStatusFile) { Remove-Item Env:NULL_SPACE_PINGGY_STATUS_FILE -ErrorAction SilentlyContinue }
     else { $env:NULL_SPACE_PINGGY_STATUS_FILE = $previousPinggyStatusFile }
-    if ($null -eq $previousLogFile)  { Remove-Item Env:NULL_SPACE_LOG_FILE  -ErrorAction SilentlyContinue }
+    if ($null -eq $previousLogFile)    { Remove-Item Env:NULL_SPACE_LOG_FILE    -ErrorAction SilentlyContinue }
     else { $env:NULL_SPACE_LOG_FILE = $previousLogFile }
-    if ($null -eq $previousLogLevel) { Remove-Item Env:NULL_SPACE_LOG_LEVEL -ErrorAction SilentlyContinue }
+    if ($null -eq $previousLogLevel)  { Remove-Item Env:NULL_SPACE_LOG_LEVEL  -ErrorAction SilentlyContinue }
     else { $env:NULL_SPACE_LOG_LEVEL = $previousLogLevel }
+    if ($null -eq $previousTermWidth) { Remove-Item Env:NULL_SPACE_TERM_WIDTH -ErrorAction SilentlyContinue }
+    else { $env:NULL_SPACE_TERM_WIDTH = $previousTermWidth }
 
     Write-BootStepStart "Stopping Pinggy helper"
     Stop-TunnelWatcher; Stop-Tunnel; Remove-TunnelState

@@ -27,6 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer cleanupLog() //nolint:errcheck
+	initBootTermWidth()
 
 	var password string
 	var address string
@@ -217,12 +218,28 @@ func colorizedToken(token, status string) string {
 	return "[ " + strings.Repeat(" ", left) + code + status + "\033[0m" + strings.Repeat(" ", right) + " ]"
 }
 
+var cachedTermWidth int
+
 func bootTermWidth() int {
+	if cachedTermWidth > 0 {
+		return cachedTermWidth
+	}
 	w, _, err := xterm.GetSize(os.Stdout.Fd())
 	if err != nil || w < 40 {
-		return 80
+		w = 80
 	}
+	cachedTermWidth = w
 	return w
+}
+
+func initBootTermWidth() {
+	// If the parent process (start.ps1) passed a width, use it for
+	// consistent alignment between PS1 and Go boot steps.
+	if s := os.Getenv("NULL_SPACE_TERM_WIDTH"); s != "" {
+		if w, err := fmt.Sscanf(s, "%d", &cachedTermWidth); err != nil || w != 1 || cachedTermWidth < 40 {
+			cachedTermWidth = 0
+		}
+	}
 }
 
 // bootDots returns the number of dots to fill between label and status token.
