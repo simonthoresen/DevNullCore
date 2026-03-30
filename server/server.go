@@ -413,6 +413,14 @@ func (a *Server) uniqueName(raw string) string {
 }
 
 func (a *Server) loadGame(path string) error {
+	if isURL(path) {
+		cacheDir := filepath.Join(a.dataDir, "games", ".cache")
+		local, err := downloadToCache(path, cacheDir)
+		if err != nil {
+			return fmt.Errorf("download game: %w", err)
+		}
+		path = local
+	}
 	if a.state.ActiveGame != nil {
 		a.unloadGame()
 	}
@@ -468,6 +476,15 @@ func (a *Server) unloadGame() {
 }
 
 func (a *Server) loadPlugin(name, path string) error {
+	if isURL(path) {
+		cacheDir := filepath.Join(a.dataDir, "plugins", ".cache")
+		local, err := downloadToCache(path, cacheDir)
+		if err != nil {
+			return fmt.Errorf("download plugin: %w", err)
+		}
+		name = strings.TrimSuffix(filepath.Base(local), ".js")
+		path = local
+	}
 	// don't load the same plugin twice
 	_, names := a.state.GetPlugins()
 	for _, n := range names {
@@ -686,7 +703,12 @@ func (a *Server) registerBuiltins(address string) {
 					ctx.Reply("Usage: /game load <name>")
 					return
 				}
-				path := filepath.Join(a.dataDir, "games", args[1]+".js")
+				var path string
+				if isURL(args[1]) {
+					path = args[1]
+				} else {
+					path = filepath.Join(a.dataDir, "games", args[1]+".js")
+				}
 				if err := a.loadGame(path); err != nil {
 					ctx.Reply(fmt.Sprintf("Failed to load game: %v", err))
 					return
@@ -776,12 +798,23 @@ func (a *Server) registerBuiltins(address string) {
 					return
 				}
 				name := args[1]
-				path := filepath.Join(a.dataDir, "plugins", name+".js")
+				var path string
+				if isURL(name) {
+					path = name
+				} else {
+					path = filepath.Join(a.dataDir, "plugins", name+".js")
+				}
 				if err := a.loadPlugin(name, path); err != nil {
 					ctx.Reply(fmt.Sprintf("Failed to load plugin: %v", err))
 					return
 				}
-				ctx.Reply(fmt.Sprintf("Plugin loaded: %s", name))
+				// loadPlugin may have derived a new name from a cached URL filename.
+				_, pluginNames := a.state.GetPlugins()
+				loadedName := name
+				if len(pluginNames) > 0 {
+					loadedName = pluginNames[len(pluginNames)-1]
+				}
+				ctx.Reply(fmt.Sprintf("Plugin loaded: %s", loadedName))
 			case "unload":
 				if !ctx.IsAdmin {
 					ctx.Reply("Permission denied (admin only)")

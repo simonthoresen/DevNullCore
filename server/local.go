@@ -43,14 +43,24 @@ func (a *Server) RunLocal(ctx context.Context, playerName, gameName string, plug
 	a.state.AddPlayer(player)
 
 	for _, name := range pluginNames {
-		path := filepath.Join(a.dataDir, "plugins", name+".js")
+		var path string
+		if isURL(name) {
+			path = name
+		} else {
+			path = filepath.Join(a.dataDir, "plugins", name+".js")
+		}
 		if err := a.loadPlugin(name, path); err != nil {
 			return fmt.Errorf("load plugin %s: %w", name, err)
 		}
 	}
 
 	if gameName != "" {
-		path := filepath.Join(a.dataDir, "games", gameName+".js")
+		var path string
+		if isURL(gameName) {
+			path = gameName
+		} else {
+			path = filepath.Join(a.dataDir, "games", gameName+".js")
+		}
 		if err := a.loadGame(path); err != nil {
 			return fmt.Errorf("load game %s: %w", gameName, err)
 		}
