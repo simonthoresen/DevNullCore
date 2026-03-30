@@ -540,21 +540,53 @@ func (a *Server) registerBuiltins(address string) {
 		},
 	})
 
+	helpHandler := func(ctx common.CommandContext, args []string) {
+		cmds := a.registry.All()
+		sort.Slice(cmds, func(i, j int) bool { return cmds[i].Name < cmds[j].Name })
+		var lines []string
+		for _, cmd := range cmds {
+			if cmd.AdminOnly && !ctx.IsAdmin {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("/%s — %s", cmd.Name, cmd.Description))
+		}
+		ctx.Reply(strings.Join(lines, "\n"))
+	}
+
 	a.registry.Register(common.Command{
 		Name:        "help",
 		Description: "List available commands",
-		Handler: func(ctx common.CommandContext, args []string) {
-			cmds := a.registry.All()
-			sort.Slice(cmds, func(i, j int) bool { return cmds[i].Name < cmds[j].Name })
-			var lines []string
-			for _, cmd := range cmds {
-				if cmd.AdminOnly && !ctx.IsAdmin {
-					continue
-				}
-				lines = append(lines, fmt.Sprintf("/%s — %s", cmd.Name, cmd.Description))
+		Handler:     helpHandler,
+	})
+
+	a.registry.Register(common.Command{
+		Name:        "commands",
+		Description: "List available commands (alias for /help)",
+		Handler:     helpHandler,
+	})
+
+	exitHandler := func(ctx common.CommandContext, args []string) {
+		if ctx.PlayerID == "" {
+			// Server console: shut down the server
+			if a.shutdownFn != nil {
+				a.shutdownFn()
 			}
-			ctx.Reply(strings.Join(lines, "\n"))
-		},
+			return
+		}
+		// SSH player: disconnect their session
+		a.kickPlayer(ctx.PlayerID)
+	}
+
+	a.registry.Register(common.Command{
+		Name:        "exit",
+		Description: "Disconnect from the server (stops server if used from console)",
+		Handler:     exitHandler,
+	})
+
+	a.registry.Register(common.Command{
+		Name:        "quit",
+		Description: "Disconnect from the server (stops server if used from console)",
+		Handler:     exitHandler,
 	})
 
 	a.registry.Register(common.Command{
