@@ -21,8 +21,9 @@ mem.prof
 bin/
 build/
 
-# dist: ignore binaries and runtime-generated files, but track apps/ plugins/ logs/
-dist/*.exe
+# dist: track release binaries; ignore backups and runtime-generated files
+!dist/null-space.exe
+!dist/pinggy-helper.exe
 dist/*.exe~
 dist/null-space_ed25519
 dist/null-space_ed25519.pub
