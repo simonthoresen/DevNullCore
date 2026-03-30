@@ -3,7 +3,7 @@ param(
     [string[]]$CliArgs
 )
 
-$Password = "changeme"
+$Password = ""
 $Force = $false
 $Local = $false
 $Port = "23234"
@@ -23,6 +23,14 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
 
 if (-not $Local -and $positionals.Count -ge 1 -and $positionals[0]) {
     $Password = $positionals[0]
+}
+
+if (-not $Local -and -not $Password) {
+    $Password = Read-Host "Enter admin password"
+    if (-not $Password) {
+        Write-Host "Password is required." -ForegroundColor Red
+        exit 1
+    }
 }
 
 $root = $PSScriptRoot
