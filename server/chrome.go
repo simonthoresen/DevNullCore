@@ -88,7 +88,10 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		var line string
-		if chatMsg.IsPrivate {
+		switch {
+		case chatMsg.IsReply:
+			line = chatMsg.Text
+		case chatMsg.IsPrivate:
 			from := chatMsg.FromID
 			if p := m.app.state.GetPlayer(from); p != nil {
 				from = p.Name
@@ -97,9 +100,9 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				from = "admin"
 			}
 			line = fmt.Sprintf("[PM from %s] %s", from, chatMsg.Text)
-		} else if chatMsg.Author == "" {
+		case chatMsg.Author == "":
 			line = fmt.Sprintf("[system] %s", chatMsg.Text)
-		} else {
+		default:
 			line = fmt.Sprintf("<%s> %s", chatMsg.Author, chatMsg.Text)
 		}
 		m.chatLines = append(m.chatLines, line)

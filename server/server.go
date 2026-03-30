@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -544,46 +545,154 @@ func (a *App) registerBuiltins(address string) {
 	})
 
 	a.registry.Register(common.Command{
-		Name:        "load",
-		Description: "Load an app from apps/ folder (admin only)",
-		AdminOnly:   true,
-		Handler: func(ctx common.CommandContext, args []string) {
-			if len(args) < 1 {
-				ctx.Reply("Usage: /load <app>")
-				return
+		Name:        "app",
+		Description: "App management. No args = list available. /app load|unload [name]",
+		Complete: func(before []string) []string {
+			switch len(before) {
+			case 0:
+				return []string{"list", "load", "unload"}
+			case 1:
+				switch before[0] {
+				case "load":
+					return listDir(filepath.Join(a.dataDir, "apps"), ".js")
+				case "unload":
+					a.state.mu.RLock()
+					name := a.state.AppName
+					a.state.mu.RUnlock()
+					if name != "" {
+						return []string{strings.TrimSuffix(filepath.Base(name), ".js")}
+					}
+				}
 			}
-			path := filepath.Join(a.dataDir, "apps", args[0]+".js")
-			if err := a.loadApp(path); err != nil {
-				ctx.Reply(fmt.Sprintf("Failed to load app: %v", err))
-				return
-			}
-			ctx.Reply(fmt.Sprintf("App loaded: %s", args[0]))
+			return nil
 		},
-	})
-
-	a.registry.Register(common.Command{
-		Name:        "unload",
-		Description: "Unload the current app (admin only)",
-		AdminOnly:   true,
 		Handler: func(ctx common.CommandContext, args []string) {
-			a.state.mu.RLock()
-			hasApp := a.state.ActiveApp != nil
-			a.state.mu.RUnlock()
-			if !hasApp {
-				ctx.Reply("No app is currently loaded.")
+			if len(args) == 0 {
+				available := listDir(filepath.Join(a.dataDir, "apps"), ".js")
+				if len(available) == 0 {
+					ctx.Reply("No apps found in apps/")
+					return
+				}
+				a.state.mu.RLock()
+				active := a.state.AppName
+				a.state.mu.RUnlock()
+				var lines []string
+				for _, name := range available {
+					line := "  " + name
+					if strings.HasSuffix(active, name+".js") {
+						line += "  [active]"
+					}
+					lines = append(lines, line)
+				}
+				ctx.Reply("Available apps:\n" + strings.Join(lines, "\n"))
 				return
 			}
-			a.unloadApp()
-			ctx.Reply("App unloaded.")
+			switch args[0] {
+			case "list":
+				available := listDir(filepath.Join(a.dataDir, "apps"), ".js")
+				if len(available) == 0 {
+					ctx.Reply("No apps found in apps/")
+					return
+				}
+				a.state.mu.RLock()
+				active := a.state.AppName
+				a.state.mu.RUnlock()
+				var lines []string
+				for _, name := range available {
+					line := "  " + name
+					if strings.HasSuffix(active, name+".js") {
+						line += "  [active]"
+					}
+					lines = append(lines, line)
+				}
+				ctx.Reply("Available apps:\n" + strings.Join(lines, "\n"))
+			case "load":
+				if !ctx.IsAdmin {
+					ctx.Reply("Permission denied (admin only)")
+					return
+				}
+				if len(args) < 2 {
+					ctx.Reply("Usage: /app load <name>")
+					return
+				}
+				path := filepath.Join(a.dataDir, "apps", args[1]+".js")
+				if err := a.loadApp(path); err != nil {
+					ctx.Reply(fmt.Sprintf("Failed to load app: %v", err))
+					return
+				}
+				ctx.Reply(fmt.Sprintf("App loaded: %s", args[1]))
+			case "unload":
+				if !ctx.IsAdmin {
+					ctx.Reply("Permission denied (admin only)")
+					return
+				}
+				a.state.mu.RLock()
+				active := a.state.AppName
+				a.state.mu.RUnlock()
+				if active == "" {
+					ctx.Reply("No app is currently loaded.")
+					return
+				}
+				a.unloadApp()
+				ctx.Reply("App unloaded.")
+			default:
+				ctx.Reply(fmt.Sprintf("Unknown subcommand '%s'. Use: list, load, unload", args[0]))
+			}
 		},
 	})
 
 	a.registry.Register(common.Command{
 		Name:        "plugin",
-		Description: "Plugin management: /plugin load <name> | /plugin unload <name> | /plugin list",
+		Description: "Plugin management. No args = list available. /plugin load|unload <name>",
+		Complete: func(before []string) []string {
+			switch len(before) {
+			case 0:
+				return []string{"list", "load", "unload"}
+			case 1:
+				switch before[0] {
+				case "load":
+					// offer available plugins not yet loaded
+					_, loaded := a.state.GetPlugins()
+					loadedSet := make(map[string]bool, len(loaded))
+					for _, n := range loaded {
+						loadedSet[n] = true
+					}
+					var out []string
+					for _, name := range listDir(filepath.Join(a.dataDir, "plugins"), ".js") {
+						if !loadedSet[name] {
+							out = append(out, name)
+						}
+					}
+					return out
+				case "unload":
+					_, names := a.state.GetPlugins()
+					return names
+				}
+			}
+			return nil
+		},
 		Handler: func(ctx common.CommandContext, args []string) {
 			if len(args) == 0 {
-				ctx.Reply("Usage: /plugin load <name> | /plugin unload <name> | /plugin list")
+				// List available plugins with loaded marker.
+				available := listDir(filepath.Join(a.dataDir, "plugins"), ".js")
+				_, loaded := a.state.GetPlugins()
+				loadedSet := make(map[string]bool, len(loaded))
+				for _, n := range loaded {
+					loadedSet[n] = true
+				}
+				if len(available) == 0 && len(loaded) == 0 {
+					ctx.Reply("No plugins found in plugins/")
+					return
+				}
+				var lines []string
+				for _, name := range available {
+					line := "  " + name
+					if loadedSet[name] {
+						line += "  [loaded]"
+					}
+					lines = append(lines, line)
+				}
+				ctx.Reply("Available plugins:\n" + strings.Join(lines, "\n"))
 				return
 			}
 			switch args[0] {
@@ -620,12 +729,12 @@ func (a *App) registerBuiltins(address string) {
 			case "list":
 				_, names := a.state.GetPlugins()
 				if len(names) == 0 {
-					ctx.Reply("No plugins loaded.")
+					ctx.Reply("No plugins currently loaded.")
 					return
 				}
-				ctx.Reply(fmt.Sprintf("Loaded plugins (%d): %s", len(names), strings.Join(names, ", ")))
+				ctx.Reply("Loaded plugins: " + strings.Join(names, ", "))
 			default:
-				ctx.Reply(fmt.Sprintf("Unknown subcommand: %s", args[0]))
+				ctx.Reply(fmt.Sprintf("Unknown subcommand '%s'. Use: load, unload, list", args[0]))
 			}
 		},
 	})
@@ -686,15 +795,20 @@ func (a *App) MakeCommandContext(playerID string) common.CommandContext {
 		PlayerID: playerID,
 		IsAdmin:  isAdmin,
 		Reply: func(text string) {
+			msg := common.Message{
+				Text:      text,
+				IsPrivate: true,
+				IsReply:   true,
+				ToID:      playerID,
+			}
 			if playerID == "" {
-				a.serverLog(text)
-			} else {
-				msg := common.Message{
-					Author:    "",
-					Text:      text,
-					IsPrivate: true,
-					ToID:      playerID,
+				a.consoleProgramMu.Lock()
+				cp := a.consoleProgram
+				a.consoleProgramMu.Unlock()
+				if cp != nil {
+					go cp.Send(common.ChatMsg{Msg: msg})
 				}
+			} else {
 				a.sendToPlayer(playerID, common.ChatMsg{Msg: msg})
 			}
 		},
@@ -705,6 +819,23 @@ func (a *App) MakeCommandContext(playerID string) common.CommandContext {
 			a.serverLog(text)
 		},
 	}
+}
+
+// listDir returns the name (without extension) of every file in dir that ends
+// with ext, sorted alphabetically.
+func listDir(dir, ext string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ext) {
+			names = append(names, strings.TrimSuffix(e.Name(), ext))
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 func maxInt(a, b int) int {

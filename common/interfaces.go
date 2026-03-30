@@ -5,7 +5,11 @@ type Command struct {
 	Name             string
 	Description      string
 	AdminOnly        bool
-	FirstArgIsPlayer bool // enables tab-completion against player list for first arg
+	FirstArgIsPlayer bool // shorthand: complete first arg against player names
+	// Complete returns all valid candidates for the next arg given what was
+	// already typed. TabComplete calls this, filters by partial, and cycles.
+	// If nil and FirstArgIsPlayer is false, no tab completion is offered.
+	Complete         func(before []string) []string
 	Handler          func(ctx CommandContext, args []string)
 }
 

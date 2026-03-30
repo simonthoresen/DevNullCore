@@ -87,22 +87,28 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chatLineMsg:
 		chatMsg := common.Message(msg)
 		var line string
-		if chatMsg.IsPrivate {
+		switch {
+		case chatMsg.IsReply:
+			line = chatMsg.Text
+		case chatMsg.IsPrivate:
 			fromName := chatMsg.FromID
-			if chatMsg.FromID == "" {
+			if p := m.app.state.GetPlayer(fromName); p != nil {
+				fromName = p.Name
+			}
+			if fromName == "" {
 				fromName = "admin"
 			}
 			toName := chatMsg.ToID
 			if p := m.app.state.GetPlayer(toName); p != nil {
 				toName = p.Name
 			}
-			if p := m.app.state.GetPlayer(fromName); p != nil {
-				fromName = p.Name
+			if toName == "" {
+				toName = "console"
 			}
-			line = fmt.Sprintf("[PM %s->%s] %s", fromName, toName, chatMsg.Text)
-		} else if chatMsg.Author == "" {
+			line = fmt.Sprintf("[PM %s→%s] %s", fromName, toName, chatMsg.Text)
+		case chatMsg.Author == "":
 			line = fmt.Sprintf("[system] %s", chatMsg.Text)
-		} else {
+		default:
 			line = fmt.Sprintf("<%s> %s", chatMsg.Author, chatMsg.Text)
 		}
 		m.chatLines = append(m.chatLines, line)

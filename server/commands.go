@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"null-space/common"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -67,40 +68,79 @@ func (r *commandRegistry) Dispatch(input string, ctx common.CommandContext) {
 	cmd.Handler(ctx, args)
 }
 
-// TabComplete returns player name completions for commands with FirstArgIsPlayer.
-// input is the current text in the input field (including leading '/').
+// TabComplete performs context-aware tab completion on a slash-command input.
+// input must start with '/'. playerNames is used for FirstArgIsPlayer commands.
+// Repeated Tab presses cycle through candidates alphabetically.
 // Returns (completed string, changed bool).
 func (r *commandRegistry) TabComplete(input string, playerNames []string) (string, bool) {
 	if !strings.HasPrefix(input, "/") {
 		return input, false
 	}
-	parts := strings.SplitN(input[1:], " ", 3)
-	if len(parts) < 2 {
+	trimmed := input[1:]
+
+	// Split into words; detect whether there's a trailing space (empty partial).
+	words := strings.Fields(trimmed)
+	trailingSpace := strings.HasSuffix(trimmed, " ")
+
+	if len(words) == 0 {
 		return input, false
 	}
-	cmdName := parts[0]
-	partial := parts[1]
 
+	cmdName := words[0]
 	cmd, ok := r.Get(cmdName)
-	if !ok || !cmd.FirstArgIsPlayer {
+	if !ok {
 		return input, false
 	}
 
-	var matches []string
-	for _, name := range playerNames {
-		if strings.HasPrefix(strings.ToLower(name), strings.ToLower(partial)) {
-			matches = append(matches, name)
+	// Still typing the command name itself — nothing to complete.
+	if len(words) == 1 && !trailingSpace {
+		return input, false
+	}
+
+	// Determine committed args (fully typed) and the partial being completed.
+	var before []string
+	var partial string
+	if trailingSpace {
+		before = words[1:]
+		partial = ""
+	} else {
+		before = words[1 : len(words)-1]
+		partial = words[len(words)-1]
+	}
+
+	// Gather candidates from the appropriate source.
+	var candidates []string
+	if cmd.Complete != nil {
+		for _, c := range cmd.Complete(before) {
+			if strings.HasPrefix(strings.ToLower(c), strings.ToLower(partial)) {
+				candidates = append(candidates, c)
+			}
+		}
+	} else if cmd.FirstArgIsPlayer && len(before) == 0 {
+		for _, name := range playerNames {
+			if strings.HasPrefix(strings.ToLower(name), strings.ToLower(partial)) {
+				candidates = append(candidates, name)
+			}
 		}
 	}
-	if len(matches) == 0 {
+
+	if len(candidates) == 0 {
 		return input, false
 	}
-	// cycle: if partial already matches first exactly, go to next
-	completed := "/" + cmdName + " " + matches[0]
-	if len(parts) == 3 {
-		completed += " " + parts[2]
+	sort.Strings(candidates)
+
+	// Cycle: if partial exactly matches a candidate, advance to the next.
+	next := candidates[0]
+	for i, c := range candidates {
+		if strings.EqualFold(c, partial) {
+			next = candidates[(i+1)%len(candidates)]
+			break
+		}
 	}
-	return completed, true
+
+	rebuilt := append([]string{cmdName}, before...)
+	rebuilt = append(rebuilt, next)
+	return "/" + strings.Join(rebuilt, " "), true
 }
 
 func ensureSSHFlag(cmd, flag string) string {

@@ -16,6 +16,7 @@ type Message struct {
 	IsPrivate bool
 	ToID      string // recipient player ID (if private)
 	FromID    string // sender player ID (if private)
+	IsReply   bool   // command response to caller — render as plain text, no prefix
 }
 
 // Tea messages

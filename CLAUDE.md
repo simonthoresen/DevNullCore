@@ -37,7 +37,7 @@ ssh -p 23234 localhost   # connect as a client (host plays this way too)
 - **The server terminal is management-only.** The host joins as a player via SSH like everyone else.
 
 ### Lobby vs. In-Game
-Players start in the **server lobby** — chat only, no game running. An admin uses a `/load <name>` command to load a game from `games/`. This transitions all players into the game view.
+Players start in the **server lobby** — chat only, no game running. An admin uses a `/app load <name>` command to load a game from `games/`. This transitions all players into the game view.
 
 ### UI Layout
 
@@ -111,7 +111,7 @@ Players start in the **server lobby** — chat only, no game running. An admin u
 | `server/pinggy.go` | Monitors Pinggy tunnel output, updates UI with connection info |
 | `common/interfaces.go` | `Game` interface contract all games must implement |
 | `common/types.go` | Shared types: `Point`, `Message`, `Player`, `TickMsg`, `MoveMsg` |
-| `apps/` | JS app files — one active at a time, loaded via `/load` |
+| `apps/` | JS app files — one active at a time, loaded via `/app load` |
 | `plugins/` | JS plugin files — multiple active simultaneously, loaded via `/plugin load` |
 
 ### The `Game` Interface
@@ -124,7 +124,7 @@ GetCommands() []Command
 
 ### Apps and Plugins
 
-**`apps/`** — interactive experiences loaded one at a time. An app owns the game viewport, status bar, and command bar. It can be a game, a shared canvas, a poll, anything terminal-interactive. Loaded with `/load <name>`, unloaded with `/unload`.
+**`apps/`** — interactive experiences loaded one at a time. An app owns the game viewport, status bar, and command bar. It can be a game, a shared canvas, a poll, anything terminal-interactive. Loaded with `/app load <name>`, unloaded with `/app unload`.
 
 **`plugins/`** — passive extensions that run alongside any app (or in the lobby). Multiple plugins active simultaneously, persisting across app switches. Loaded with `/plugin load <name>`, unloaded with `/plugin unload <name>`.
 
@@ -179,7 +179,7 @@ Status tokens: `[ DONE ]`, `[ FAILED ]`, `[ IGNORED ]`, `[ SKIPPED ]`. After all
 The chat panel mirrors exactly what players see, including private messages (admin sees all, prefixed with `[PM sender→recipient]`). The admin typing plain text without `/` appears in the player chat as a player named e.g. `[admin]`.
 
 **Commands** are registered from two sources:
-- **Built-in** — declared by the server framework (e.g. `/load <game>`, `/kick <player>`, `/who`, `/password`)
+- **Built-in** — declared by the server framework (e.g. `/app load <app>`, `/kick <player>`, `/who`, `/password`)
 - **Game-registered** — each game declares additional commands via its API; these are added when the game loads and removed when it unloads
 
 Each command declares two properties: whether it requires admin rights, and whether its first argument is a player name. When `firstArgIsPlayer` is true, the input field provides tab-completion against the current player list for that argument (e.g. `/msg <Tab>` cycles through connected players). The server console is always admin. SSH clients start as regular users and elevate via `/admin <password>`. The password is set at startup via `--password` and can be changed at runtime with `/password <new>` (admin only).
