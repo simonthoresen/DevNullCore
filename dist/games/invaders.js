@@ -149,6 +149,7 @@ function spawnWave(h) {
     var playW = MAP_W - 2;
     var startX = 1 + Math.floor((playW - cols * 3) / 2);
     var startY = 2;
+    log("Spawning wave " + wave + ": " + rows + "x" + cols + " aliens, worldH=" + h);
 
     for (var r = 0; r < rows; r++) {
         var tier = Math.min(rows - 1 - r, E_ALIEN.length - 1);
@@ -220,6 +221,7 @@ function tick(h) {
 
     // Init on first tick or height change
     if (worldH !== h) {
+        log("World height changed: " + worldH + " -> " + h);
         worldH = h;
         if (aliens.length === 0) spawnWave(h);
         for (var i = 0; i < plOrder.length; i++) {
@@ -296,6 +298,8 @@ function tick(h) {
             for (var i = 0; i < aliens.length; i++) {
                 if (aliens[i].alive) aliens[i].y++;
             }
+            var ab2 = alienBounds();
+            log("Aliens bounced, now maxY=" + ab2.maxY + " ground=" + (h - 1) + " alive=" + alive);
             // Aliens crush bunkers
             for (var i = 0; i < aliens.length; i++) {
                 var a = aliens[i];
@@ -417,12 +421,15 @@ function tick(h) {
         }
     }
 
-    // Aliens reaching ground
+    // Aliens reaching ground — kill nearby players, and if any alien
+    // reaches the ground row, wipe remaining aliens (invasion penalty)
     var ab = alienBounds();
     if (ab.maxY >= h - 3) {
+        var invaded = false;
         for (var ai = 0; ai < aliens.length; ai++) {
             var a = aliens[ai];
             if (!a.alive || a.y < h - 3) continue;
+            if (a.y >= h - 1) invaded = true; // reached the ground
             for (var pi = 0; pi < plOrder.length; pi++) {
                 var p = pls[plOrder[pi]];
                 if (!p || p.dead || frame < p.invuln) continue;
@@ -430,6 +437,20 @@ function tick(h) {
                     if (p.shield > 0) { p.shield = 0; }
                     else { killPlayer(p); }
                 }
+            }
+        }
+        if (invaded) {
+            log("Aliens reached ground at frame " + frame + ", wiping wave");
+            chat("The aliens reached the ground! All players lose a life!");
+            // Kill all remaining aliens
+            for (var ai = 0; ai < aliens.length; ai++) {
+                aliens[ai].alive = false;
+            }
+            // Penalise all living players
+            for (var pi = 0; pi < plOrder.length; pi++) {
+                var p = pls[plOrder[pi]];
+                if (!p || p.dead) continue;
+                killPlayer(p);
             }
         }
     }
@@ -460,10 +481,12 @@ function tick(h) {
     // Wave cleared?
     if (aliveAliens() === 0 && wavePause === 0) {
         if (wave >= GAME_WAVES) {
+            log("All waves complete, ending game at frame " + frame);
             endGame();
         } else {
             wave++;
             wavePause = WAVE_PAUSE;
+            log("Wave " + wave + " starting in " + WAVE_PAUSE + " ticks (frame " + frame + ")");
             chat("Wave " + wave + " incoming!");
         }
     }
