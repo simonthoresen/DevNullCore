@@ -51,7 +51,7 @@ var E_ZAP    = "\u26A1";        // ⚡
 var E_HEART  = "\u2764\uFE0F";  // ❤️
 var E_UFO    = "\uD83D\uDEF8";  // 🛸
 var E_FIRE   = "\uD83D\uDD25";  // 🔥
-var E_BRICKS = "\uD83E\uDDF1"; // 🧱
+// Bunker block chars: full → medium → light shade, same visual family
 
 // Timing
 var ALIEN_MOVE_INTERVAL = 8;
@@ -557,13 +557,13 @@ function render(pid, width, height) {
     for (var k in bunkers) {
         var hp = bunkers[k];
         if (cw === 2) {
-            if (hp >= 3) ents[k] = E_BRICKS;
+            if (hp >= 3) ents[k] = CGRN + "\u2588\u2588" + RST;
             else if (hp === 2) ents[k] = CYEL + "\u2593\u2593" + RST;
             else ents[k] = CRED + "\u2591\u2591" + RST;
         } else {
-            if (hp >= 3) ents[k] = CGRN + "#" + RST;
-            else if (hp === 2) ents[k] = CYEL + "#" + RST;
-            else ents[k] = CRED + "." + RST;
+            if (hp >= 3) ents[k] = CGRN + "\u2588" + RST;
+            else if (hp === 2) ents[k] = CYEL + "\u2593" + RST;
+            else ents[k] = CRED + "\u2591" + RST;
         }
     }
 
