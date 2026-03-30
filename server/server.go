@@ -736,7 +736,9 @@ func (a *Server) registerBuiltins(address string) {
 			p := a.programs[ctx.PlayerID]
 			a.programsMu.Unlock()
 			if p != nil {
-				p.Quit()
+				// Async to avoid deadlock — this runs inside
+				// the Bubble Tea update loop.
+				go p.Quit()
 			}
 		}
 	}
