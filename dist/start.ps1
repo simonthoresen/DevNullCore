@@ -5,16 +5,19 @@ param(
 
 $Password = "changeme"
 $Force = $false
+$Local = $false
 
 $positionals = @()
 foreach ($arg in $CliArgs) {
     switch -Regex ($arg) {
-        '^--?force$' { $Force = $true; continue }
-        default      { $positionals += $arg }
+        '^--?force$'         { $Force = $true; continue }
+        '^--?local$'         { $Local = $true; continue }
+        '^--?(no-?network|offline|singleplayer|single-player)$' { $Local = $true; continue }
+        default              { $positionals += $arg }
     }
 }
 
-if ($positionals.Count -ge 1 -and $positionals[0]) {
+if (-not $Local -and $positionals.Count -ge 1 -and $positionals[0]) {
     $Password = $positionals[0]
 }
 
@@ -195,6 +198,27 @@ function Wait-ForTunnelReady {
     $message = "Pinggy helper did not produce a join command within $TimeoutSeconds seconds."
     if ($details.Count -gt 0) { $message += "`n`n" + ($details -join "`n`n") }
     throw $message
+}
+
+# ── local / single-player mode ───────────────────────────────────────────────
+# No SSH, no tunnel, no port — just run the TUI directly in this terminal.
+# Extra args (--game, --plugins, --player) are passed straight through.
+
+if ($Local) {
+    Push-Location $root
+    try {
+        Write-RunLogLine "starting in local single-player mode"
+        & (Join-Path $root "null-space.exe") --local @positionals
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    } finally {
+        Pop-Location
+        Write-RunLogLine "local session ended"
+        if ($null -eq $previousLogFile)  { Remove-Item Env:NULL_SPACE_LOG_FILE  -ErrorAction SilentlyContinue }
+        else { $env:NULL_SPACE_LOG_FILE = $previousLogFile }
+        if ($null -eq $previousLogLevel) { Remove-Item Env:NULL_SPACE_LOG_LEVEL -ErrorAction SilentlyContinue }
+        else { $env:NULL_SPACE_LOG_LEVEL = $previousLogLevel }
+    }
+    return
 }
 
 # ── pre-flight ───────────────────────────────────────────────────────────────
