@@ -11,12 +11,12 @@ import (
 
 // EnablePinggyLogBridge starts polling the Pinggy status file and updates
 // state.Net.PinggyURL when the TCP address is found.
-func (a *App) EnablePinggyLogBridge(ctx context.Context, statusFile string) {
+func (a *Server) EnablePinggyLogBridge(ctx context.Context, statusFile string) {
 	slog.Info("pinggy log bridge enabled", "status_file", statusFile)
 	go a.runPinggyLogBridge(ctx, statusFile)
 }
 
-func (a *App) runPinggyLogBridge(ctx context.Context, statusFile string) {
+func (a *Server) runPinggyLogBridge(ctx context.Context, statusFile string) {
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 

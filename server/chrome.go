@@ -55,7 +55,7 @@ const (
 var spinnerFramesChrome = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 type chromeModel struct {
-	app      *App
+	app      *Server
 	playerID string
 	width    int
 	height   int
@@ -71,7 +71,7 @@ type chromeModel struct {
 	tabIndex      int
 }
 
-func newChromeModel(app *App, playerID string) chromeModel {
+func newChromeModel(app *Server, playerID string) chromeModel {
 	chat := viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	chat.MouseWheelEnabled = false
 	chat.SoftWrap = true
@@ -91,7 +91,7 @@ func newChromeModel(app *App, playerID string) chromeModel {
 	m.syncChat()
 	// Start in input mode when in the lobby; idle mode when a game is active.
 	app.state.mu.RLock()
-	inGame := app.state.ActiveApp != nil
+	inGame := app.state.ActiveGame != nil
 	app.state.mu.RUnlock()
 	if inGame {
 		setInputStyle(&m.input, cmdBg, titleFg)
@@ -162,10 +162,11 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.GameLoadedMsg:
-		// App started — switch to game mode (idle so keys route to the game).
+		// Game started — switch to game mode (idle so keys route to the game).
 		setInputStyle(&m.input, cmdBg, titleFg)
 		m.mode = modeIdle
 		m.input.Blur()
+		m.resizeViewports()
 		m.syncChat()
 		return m, nil
 
@@ -174,6 +175,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		setInputStyle(&m.input, titleBg, titleFg)
 		m.mode = modeInput
 		cmd := m.input.Focus()
+		m.resizeViewports()
 		m.syncChat()
 		return m, cmd
 
@@ -190,7 +192,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			default:
 				// route to game
 				m.app.state.mu.RLock()
-				game := m.app.state.ActiveApp
+				game := m.app.state.ActiveGame
 				m.app.state.mu.RUnlock()
 				if game != nil {
 					game.OnInput(m.playerID, msg.String())
@@ -207,7 +209,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// In-game: return to idle so keys route to the game.
 			// Lobby: stay in input mode.
 			m.app.state.mu.RLock()
-			inGame := m.app.state.ActiveApp != nil
+			inGame := m.app.state.ActiveGame != nil
 			m.app.state.mu.RUnlock()
 			if inGame {
 				setInputStyle(&m.input, cmdBg, titleFg)
@@ -259,8 +261,8 @@ func (m chromeModel) View() tea.View {
 	}
 
 	m.app.state.mu.RLock()
-	game := m.app.state.ActiveApp
-	gameName := m.app.state.AppName
+	game := m.app.state.ActiveGame
+	gameName := m.app.state.GameName
 	spinChar := string(m.app.state.SpinnerChar())
 	m.app.state.mu.RUnlock()
 
@@ -359,7 +361,7 @@ func (m *chromeModel) syncChat() {
 
 func (m *chromeModel) resizeViewports() {
 	m.app.state.mu.RLock()
-	game := m.app.state.ActiveApp
+	game := m.app.state.ActiveGame
 	m.app.state.mu.RUnlock()
 
 	if game == nil {
@@ -391,7 +393,7 @@ func (m *chromeModel) submitInput() {
 	// In-game: return to idle after submit so keys route to the game.
 	// Lobby: stay in input mode.
 	m.app.state.mu.RLock()
-	inGame := m.app.state.ActiveApp != nil
+	inGame := m.app.state.ActiveGame != nil
 	m.app.state.mu.RUnlock()
 	if inGame {
 		setInputStyle(&m.input, cmdBg, titleFg)

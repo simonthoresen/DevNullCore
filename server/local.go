@@ -12,10 +12,10 @@ import (
 	"null-space/common"
 )
 
-// NewLocal creates an App for local (non-SSH) use: a single player on the
+// NewLocal creates a Server for local (non-SSH) use: a single player on the
 // local terminal. No SSH server, no networking, no host key file.
-func NewLocal(dataDir string) *App {
-	app := &App{
+func NewLocal(dataDir string) *Server {
+	app := &Server{
 		state:    newState(""),
 		registry: newCommandRegistry(),
 		dataDir:  dataDir,
@@ -29,10 +29,10 @@ func NewLocal(dataDir string) *App {
 	return app
 }
 
-// RunLocal registers a local player (as admin), optionally pre-loads an app
+// RunLocal registers a local player (as admin), optionally pre-loads a game
 // and plugins, then runs the full client TUI on stdin/stdout. This is the
 // entry point for both the local single-player mode and the render test-bed.
-func (a *App) RunLocal(ctx context.Context, playerName, appName string, pluginNames []string) error {
+func (a *Server) RunLocal(ctx context.Context, playerName, gameName string, pluginNames []string) error {
 	const playerID = "local"
 
 	player := &common.Player{
@@ -49,10 +49,10 @@ func (a *App) RunLocal(ctx context.Context, playerName, appName string, pluginNa
 		}
 	}
 
-	if appName != "" {
-		path := filepath.Join(a.dataDir, "apps", appName+".js")
-		if err := a.loadApp(path); err != nil {
-			return fmt.Errorf("load app %s: %w", appName, err)
+	if gameName != "" {
+		path := filepath.Join(a.dataDir, "games", gameName+".js")
+		if err := a.loadGame(path); err != nil {
+			return fmt.Errorf("load game %s: %w", gameName, err)
 		}
 	}
 

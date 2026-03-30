@@ -26,8 +26,8 @@ type CentralState struct {
 	StartTime     time.Time
 	TickN         int // increments every 100ms; SpinnerFrame = TickN/10
 
-	ActiveApp common.App
-	AppName   string
+	ActiveGame common.Game
+	GameName   string
 
 	Plugins     []common.Plugin
 	PluginNames []string // parallel to Plugins; name = filename stem

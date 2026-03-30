@@ -22,9 +22,9 @@ type CommandContext struct {
 	ServerLog func(string) // append to server log panel only (never sent to players)
 }
 
-// App is the interface every loaded app must satisfy.
-// One app is active at a time and owns the viewport, status bar, and command bar.
-type App interface {
+// Game is the interface every loaded game must satisfy.
+// One game is active at a time and owns the viewport, status bar, and command bar.
+type Game interface {
 	OnPlayerJoin(playerID, playerName string)
 	OnPlayerLeave(playerID string)
 	OnInput(playerID, key string)
@@ -35,8 +35,8 @@ type App interface {
 	Unload()
 }
 
-// Plugin is a passive extension that runs alongside any app (or in the lobby).
-// Multiple plugins can be active simultaneously and persist across app switches.
+// Plugin is a passive extension that runs alongside any game (or in the lobby).
+// Multiple plugins can be active simultaneously and persist across game switches.
 type Plugin interface {
 	// OnChatMessage is called for every outgoing message before it's committed.
 	// Return nil to drop the message, or return a (possibly modified) copy to allow it.

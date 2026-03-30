@@ -11,7 +11,7 @@ import (
 	"null-space/common"
 )
 
-// jsRuntime wraps a goja JS runtime and implements common.App.
+// jsRuntime wraps a goja JS runtime and implements common.Game.
 type jsRuntime struct {
 	mu    sync.Mutex
 	vm    *goja.Runtime
@@ -30,9 +30,9 @@ type jsRuntime struct {
 	commandBarFn  goja.Callable
 }
 
-// LoadApp loads and executes a JS file from apps/, extracts the Game object
-// methods, and returns a common.App.
-func LoadApp(path string, state *CentralState, logFn func(string), chatFn func(common.Message)) (common.App, error) {
+// LoadGame loads and executes a JS file from games/, extracts the Game object
+// methods, and returns a common.Game.
+func LoadGame(path string, state *CentralState, logFn func(string), chatFn func(common.Message)) (common.Game, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read game file: %w", err)

@@ -8,9 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Goal
 
-A framework for hosting terminal-based multiplayer **apps** (games, canvases, polls, anything terminal-interactive) over SSH. **Only the server operator needs to install anything.** Players connect with a plain `ssh` command — no client install required.
+A framework for hosting terminal-based multiplayer **games** over SSH. **Only the server operator needs to install anything.** Players connect with a plain `ssh` command — no client install required.
 
-Apps and plugins are written in JavaScript (goja) and loaded at runtime from `dist/apps/` and `dist/plugins/`. The server binary itself is app/plugin-agnostic.
+Games and plugins are written in JavaScript (goja) and loaded at runtime from `dist/games/` and `dist/plugins/`. The server binary itself is game/plugin-agnostic.
 
 ## Commands
 
@@ -27,9 +27,9 @@ ssh -p 23234 localhost   # connect as a client (host plays this way too)
 # Local mode — no SSH, runs full client TUI directly in the terminal.
 # Useful as a render test-bed and as a local single-player mode.
 go run ./cmd/null-space --local --data-dir dist
-go run ./cmd/null-space --local --data-dir dist --app example
-go run ./cmd/null-space --local --data-dir dist --app example --plugins foo,bar
-go run ./cmd/null-space --local --data-dir dist --app example --player alice
+go run ./cmd/null-space --local --data-dir dist --game example
+go run ./cmd/null-space --local --data-dir dist --game example --plugins foo,bar
+go run ./cmd/null-space --local --data-dir dist --game example --player alice
 ```
 
 **Environment variables:**
@@ -42,17 +42,17 @@ go run ./cmd/null-space --local --data-dir dist --app example --player alice
 **null-space** is a "Multitenant Singleton" server over SSH.
 
 ### Core Pattern
-- **One app singleton** runs on the server (`CentralState.ActiveApp`)
-- **One Bubble Tea `Program` per SSH session**, all sharing the same app state
+- **One game singleton** runs on the server (`CentralState.ActiveGame`)
+- **One Bubble Tea `Program` per SSH session**, all sharing the same game state
 - **Central 100ms ticker** sends `TickMsg` to all programs simultaneously → synchronized real-time rendering
 - **The server terminal is management-only.** The host joins as a player via SSH like everyone else.
 
-### Lobby vs. In-App
-Players start in the **server lobby** — chat only, no app running. An admin uses `/app load <name>` to load an app from `dist/apps/`. This transitions all players into the app view.
+### Lobby vs. In-Game
+Players start in the **server lobby** — chat only, no game running. An admin uses `/game load <name>` to load a game from `dist/games/`. This transitions all players into the game view.
 
 ### UI Layout
 
-**Lobby (no app loaded):**
+**Lobby (no game loaded):**
 ```
 ┌─────────────────────────────────────┐
 │ Status bar (1 row) — framework      │  e.g. "null-space | 3 players online | 00:42 ⠹"
@@ -65,20 +65,20 @@ Players start in the **server lobby** — chat only, no app running. An admin us
 └─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
 ```
 
-**In-app:**
+**In-game:**
 ```
 ┌─────────────────────────────────────┐
-│ Status bar (1 row) — app-owned      │  App.StatusBar(playerID) → "HP: 100  Score: 4200 ⠹"
+│ Status bar (1 row) — game-owned     │  Game.StatusBar(playerID) → "HP: 100  Score: 4200 ⠹"
 ├─────────────────────────────────────┤
 │                                     │
-│ App viewport (W × W*9/16 rows)      │  App.View(playerID, W, H)
+│ Game viewport (W × W*9/16 rows)     │  Game.View(playerID, W, H)
 │                                     │
 ├─────────────────────────────────────┤
 │                                     │
 │ Chat (remaining rows, min 5)        │  shared chat history
 │                                     │
 ├─────────────────────────────────────┤
-│ Command bar (1 row) — dual-purpose  │  idle: App.CommandBar(playerID) → "[↑↓] Move"
+│ Command bar (1 row) — dual-purpose  │  idle: Game.CommandBar(playerID) → "[↑↓] Move"
 └─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
 ```
 
@@ -90,24 +90,25 @@ Players start in the **server lobby** — chat only, no app running. An admin us
 
 | Package | Role |
 |---------|------|
-| `server/server.go` | Wish SSH server setup, session lifecycle, tick broadcast, `App` orchestrator |
-| `server/chrome.go` | Per-user `chromeModel`: renders lobby or app chrome depending on state |
-| `server/state.go` | `CentralState`: players map, chat history (max 50), active app, plugins |
+| `server/server.go` | Wish SSH server setup, session lifecycle, tick broadcast, `Server` orchestrator |
+| `server/chrome.go` | Per-user `chromeModel`: renders lobby or game chrome depending on state |
+| `server/state.go` | `CentralState`: players map, chat history (max 50), active game, plugins |
 | `server/commands.go` | `/` command registry, tab completion, permission checks |
 | `server/console.go` | Local server management terminal (not for playing) |
-| `server/runtime.go` | JS app runtime (goja): loads `dist/apps/*.js`, implements `common.App` |
+| `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
 | `server/plugin.go` | JS plugin runtime (goja): loads `dist/plugins/*.js`, implements `common.Plugin` |
+| `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
 | `server/pinggy.go` | Polls Pinggy status file, updates `state.Net.PinggyURL` |
-| `common/interfaces.go` | `App` and `Plugin` interface contracts, `Command` struct |
+| `common/interfaces.go` | `Game` and `Plugin` interface contracts, `Command` struct |
 | `common/types.go` | Shared types: `Message`, `Player`, `TickMsg`, `ChatMsg`, etc. |
 | `cmd/null-space/` | Entry point: boot sequence, console setup, signal handling |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
 | `dist/start.ps1` | PowerShell launcher: starts pinggy-helper, then null-space.exe |
 
-### The `App` Interface (`common/interfaces.go`)
+### The `Game` Interface (`common/interfaces.go`)
 ```go
-type App interface {
+type Game interface {
     OnPlayerJoin(playerID, playerName string)
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
@@ -144,7 +145,7 @@ type Command struct {
 
 `ctx.Reply(text)` sends a private response to the caller only. For SSH players it sends a `ChatMsg` with `IsPrivate: true`. For the console (playerID `""`) it appends directly to the console's chat panel — **not** to the server log. Tab completion cycles through candidates alphabetically; repeated Tab advances through the list.
 
-`AppName` in `CentralState` stores the bare name (e.g. `example`), not the full file path. `loadApp` strips the directory and `.js` extension. Commands that broadcast app load/unload events should use the bare name too — `loadApp` already broadcasts `"App loaded: <name>"` to chat, so command handlers must not send a redundant reply.
+`GameName` in `CentralState` stores the bare name (e.g. `example`), not the full file path. `loadGame` strips the directory and `.js` extension. Commands that broadcast game load/unload events should use the bare name too — `loadGame` already broadcasts `"Game loaded: <name>"` to chat, so command handlers must not send a redundant reply.
 
 ### `Message` Type (`common/types.go`)
 ```go
@@ -160,13 +161,13 @@ type Message struct {
 
 `IsReply: true` is set by `ctx.Reply()` so command output (e.g. `/help` listing) appears as plain text in the caller's chat window with no prefix. Without it, private messages show `[PM from X]`.
 
-### Apps and Plugins (JS)
+### Games and Plugins (JS)
 
-Both are single `.js` files in `dist/apps/` or `dist/plugins/`. Loaded at runtime via `/app load <name>` / `/plugin load <name>`.
+Both are single `.js` files in `dist/games/` or `dist/plugins/`. Loaded at runtime via `/game load <name>` / `/plugin load <name>`.
 
-**App** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Loaded one at a time; owns the viewport.
+**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Loaded one at a time; owns the viewport.
 
-**Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`, `commands`. Multiple active simultaneously; persistent across app switches.
+**Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`, `commands`. Multiple active simultaneously; persistent across game switches.
 
 The chat pipeline runs all active plugin `onChatMessage` hooks (in load order) before committing a message to history. Return `null` to drop.
 
@@ -251,7 +252,7 @@ Each attempt uses a short `ConnectTimeout`; falls through on failure.
 - `charm.land/bubbles/v2` — `textinput`, `viewport` components
 - `github.com/charmbracelet/x/term` — terminal size detection
 - `github.com/huin/goupnp` — UPnP IGD
-- `github.com/dop251/goja` — JavaScript runtime for apps/plugins
+- `github.com/dop251/goja` — JavaScript runtime for games/plugins
 
 ---
 

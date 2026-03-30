@@ -13,7 +13,12 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(git rm:*)",
-      "Bash(make build:*)"
+      "Bash(make build:*)",
+      "WebFetch(domain:code.claude.ai)",
+      "Bash(grep -r apps/ /c/Users/simonhul/Source/null-space --include=*.md --include=*.go)",
+      "Bash(grep -n \"func.*\\\\*App\\\\\\)\" /c/Users/simonhul/Source/null-space/server/*.go)",
+      "Bash(grep -n \"func.*\\\\*App\" /c/Users/simonhul/Source/null-space/server/*.go)",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -26,16 +26,16 @@ import (
 	"null-space/common"
 )
 
-type App struct {
+type Server struct {
 	state    *CentralState
 	registry *commandRegistry
-	dataDir  string // root of apps/, plugins/, logs/
+	dataDir  string // root of games/, plugins/, logs/
 	port     string // SSH listen port, e.g. "23234"
 
 	programs   map[string]*tea.Program // key = playerID
 	programsMu sync.Mutex
 
-	sessions   map[string]ssh.Session
+	sessions   map[string]ssh.Session // SSH sessions; nil in local mode
 	sessionsMu sync.RWMutex
 
 	// channels for communicating events to the console
@@ -51,8 +51,8 @@ type App struct {
 	upnpMapping *upnpMapping
 }
 
-func New(address, password, dataDir string) (*App, error) {
-	app := &App{
+func New(address, password, dataDir string) (*Server, error) {
+	app := &Server{
 		state:    newState(password),
 		registry: newCommandRegistry(),
 		dataDir:  dataDir,
@@ -82,23 +82,23 @@ func New(address, password, dataDir string) (*App, error) {
 	return app, nil
 }
 
-func (a *App) SetShutdownFunc(fn func()) {
+func (a *Server) SetShutdownFunc(fn func()) {
 	a.shutdownFn = fn
 }
 
-func (a *App) State() *CentralState {
+func (a *Server) State() *CentralState {
 	return a.state
 }
 
-func (a *App) LogCh() <-chan string {
+func (a *Server) LogCh() <-chan string {
 	return a.logCh
 }
 
-func (a *App) ChatCh() <-chan common.Message {
+func (a *Server) ChatCh() <-chan common.Message {
 	return a.chatCh
 }
 
-func (a *App) Start(ctx context.Context) error {
+func (a *Server) Start(ctx context.Context) error {
 	go a.runTicker(ctx)
 
 	errCh := make(chan error, 1)
@@ -126,7 +126,7 @@ func (a *App) Start(ctx context.Context) error {
 	}
 }
 
-func (a *App) Shutdown(ctx context.Context) error {
+func (a *Server) Shutdown(ctx context.Context) error {
 	_ = ctx
 	slog.Info("server shutdown requested")
 	a.upnpMapping.removeMapping()
@@ -140,14 +140,14 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 // SetupUPnP attempts UPnP port mapping and returns true if successful.
 // Should be called after New() and before Start().
-func (a *App) SetupUPnP(port string) bool {
+func (a *Server) SetupUPnP(port string) bool {
 	a.upnpMapping = tryUPnP(a.state, port)
 	return a.state.Net.UPnPMapped
 }
 
 // SetupPublicIP detects the public IP and stores it in state.
 // Returns the detected IP, or empty string if detection failed.
-func (a *App) SetupPublicIP() string {
+func (a *Server) SetupPublicIP() string {
 	publicIP := detectPublicIP()
 	if publicIP != "" {
 		a.state.mu.Lock()
@@ -158,11 +158,11 @@ func (a *App) SetupPublicIP() string {
 }
 
 // SetPort stores the SSH listen port so invite scripts can reference it.
-func (a *App) SetPort(port string) { a.port = port }
+func (a *Server) SetPort(port string) { a.port = port }
 
 // InviteScript returns a PowerShell one-liner that tries all known connection
 // endpoints in order (localhost → UPnP direct → Pinggy relay).
-func (a *App) InviteScript() string {
+func (a *Server) InviteScript() string {
 	sshOpts := "-o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 	local := fmt.Sprintf("ssh -t -p %s %s localhost", a.port, sshOpts)
 	parts := []string{local}
@@ -194,7 +194,7 @@ func (a *App) InviteScript() string {
 // InviteCommand returns a self-contained PowerShell command that can be
 // pasted anywhere. The inner script is UTF-16LE base64-encoded so it
 // requires no escaping and contains no line breaks.
-func (a *App) InviteCommand() string {
+func (a *Server) InviteCommand() string {
 	script := a.InviteScript()
 	u16 := utf16.Encode([]rune(script))
 	buf := make([]byte, len(u16)*2)
@@ -205,11 +205,11 @@ func (a *App) InviteCommand() string {
 }
 
 // LogInviteCommand writes the current invite command to the server log.
-func (a *App) LogInviteCommand() {
+func (a *Server) LogInviteCommand() {
 	a.serverLog("Invite: " + a.InviteCommand())
 }
 
-func (a *App) sessionMiddleware() wish.Middleware {
+func (a *Server) sessionMiddleware() wish.Middleware {
 	return func(next ssh.Handler) ssh.Handler {
 		return func(sess ssh.Session) {
 			player := a.registerSession(sess)
@@ -219,7 +219,7 @@ func (a *App) sessionMiddleware() wish.Middleware {
 	}
 }
 
-func (a *App) programHandler(sess ssh.Session) *tea.Program {
+func (a *Server) programHandler(sess ssh.Session) *tea.Program {
 	playerID := sess.Context().SessionID()
 	program := tea.NewProgram(newChromeModel(a, playerID), a.sessionProgramOptions(sess)...)
 	a.programsMu.Lock()
@@ -228,7 +228,7 @@ func (a *App) programHandler(sess ssh.Session) *tea.Program {
 	return program
 }
 
-func (a *App) sessionProgramOptions(sess ssh.Session) []tea.ProgramOption {
+func (a *Server) sessionProgramOptions(sess ssh.Session) []tea.ProgramOption {
 	envs := sess.Environ()
 	if pty, _, ok := sess.Pty(); ok && pty.Term != "" {
 		envs = append(envs, "TERM="+pty.Term)
@@ -242,7 +242,7 @@ func (a *App) sessionProgramOptions(sess ssh.Session) []tea.ProgramOption {
 	return opts
 }
 
-func (a *App) registerSession(sess ssh.Session) *common.Player {
+func (a *Server) registerSession(sess ssh.Session) *common.Player {
 	player := &common.Player{
 		ID:   sess.Context().SessionID(),
 		Name: a.uniqueName(sess.User()),
@@ -263,8 +263,8 @@ func (a *App) registerSession(sess ssh.Session) *common.Player {
 	a.broadcastMsg(common.PlayerJoinedMsg{Player: player})
 
 	// notify active app and all plugins
-	if a.state.ActiveApp != nil {
-		a.state.ActiveApp.OnPlayerJoin(player.ID, player.Name)
+	if a.state.ActiveGame != nil {
+		a.state.ActiveGame.OnPlayerJoin(player.ID, player.Name)
 	}
 	plugins, _ := a.state.GetPlugins()
 	for _, p := range plugins {
@@ -273,7 +273,7 @@ func (a *App) registerSession(sess ssh.Session) *common.Player {
 	return player
 }
 
-func (a *App) unregisterSession(playerID string) {
+func (a *Server) unregisterSession(playerID string) {
 	player := a.state.GetPlayer(playerID)
 	if player != nil {
 		slog.Info("player left", "player_id", playerID, "name", player.Name)
@@ -285,8 +285,8 @@ func (a *App) unregisterSession(playerID string) {
 	}
 
 	// notify active app and all plugins
-	if a.state.ActiveApp != nil {
-		a.state.ActiveApp.OnPlayerLeave(playerID)
+	if a.state.ActiveGame != nil {
+		a.state.ActiveGame.OnPlayerLeave(playerID)
 	}
 	plugins, _ := a.state.GetPlugins()
 	for _, p := range plugins {
@@ -305,7 +305,7 @@ func (a *App) unregisterSession(playerID string) {
 	a.broadcastMsg(common.PlayerLeftMsg{PlayerID: playerID})
 }
 
-func (a *App) runTicker(ctx context.Context) {
+func (a *Server) runTicker(ctx context.Context) {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -322,7 +322,7 @@ func (a *App) runTicker(ctx context.Context) {
 	}
 }
 
-func (a *App) broadcastMsg(msg tea.Msg) {
+func (a *Server) broadcastMsg(msg tea.Msg) {
 	a.programsMu.Lock()
 	progs := make([]*tea.Program, 0, len(a.programs))
 	for _, p := range a.programs {
@@ -342,7 +342,7 @@ func (a *App) broadcastMsg(msg tea.Msg) {
 	}
 }
 
-func (a *App) broadcastChat(msg common.Message) {
+func (a *Server) broadcastChat(msg common.Message) {
 	// run through plugin pipeline before committing
 	current := &msg
 	plugins, _ := a.state.GetPlugins()
@@ -364,7 +364,7 @@ func (a *App) broadcastChat(msg common.Message) {
 	a.broadcastMsg(common.ChatMsg{Msg: msg})
 }
 
-func (a *App) sendToPlayer(playerID string, msg tea.Msg) {
+func (a *Server) sendToPlayer(playerID string, msg tea.Msg) {
 	a.programsMu.Lock()
 	p := a.programs[playerID]
 	a.programsMu.Unlock()
@@ -373,7 +373,7 @@ func (a *App) sendToPlayer(playerID string, msg tea.Msg) {
 	}
 }
 
-func (a *App) kickPlayer(playerID string) error {
+func (a *Server) kickPlayer(playerID string) error {
 	a.sessionsMu.RLock()
 	sess := a.sessions[playerID]
 	a.sessionsMu.RUnlock()
@@ -383,7 +383,7 @@ func (a *App) kickPlayer(playerID string) error {
 	return sess.Close()
 }
 
-func (a *App) serverLog(line string) {
+func (a *Server) serverLog(line string) {
 	slog.Info(line)
 	select {
 	case a.logCh <- line:
@@ -391,14 +391,14 @@ func (a *App) serverLog(line string) {
 	}
 }
 
-func (a *App) uptime() string {
+func (a *Server) uptime() string {
 	duration := time.Since(a.state.StartTime).Truncate(time.Second)
 	minutes := int(duration / time.Minute)
 	seconds := int((duration % time.Minute) / time.Second)
 	return fmt.Sprintf("%02d:%02d", minutes, seconds)
 }
 
-func (a *App) uniqueName(raw string) string {
+func (a *Server) uniqueName(raw string) string {
 	base := strings.TrimSpace(raw)
 	if base == "" {
 		base = "pilot"
@@ -412,12 +412,12 @@ func (a *App) uniqueName(raw string) string {
 	return name
 }
 
-func (a *App) loadApp(path string) error {
-	if a.state.ActiveApp != nil {
-		a.unloadApp()
+func (a *Server) loadGame(path string) error {
+	if a.state.ActiveGame != nil {
+		a.unloadGame()
 	}
 
-	rt, err := LoadApp(path, a.state, a.serverLog, func(msg common.Message) {
+	rt, err := LoadGame(path, a.state, a.serverLog, func(msg common.Message) {
 		a.broadcastChat(msg)
 	})
 	if err != nil {
@@ -427,11 +427,11 @@ func (a *App) loadApp(path string) error {
 	name := strings.TrimSuffix(filepath.Base(path), ".js")
 
 	a.state.mu.Lock()
-	a.state.ActiveApp = rt
-	a.state.AppName = name
+	a.state.ActiveGame = rt
+	a.state.GameName = name
 	a.state.mu.Unlock()
 
-	// register app commands
+	// register game commands
 	for _, cmd := range rt.Commands() {
 		a.registry.Register(cmd)
 	}
@@ -443,31 +443,31 @@ func (a *App) loadApp(path string) error {
 	}
 
 	a.broadcastMsg(common.GameLoadedMsg{Name: name})
-	a.broadcastChat(common.Message{Text: fmt.Sprintf("App loaded: %s", name)})
-	a.serverLog(fmt.Sprintf("app loaded: %s", name))
+	a.broadcastChat(common.Message{Text: fmt.Sprintf("Game loaded: %s", name)})
+	a.serverLog(fmt.Sprintf("game loaded: %s", name))
 	return nil
 }
 
-func (a *App) unloadApp() {
+func (a *Server) unloadGame() {
 	a.state.mu.Lock()
-	app := a.state.ActiveApp
-	a.state.ActiveApp = nil
-	a.state.AppName = ""
+	game := a.state.ActiveGame
+	a.state.ActiveGame = nil
+	a.state.GameName = ""
 	a.state.mu.Unlock()
 
-	if app != nil {
-		for _, cmd := range app.Commands() {
+	if game != nil {
+		for _, cmd := range game.Commands() {
 			a.registry.Unregister(cmd.Name)
 		}
-		app.Unload()
+		game.Unload()
 	}
 
 	a.broadcastMsg(common.GameUnloadedMsg{})
-	a.broadcastChat(common.Message{Text: "App unloaded."})
-	a.serverLog("app unloaded")
+	a.broadcastChat(common.Message{Text: "Game unloaded."})
+	a.serverLog("game unloaded")
 }
 
-func (a *App) loadPlugin(name, path string) error {
+func (a *Server) loadPlugin(name, path string) error {
 	// don't load the same plugin twice
 	_, names := a.state.GetPlugins()
 	for _, n := range names {
@@ -491,7 +491,7 @@ func (a *App) loadPlugin(name, path string) error {
 	return nil
 }
 
-func (a *App) unloadPlugin(name string) error {
+func (a *Server) unloadPlugin(name string) error {
 	p := a.state.RemovePlugin(name)
 	if p == nil {
 		return fmt.Errorf("plugin '%s' is not loaded", name)
@@ -504,13 +504,13 @@ func (a *App) unloadPlugin(name string) error {
 	return nil
 }
 
-func (a *App) SetConsoleProgram(p *tea.Program) {
+func (a *Server) SetConsoleProgram(p *tea.Program) {
 	a.consoleProgramMu.Lock()
 	a.consoleProgram = p
 	a.consoleProgramMu.Unlock()
 }
 
-func (a *App) registerBuiltins(address string) {
+func (a *Server) registerBuiltins(address string) {
 	a.registry.Register(common.Command{
 		Name:        "invite",
 		Description: "Show the shareable join command for this server",
@@ -616,8 +616,8 @@ func (a *App) registerBuiltins(address string) {
 	})
 
 	a.registry.Register(common.Command{
-		Name:        "app",
-		Description: "App management. No args = list available. /app load|unload [name]",
+		Name:        "game",
+		Description: "Game management. No args = list available. /game load|unload [name]",
 		Complete: func(before []string) []string {
 			switch len(before) {
 			case 0:
@@ -625,10 +625,10 @@ func (a *App) registerBuiltins(address string) {
 			case 1:
 				switch before[0] {
 				case "load":
-					return listDir(filepath.Join(a.dataDir, "apps"), ".js")
+					return listDir(filepath.Join(a.dataDir, "games"), ".js")
 				case "unload":
 					a.state.mu.RLock()
-					name := a.state.AppName
+					name := a.state.GameName
 					a.state.mu.RUnlock()
 					if name != "" {
 						return []string{strings.TrimSuffix(filepath.Base(name), ".js")}
@@ -639,13 +639,13 @@ func (a *App) registerBuiltins(address string) {
 		},
 		Handler: func(ctx common.CommandContext, args []string) {
 			if len(args) == 0 {
-				available := listDir(filepath.Join(a.dataDir, "apps"), ".js")
+				available := listDir(filepath.Join(a.dataDir, "games"), ".js")
 				if len(available) == 0 {
-					ctx.Reply("No apps found in apps/")
+					ctx.Reply("No games found in games/")
 					return
 				}
 				a.state.mu.RLock()
-				active := a.state.AppName
+				active := a.state.GameName
 				a.state.mu.RUnlock()
 				var lines []string
 				for _, name := range available {
@@ -655,18 +655,18 @@ func (a *App) registerBuiltins(address string) {
 					}
 					lines = append(lines, line)
 				}
-				ctx.Reply("Available apps:\n" + strings.Join(lines, "\n"))
+				ctx.Reply("Available games:\n" + strings.Join(lines, "\n"))
 				return
 			}
 			switch args[0] {
 			case "list":
-				available := listDir(filepath.Join(a.dataDir, "apps"), ".js")
+				available := listDir(filepath.Join(a.dataDir, "games"), ".js")
 				if len(available) == 0 {
-					ctx.Reply("No apps found in apps/")
+					ctx.Reply("No games found in games/")
 					return
 				}
 				a.state.mu.RLock()
-				active := a.state.AppName
+				active := a.state.GameName
 				a.state.mu.RUnlock()
 				var lines []string
 				for _, name := range available {
@@ -676,19 +676,19 @@ func (a *App) registerBuiltins(address string) {
 					}
 					lines = append(lines, line)
 				}
-				ctx.Reply("Available apps:\n" + strings.Join(lines, "\n"))
+				ctx.Reply("Available games:\n" + strings.Join(lines, "\n"))
 			case "load":
 				if !ctx.IsAdmin {
 					ctx.Reply("Permission denied (admin only)")
 					return
 				}
 				if len(args) < 2 {
-					ctx.Reply("Usage: /app load <name>")
+					ctx.Reply("Usage: /game load <name>")
 					return
 				}
-				path := filepath.Join(a.dataDir, "apps", args[1]+".js")
-				if err := a.loadApp(path); err != nil {
-					ctx.Reply(fmt.Sprintf("Failed to load app: %v", err))
+				path := filepath.Join(a.dataDir, "games", args[1]+".js")
+				if err := a.loadGame(path); err != nil {
+					ctx.Reply(fmt.Sprintf("Failed to load game: %v", err))
 					return
 				}
 			case "unload":
@@ -697,14 +697,14 @@ func (a *App) registerBuiltins(address string) {
 					return
 				}
 				a.state.mu.RLock()
-				active := a.state.AppName
+				active := a.state.GameName
 				a.state.mu.RUnlock()
 				if active == "" {
-					ctx.Reply("No app is currently loaded.")
+					ctx.Reply("No game is currently loaded.")
 					return
 				}
-				a.unloadApp()
-				ctx.Reply("App unloaded.")
+				a.unloadGame()
+				ctx.Reply("Game unloaded.")
 			default:
 				ctx.Reply(fmt.Sprintf("Unknown subcommand '%s'. Use: list, load, unload", args[0]))
 			}
@@ -854,7 +854,7 @@ func (a *App) registerBuiltins(address string) {
 	_ = address // used for future connection info commands
 }
 
-func (a *App) MakeCommandContext(playerID string) common.CommandContext {
+func (a *Server) MakeCommandContext(playerID string) common.CommandContext {
 	isAdmin := false
 	if playerID == "" {
 		isAdmin = true

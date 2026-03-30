@@ -21,7 +21,7 @@ var (
 )
 
 type consoleModel struct {
-	app    *App
+	app    *Server
 	cancel context.CancelFunc
 	width  int
 	height int
@@ -38,7 +38,7 @@ type consoleModel struct {
 	tabIndex      int
 }
 
-func NewConsoleModel(app *App, cancel context.CancelFunc) *consoleModel {
+func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	logs := viewport.New(viewport.WithWidth(80), viewport.WithHeight(8))
 	logs.SoftWrap = true
 	logs.MouseWheelEnabled = false
@@ -174,7 +174,7 @@ func (m *consoleModel) View() tea.View {
 	}
 
 	m.app.state.mu.RLock()
-	gameName := m.app.state.AppName
+	gameName := m.app.state.GameName
 	spinChar := string(m.app.state.SpinnerChar())
 	m.app.state.mu.RUnlock()
 
