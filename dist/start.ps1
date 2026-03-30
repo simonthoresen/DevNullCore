@@ -68,8 +68,11 @@ function Write-BootStepEnd {
         'SKIPPED' { 'DarkGray' }
         default   { 'White'    }
     }
-    Write-Host -NoNewline ("`r" + $label + ' ' + ('.' * $dots) + ' ')
-    Write-Host $token -ForegroundColor $color
+    $paddedStatus = Get-StatusToken $Status  # reuse for inner text only
+    $inner = $paddedStatus.Substring(2, $paddedStatus.Length - 4)  # strip leading "[ " and trailing " ]"
+    Write-Host -NoNewline ("`r" + $label + ' ' + ('.' * $dots) + ' [ ')
+    Write-Host -NoNewline $inner -ForegroundColor $color
+    Write-Host ' ]'
 }
 
 # ── logging ──────────────────────────────────────────────────────────────────
@@ -270,7 +273,6 @@ try {
     Write-BootStepEnd "DONE"
 
     Write-RunLogLine "cleanup completed"
-    Write-Host ""
 }
 
 if ($serverExitCode -ne 0) { exit $serverExitCode }

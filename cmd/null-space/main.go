@@ -88,12 +88,8 @@ func main() {
 	}
 
 	startBootStep("Generating invite script")
-	inviteScript := buildInviteScript(app.State(), port)
+	buildInviteScript(app.State(), port)
 	finishBootStep("DONE")
-
-	fmt.Println()
-	fmt.Println("  " + inviteScript)
-	fmt.Println()
 
 	// Start BubbleTea console
 	consoleModel := server.NewConsoleModel(app, stop)
@@ -117,7 +113,6 @@ func main() {
 	}
 
 	// Shutdown sequence
-	fmt.Println()
 	startBootStep("Stopping SSH server")
 	if err := <-serverErr; err == nil || errors.Is(err, ssh.ErrServerClosed) {
 		finishBootStep("DONE")
@@ -126,7 +121,6 @@ func main() {
 		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 		os.Exit(1)
 	}
-	fmt.Println()
 }
 
 var currentBootLabel string
@@ -146,7 +140,7 @@ func statusToken(status string) string {
 	return "[ " + strings.Repeat(" ", left) + status + strings.Repeat(" ", right) + " ]"
 }
 
-// colorizedToken wraps the token in ANSI color codes.
+// colorizedToken colors only the status text inside the brackets.
 func colorizedToken(token, status string) string {
 	var code string
 	switch status {
@@ -161,7 +155,15 @@ func colorizedToken(token, status string) string {
 	default:
 		return token
 	}
-	return code + token + "\033[0m"
+	// token is "[ <padded> ]" — color only the inner text, not the brackets
+	const inner = 7
+	pad := inner - len(status)
+	if pad < 0 {
+		pad = 0
+	}
+	left := pad / 2
+	right := pad - left
+	return "[ " + strings.Repeat(" ", left) + code + status + "\033[0m" + strings.Repeat(" ", right) + " ]"
 }
 
 func bootTermWidth() int {
