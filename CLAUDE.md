@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Goal
 
-A framework for hosting terminal-based multiplayer games over SSH. **Only the server operator needs to install anything.** Players (including the host) connect with a plain `ssh` command — no client install required.
+A framework for hosting terminal-based multiplayer **apps** (games, canvases, polls, anything terminal-interactive) over SSH. **Only the server operator needs to install anything.** Players connect with a plain `ssh` command — no client install required.
 
-Games are written in a scripting language and loaded at runtime from the `games/` folder. The server binary itself is game-agnostic.
+Apps and plugins are written in JavaScript (goja) and loaded at runtime from `dist/apps/` and `dist/plugins/`. The server binary itself is app/plugin-agnostic.
 
 ## Commands
 
@@ -28,53 +28,23 @@ ssh -p 23234 localhost   # connect as a client (host plays this way too)
 
 ## Architecture
 
-**null-space** is a "Multitenant Singleton" multiplayer game server over SSH.
+**null-space** is a "Multitenant Singleton" server over SSH.
 
 ### Core Pattern
-- **One game singleton** runs on the server (`CentralState.ActiveGame`)
-- **One Bubble Tea `Program` per SSH session**, all sharing the same game state
+- **One app singleton** runs on the server (`CentralState.ActiveApp`)
+- **One Bubble Tea `Program` per SSH session**, all sharing the same app state
 - **Central 100ms ticker** sends `TickMsg` to all programs simultaneously → synchronized real-time rendering
 - **The server terminal is management-only.** The host joins as a player via SSH like everyone else.
 
-### Lobby vs. In-Game
-Players start in the **server lobby** — chat only, no game running. An admin uses a `/app load <name>` command to load a game from `games/`. This transitions all players into the game view.
+### Lobby vs. In-App
+Players start in the **server lobby** — chat only, no app running. An admin uses `/app load <name>` to load an app from `dist/apps/`. This transitions all players into the app view.
 
 ### UI Layout
 
-**Lobby:**
+**Lobby (no app loaded):**
 ```
 ┌─────────────────────────────────────┐
-│ Title bar (1 row)                   │
-├─────────────────────────────────────┤
-│                                     │
-│ Chat (fills remaining height)       │
-│                                     │
-├─────────────────────────────────────┤
-│ Input (1 row)                       │
-└─────────────────────────────────────┘
-```
-
-**In-game:**
-```
-┌─────────────────────────────────────┐
-│ Status bar (1 row) — game-owned     │  Game.statusBar(playerID) → "HP: 100  Score: 4200"
-├─────────────────────────────────────┤
-│                                     │
-│ Game viewport (W × W*9/16 rows)     │  Game.view(playerID, W, H)
-│                                     │
-├─────────────────────────────────────┤
-│                                     │
-│ Chat (remaining rows, min 5)        │  shared chat history
-│                                     │
-├─────────────────────────────────────┤
-│ Command bar (1 row) — dual-purpose  │  idle: Game.commandBar(playerID) → "[↑↓] Move  [B] Build"
-└─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
-```
-
-**Lobby (no game loaded):**
-```
-┌─────────────────────────────────────┐
-│ Status bar (1 row) — framework      │  e.g. "null-space | 3 players online | 00:42"
+│ Status bar (1 row) — framework      │  e.g. "null-space | 3 players online | 00:42 ⠹"
 ├─────────────────────────────────────┤
 │                                     │
 │ Chat (fills remaining rows)         │
@@ -84,137 +54,198 @@ Players start in the **server lobby** — chat only, no game running. An admin u
 └─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
 ```
 
-**Braille spinner:** the last character of the status bar (both server console and SSH client) is reserved for a Braille spinner — a live indicator that the server is running. It advances once per second (every 10 game ticks at 100ms). Sequence: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`. The status bar must always reserve 1 character on the right for it and never let game/framework content overwrite that position.
+**In-app:**
+```
+┌─────────────────────────────────────┐
+│ Status bar (1 row) — app-owned      │  App.StatusBar(playerID) → "HP: 100  Score: 4200 ⠹"
+├─────────────────────────────────────┤
+│                                     │
+│ App viewport (W × W*9/16 rows)      │  App.View(playerID, W, H)
+│                                     │
+├─────────────────────────────────────┤
+│                                     │
+│ Chat (remaining rows, min 5)        │  shared chat history
+│                                     │
+├─────────────────────────────────────┤
+│ Command bar (1 row) — dual-purpose  │  idle: App.CommandBar(playerID) → "[↑↓] Move"
+└─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
+```
 
-**Viewport height calculation:** always fill terminal width W; `gameH = W * 9 / 16`. Chat gets remaining rows (min 5). Command bar is always 1 row; framework owns the input-field toggle.
+**Braille spinner:** the last character of every status bar row is reserved for a Braille spinner — a live indicator that the server is running. Sequence: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, advances once per second (every 10 ticks at 100ms). Status bar content must never overwrite it.
 
-**Zone ownership summary:**
-
-| Zone | Owner | Game API hook |
-|------|-------|---------------|
-| Status bar | Game (lobby: framework) | `statusBar(api, playerID)` |
-| Game viewport | Game | `view(api, playerID, w, h)` |
-| Chat | Framework | — |
-| Command bar (idle) | Game (lobby: framework) | `commandBar(api, playerID)` |
-| Command bar (active) | Framework | — (input field, framework routes on submit) |
+**Viewport sizing:** `gameH = W * 9 / 16`. Chat gets the remaining rows (min 5). Command bar is always 1 row.
 
 ### Key Packages
 
 | Package | Role |
 |---------|------|
 | `server/server.go` | Wish SSH server setup, session lifecycle, tick broadcast, `App` orchestrator |
-| `server/chrome.go` | Per-user `chromeModel`: renders lobby or game chrome depending on state |
-| `server/state.go` | `CentralState`: players map, chat history (max 50), active game |
-| `server/commands.go` | `/` command registry, admin elevation (`/admin <password>`), permission checks |
+| `server/chrome.go` | Per-user `chromeModel`: renders lobby or app chrome depending on state |
+| `server/state.go` | `CentralState`: players map, chat history (max 50), active app, plugins |
+| `server/commands.go` | `/` command registry, tab completion, permission checks |
 | `server/console.go` | Local server management terminal (not for playing) |
+| `server/runtime.go` | JS app runtime (goja): loads `dist/apps/*.js`, implements `common.App` |
+| `server/plugin.go` | JS plugin runtime (goja): loads `dist/plugins/*.js`, implements `common.Plugin` |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
-| `server/pinggy.go` | Monitors Pinggy tunnel output, updates UI with connection info |
-| `common/interfaces.go` | `Game` interface contract all games must implement |
-| `common/types.go` | Shared types: `Point`, `Message`, `Player`, `TickMsg`, `MoveMsg` |
-| `apps/` | JS app files — one active at a time, loaded via `/app load` |
-| `plugins/` | JS plugin files — multiple active simultaneously, loaded via `/plugin load` |
+| `server/pinggy.go` | Polls Pinggy status file, updates `state.Net.PinggyURL` |
+| `common/interfaces.go` | `App` and `Plugin` interface contracts, `Command` struct |
+| `common/types.go` | Shared types: `Message`, `Player`, `TickMsg`, `ChatMsg`, etc. |
+| `cmd/null-space/` | Entry point: boot sequence, console setup, signal handling |
+| `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
+| `dist/start.ps1` | PowerShell launcher: starts pinggy-helper, then null-space.exe |
 
-### The `Game` Interface
+### The `App` Interface (`common/interfaces.go`)
 ```go
-Init() []tea.Cmd
-Update(msg tea.Msg, playerID string) []tea.Cmd
-View(playerID string, width, height int) string  // camera centered on player
-GetCommands() []Command
+type App interface {
+    OnPlayerJoin(playerID, playerName string)
+    OnPlayerLeave(playerID string)
+    OnInput(playerID, key string)
+    View(playerID string, width, height int) string
+    StatusBar(playerID string) string   // content for top status bar (spinner appended by framework)
+    CommandBar(playerID string) string  // idle hint in command bar
+    Commands() []Command
+    Unload()
+}
 ```
 
-### Apps and Plugins
-
-**`apps/`** — interactive experiences loaded one at a time. An app owns the game viewport, status bar, and command bar. It can be a game, a shared canvas, a poll, anything terminal-interactive. Loaded with `/app load <name>`, unloaded with `/app unload`.
-
-**`plugins/`** — passive extensions that run alongside any app (or in the lobby). Multiple plugins active simultaneously, persisting across app switches. Loaded with `/plugin load <name>`, unloaded with `/plugin unload <name>`.
-
-Plugin hooks:
-- `onChatMessage(msg)` — transform or filter chat; return `null` to drop the message. Plugins run in load order before the message reaches chat history.
-- `onPlayerJoin(playerID, playerName)` / `onPlayerLeave(playerID)` — react to session events
-- `commands()` — register additional slash commands
-- `onLog(line)` — react to server log output (optional)
-
-Both apps and plugins are single `.js` files in their respective folders. The Go binary is app/plugin-agnostic.
-
-### Server Console
-
-The server console (`server/console.go`) is its own Bubble Tea program running on the local terminal. It has two phases:
-
-**Phase 1 — Boot sequence**
-
-RedHat-style boot output: one line per step, status keyword right-aligned at the terminal edge on the same line when the step completes.
-
-```
-Starting SSH server on :23234 ............................... [ DONE ]
-UPnP port mapping .............................................. [ DONE ]
-Pinggy tunnel .................................................. [ FAILED ]
-Detecting public IP ............................................ [ IGNORED ]
-Generating invite script ....................................... [ DONE ]
+### The `Plugin` Interface
+```go
+type Plugin interface {
+    OnChatMessage(msg *Message) *Message  // return nil to drop; runs in load order before chat history
+    OnPlayerJoin(playerID, playerName string)
+    OnPlayerLeave(playerID string)
+    Commands() []Command
+    Unload()
+}
 ```
 
-Status tokens: `[ DONE ]`, `[ FAILED ]`, `[ IGNORED ]`, `[ SKIPPED ]`. After all steps finish, transition to the 2-panel console UI.
+### Commands (`common/interfaces.go`)
+```go
+type Command struct {
+    Name             string
+    Description      string
+    AdminOnly        bool
+    FirstArgIsPlayer bool                     // Tab-completes first arg against player names
+    Complete         func(before []string) []string  // context-aware completion; overrides FirstArgIsPlayer
+    Handler          func(ctx CommandContext, args []string)
+}
+```
 
-**Phase 2 — Console UI (2-panel)**
+`ctx.Reply(text)` sends a private response to the caller only. For SSH players it sends a `ChatMsg` with `IsPrivate: true`. For the console (playerID `""`) it sends directly to the console program's chat window — **not** to the server log. Tab completion cycles through candidates alphabetically; repeated Tab advances through the list.
+
+### `Message` Type (`common/types.go`)
+```go
+type Message struct {
+    Author    string
+    Text      string
+    IsPrivate bool
+    ToID      string
+    FromID    string
+    IsReply   bool  // command response — rendered as plain text, no "[system]" or "[PM]" prefix
+}
+```
+
+`IsReply: true` is set by `ctx.Reply()` so command output (e.g. `/help` listing) appears as plain text in the caller's chat window with no prefix. Without it, private messages show `[PM from X]`.
+
+### Apps and Plugins (JS)
+
+Both are single `.js` files in `dist/apps/` or `dist/plugins/`. Loaded at runtime via `/app load <name>` / `/plugin load <name>`.
+
+**App** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Loaded one at a time; owns the viewport.
+
+**Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`, `commands`. Multiple active simultaneously; persistent across app switches.
+
+The chat pipeline runs all active plugin `onChatMessage` hooks (in load order) before committing a message to history. Return `null` to drop.
+
+---
+
+## Server Console
+
+`server/console.go` is its own Bubble Tea program on the local terminal. Two phases:
+
+### Phase 1 — Boot sequence
+
+Each step is printed in two passes:
+1. **Before** the operation: `label ...................` (dots to fill line, no status, no newline)
+2. **After** the operation: `\r` overwrites the line with `label ........ [ STATUS ]` right-aligned
+
+Status tokens are always **11 chars wide** with the text centered:
+```
+[  DONE   ]   (DONE = 4 chars, pad 3: 1 left, 2 right)
+[ FAILED  ]   (FAILED = 6 chars, pad 1: 0 left, 1 right)
+[ IGNORED ]   (IGNORED = 7 chars, no padding)
+[ SKIPPED ]   (SKIPPED = 7 chars, no padding)
+```
+
+Implementation: `startBootStep(label)` / `finishBootStep(status)` in `cmd/null-space/main.go`. Terminal width via `github.com/charmbracelet/x/term`. The PS1 script has matching `Write-BootStepStart` / `Write-BootStepEnd` helpers.
+
+Startup sequence (PS1 steps first, then Go binary):
+```
+Pinggy helper .............................................. [  DONE   ]  ← start.ps1
+SSH server ................................................. [  DONE   ]  ← Go
+UPnP port mapping .......................................... [ IGNORED ]
+Public IP detection ........................................ [ IGNORED ]
+Pinggy tunnel .............................................. [  DONE   ]
+Generating invite script ................................... [  DONE   ]
+
+  <invite command>
+
+  (console UI runs)
+
+Stopping SSH server ........................................ [  DONE   ]  ← Go shutdown
+Stopping Pinggy helper ..................................... [  DONE   ]  ← PS1 finally block
+```
+
+### Phase 2 — Console UI (2-panel)
 
 ```
 ┌─────────────────────────────────────┐
-│ Server log status bar (1 row)       │  e.g. "null-space | uptime 00:42 | game: none"
+│ Status bar (1 row)                  │  "null-space | game: none | uptime 00:42 ⠹"
 ├─────────────────────────────────────┤
-│                                     │
-│ Server log (top half, scrollable)   │  log lines + game api.log() output
-│                                     │  server-only; never sent to players
-│                                     │
+│ Server log (top half, scrollable)   │  internal log lines; never sent to players
 ├─────────────────────────────────────┤
-│ Chat status bar (1 row)             │  e.g. "3 players online"
+│ Chat label (1 row)                  │  "Chat (N players online)"
 ├─────────────────────────────────────┤
-│                                     │
-│ Chat view (bottom half, scrollable) │  all player messages; private msgs
-│                                     │  prefixed e.g. "[PM alice→bob] hello"
-│                                     │
+│ Chat view (bottom half, scrollable) │  all messages; private prefixed "[PM a→b]"
 ├─────────────────────────────────────┤
-│ Admin input (1 row)                 │  '/' prefix = command; plain text = chat as admin
+│ Admin input (1 row)                 │  '/' = command; plain text = chat as [admin]
 └─────────────────────────────────────┘
 ```
 
-The chat panel mirrors exactly what players see, including private messages (admin sees all, prefixed with `[PM sender→recipient]`). The admin typing plain text without `/` appears in the player chat as a player named e.g. `[admin]`.
+The server console is always admin. SSH clients elevate via `/admin <password>`. Password set via `--password`; changeable at runtime via `/password <new>` (admin only).
 
-**Commands** are registered from two sources:
-- **Built-in** — declared by the server framework (e.g. `/app load <app>`, `/kick <player>`, `/who`, `/password`)
-- **Game-registered** — each game declares additional commands via its API; these are added when the game loads and removed when it unloads
+---
 
-Each command declares two properties: whether it requires admin rights, and whether its first argument is a player name. When `firstArgIsPlayer` is true, the input field provides tab-completion against the current player list for that argument (e.g. `/msg <Tab>` cycles through connected players). The server console is always admin. SSH clients start as regular users and elevate via `/admin <password>`. The password is set at startup via `--password` and can be changed at runtime with `/password <new>` (admin only).
+## Connection Strategy
 
-### Server Startup & Connection Strategy
+Startup order: UPnP → Pinggy → generate invite script.
 
-On startup the server attempts network reachability in order, then generates a single PowerShell invite script that embeds all discovered addresses and tries them in the same order at connect time:
+The invite script is a PowerShell one-liner that tries in order:
+1. `localhost:<port>` — same machine
+2. `<UPnP public IP>:<port>` — direct internet
+3. Pinggy relay — always works, highest latency
 
-**Server-side startup sequence:**
-1. **UPnP** — attempt IGD port mapping; record public IP + mapped port if successful
-2. **Pinggy** — establish `ssh -R` reverse tunnel; parse the assigned `tcp://…` URL from its output
-3. **Generate invite script** — embed all discovered addresses; display it in the status bar / console
+Each attempt uses a short `ConnectTimeout`; falls through on failure.
 
-**Client-side connection order (inside the generated script):**
-1. `localhost:<port>` — same machine as the server
-2. `<LAN IP>:<port>` — same local network
-3. `<UPnP public IP>:<port>` — direct internet (requires UPnP to have succeeded)
-4. Pinggy punch-through — ask Pinggy relay for `SERVER_IP`/`SERVER_PORT` punch info, attempt direct TCP
-5. Pinggy relay — plain `ssh` through Pinggy tunnel (always works, highest latency)
+`pinggy-helper.exe` stdout/stderr are redirected to `dist/logs/pinggy-stdout.log` / `pinggy-stderr.log` by `start.ps1` — they must not pollute the boot sequence output.
 
-The script tries each in order with a short `ConnectTimeout` and moves on if it fails. The client runs one PowerShell one-liner; no install required.
+---
 
-**Key files:** `server/upnp.go`, `server/pinggy.go`, `server/discovery.go`, `cmd/pinggy-helper/`
-
-### Dependencies (charm.land v2 stack)
+## Dependencies (charm.land v2 stack)
 - `charm.land/bubbletea/v2` — TUI framework
 - `charm.land/wish/v2` — SSH server (use `bubbletea.Middleware`, not deprecated wish middleware)
 - `charm.land/lipgloss/v2` — terminal styling/layout
 - `charm.land/bubbles/v2` — `textinput`, `viewport` components
+- `github.com/charmbracelet/x/term` — terminal size detection
 - `github.com/huin/goupnp` — UPnP IGD
+- `github.com/dop251/goja` — JavaScript runtime for apps/plugins
 
-### SSH Input Handling (Windows gotcha)
-Use `ssh.EmulatePty()` — **not** `ssh.AllocatePty()` — in all three call sites in `server/server.go`. On Windows, `AllocatePty` creates a real ConPTY and the `charmbracelet/ssh` library spawns `go io.Copy(sess.pty, sess)` internally. When Bubble Tea also reads from the session, two goroutines alternate consuming bytes and every other keystroke is dropped. `EmulatePty` stores PTY metadata (term type, window size) without spawning a ConPTY, so there is only one reader.
+---
 
-### Rendering Notes
-- Use `\x1b[H` to reset cursor position and prevent flicker
-- Only render the visible camera window — never the full map
-- `server/kittystrip.go` strips Kitty protocol escape sequences from game output before writing to SSH clients that don't support them
+## SSH Input Handling (Windows gotcha)
+
+Use `ssh.EmulatePty()` — **not** `ssh.AllocatePty()` — in all three call sites in `server/server.go`.
+
+On Windows, `AllocatePty` creates a real ConPTY. The `charmbracelet/ssh` library then spawns `go io.Copy(sess.pty, sess)` internally. When Bubble Tea also reads from the session, two goroutines alternate consuming bytes and **every other keystroke is dropped**.
+
+`EmulatePty` stores PTY metadata (term type, window size) without spawning a ConPTY, so there is only one reader. Search for `EmulatePty` in `server/server.go` to find all three call sites.
