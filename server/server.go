@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf16"
-	"encoding/binary"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/wish/v2"
@@ -165,48 +162,39 @@ func (a *Server) SetupPublicIP() string {
 // SetPort stores the SSH listen port so invite scripts can reference it.
 func (a *Server) SetPort(port string) { a.port = port }
 
-// InviteScript returns a PowerShell one-liner that tries all known connection
-// endpoints in order (localhost → UPnP direct → Pinggy relay).
-func (a *Server) InviteScript() string {
-	sshOpts := "-o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-	local := fmt.Sprintf("ssh -t -p %s %s localhost", a.port, sshOpts)
-	parts := []string{local}
+// InviteEndpoints returns a comma-separated list of host:port endpoints
+// that players can try in order (localhost → UPnP direct → Pinggy relay).
+func (a *Server) InviteEndpoints() string {
+	endpoints := []string{"localhost:" + a.port}
 
 	a.state.mu.RLock()
 	n := a.state.Net
 	a.state.mu.RUnlock()
 
 	if n.PublicIP != "" && n.UPnPMapped {
-		parts = append(parts, fmt.Sprintf("ssh -t -p %s %s %s", a.port, sshOpts, n.PublicIP))
+		endpoints = append(endpoints, n.PublicIP+":"+a.port)
 	}
 	if n.PinggyURL != "" {
 		host := n.PinggyURL
-		pPort := "22"
+		port := "22"
 		if idx := strings.LastIndex(host, ":"); idx >= 0 {
-			pPort = host[idx+1:]
+			port = host[idx+1:]
 			host = host[:idx]
 		}
-		parts = append(parts, fmt.Sprintf("ssh -t -p %s %s %s", pPort, sshOpts, host))
+		endpoints = append(endpoints, host+":"+port)
 	}
-
-	result := parts[0]
-	for _, p := range parts[1:] {
-		result = fmt.Sprintf("%s; if($LASTEXITCODE -ne 0){%s}", result, p)
-	}
-	return result
+	return strings.Join(endpoints, ",")
 }
 
-// InviteCommand returns a self-contained PowerShell command that can be
-// pasted anywhere. The inner script is UTF-16LE base64-encoded so it
-// requires no escaping and contains no line breaks.
+const joinScriptURL = "https://raw.githubusercontent.com/simonthoresen/null-space/main/join.ps1"
+
+// InviteCommand returns a PowerShell one-liner that downloads join.ps1
+// from GitHub and runs it with the current server endpoints.
 func (a *Server) InviteCommand() string {
-	script := a.InviteScript()
-	u16 := utf16.Encode([]rune(script))
-	buf := make([]byte, len(u16)*2)
-	for i, c := range u16 {
-		binary.LittleEndian.PutUint16(buf[i*2:], c)
-	}
-	return "powershell -EncodedCommand " + base64.StdEncoding.EncodeToString(buf)
+	return fmt.Sprintf(
+		`powershell -c "$env:NS_ENDPOINTS='%s';irm %s|iex"`,
+		a.InviteEndpoints(), joinScriptURL,
+	)
 }
 
 // LogInviteCommand writes the current invite command to the server log.
