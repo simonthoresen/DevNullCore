@@ -29,9 +29,6 @@ dist/null-space_ed25519.pub
 dist/logs/*
 !dist/logs/.gitkeep
 
-# Legacy root-level logs (pre-dist layout)
-logs/*
-!logs/.gitkeep
 
 # Wish-generated SSH host keys
 null-space_ed25519
