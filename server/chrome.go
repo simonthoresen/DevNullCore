@@ -64,7 +64,13 @@ type chromeModel struct {
 	chat  viewport.Model
 	input textinput.Model
 
-	chatLines []string // buffered chat lines visible to this player
+	chatLines        []string // buffered chat lines visible to this player (max 200)
+	chatScrollOffset int      // lines scrolled up from bottom (0 = bottom)
+	chatH            int      // current chat panel height (updated in resizeViewports)
+
+	inputHistory []string // submitted inputs, oldest first (max 50)
+	historyIdx   int      // index into inputHistory while browsing; -1 = not browsing
+	historyDraft string   // input text saved before starting history browse
 
 	tabPrefix     string
 	tabCandidates []string
@@ -83,10 +89,11 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 	input.SetWidth(78)
 
 	m := chromeModel{
-		app:      app,
-		playerID: playerID,
-		chat:     chat,
-		input:    input,
+		app:        app,
+		playerID:   playerID,
+		chat:       chat,
+		input:      input,
+		historyIdx: -1,
 	}
 	m.syncChat()
 	// Start in input mode when in the lobby; idle mode when a game is active.
@@ -149,7 +156,9 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			line = fmt.Sprintf("<%s> %s", chatMsg.Author, chatMsg.Text)
 		}
-		m.chatLines = append(m.chatLines, line)
+		for _, l := range strings.Split(line, "\n") {
+			m.chatLines = append(m.chatLines, l)
+		}
 		if len(m.chatLines) > 200 {
 			m.chatLines = m.chatLines[len(m.chatLines)-200:]
 		}
@@ -180,6 +189,28 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyPressMsg:
+		// Chat scroll — handled in both idle and input modes.
+		switch msg.String() {
+		case "pgup":
+			chatH := maxInt(1, m.chatH)
+			m.chatScrollOffset += chatH - 1
+			maxOffset := len(m.chatLines) - chatH
+			if maxOffset < 0 {
+				maxOffset = 0
+			}
+			if m.chatScrollOffset > maxOffset {
+				m.chatScrollOffset = maxOffset
+			}
+			return m, nil
+		case "pgdown":
+			chatH := maxInt(1, m.chatH)
+			m.chatScrollOffset -= chatH - 1
+			if m.chatScrollOffset < 0 {
+				m.chatScrollOffset = 0
+			}
+			return m, nil
+		}
+
 		if m.mode == modeIdle {
 			switch msg.String() {
 			case "ctrl+c":
@@ -205,6 +236,8 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			m.tabCandidates = nil
+			m.historyIdx = -1
+			m.historyDraft = ""
 			m.input.SetValue("")
 			// In-game: return to idle so keys route to the game.
 			// Lobby: stay in input mode.
@@ -219,7 +252,35 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "enter":
 			m.tabCandidates = nil
+			m.historyIdx = -1
+			m.historyDraft = ""
 			m.submitInput()
+			return m, nil
+		case "up":
+			if len(m.inputHistory) == 0 {
+				return m, nil
+			}
+			if m.historyIdx == -1 {
+				m.historyDraft = m.input.Value()
+				m.historyIdx = len(m.inputHistory) - 1
+			} else if m.historyIdx > 0 {
+				m.historyIdx--
+			}
+			m.input.SetValue(m.inputHistory[m.historyIdx])
+			m.input.CursorEnd()
+			return m, nil
+		case "down":
+			if m.historyIdx == -1 {
+				return m, nil
+			}
+			if m.historyIdx < len(m.inputHistory)-1 {
+				m.historyIdx++
+				m.input.SetValue(m.inputHistory[m.historyIdx])
+			} else {
+				m.historyIdx = -1
+				m.input.SetValue(m.historyDraft)
+			}
+			m.input.CursorEnd()
 			return m, nil
 		case "tab":
 			if strings.HasPrefix(m.input.Value(), "/") {
@@ -276,7 +337,7 @@ func (m chromeModel) View() tea.View {
 		if chatH < 1 {
 			chatH = 1
 		}
-		chatView := renderChatLines(m.chatLines, m.width, chatH)
+		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset)
 
 		var cmdBar string
 		if m.mode == modeInput {
@@ -293,9 +354,9 @@ func (m chromeModel) View() tea.View {
 
 		gameH := m.width * 9 / 16
 		chatH := m.height - 1 - gameH - 1
-		if chatH < 5 {
-			// reduce gameH to make room for chat
-			chatH = 5
+		minChatH := maxInt(5, (m.height-2)/3)
+		if chatH < minChatH {
+			chatH = minChatH
 			gameH = m.height - 1 - chatH - 1
 			if gameH < 0 {
 				gameH = 0
@@ -303,7 +364,7 @@ func (m chromeModel) View() tea.View {
 		}
 
 		gameView := fitBlock(game.View(m.playerID, m.width, gameH), m.width, gameH)
-		chatView := renderChatLines(m.chatLines, m.width, chatH)
+		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset)
 
 		var cmdBar string
 		if m.mode == modeInput {
@@ -335,6 +396,11 @@ func (m *chromeModel) syncChat() {
 	// Rebuild chat from state
 	history := m.app.state.GetChatHistory()
 	lines := make([]string, 0, len(history))
+	addLines := func(text string) {
+		for _, l := range strings.Split(text, "\n") {
+			lines = append(lines, l)
+		}
+	}
 	for _, msg := range history {
 		if msg.IsPrivate {
 			if msg.ToID != m.playerID && msg.FromID != m.playerID {
@@ -347,12 +413,17 @@ func (m *chromeModel) syncChat() {
 			if from == "" {
 				from = "admin"
 			}
-			lines = append(lines, fmt.Sprintf("[PM from %s] %s", from, msg.Text))
+			addLines(fmt.Sprintf("[PM from %s] %s", from, msg.Text))
+		} else if msg.IsReply {
+			addLines(msg.Text)
 		} else if msg.Author == "" {
-			lines = append(lines, fmt.Sprintf("[system] %s", msg.Text))
+			addLines(fmt.Sprintf("[system] %s", msg.Text))
 		} else {
-			lines = append(lines, fmt.Sprintf("<%s> %s", msg.Author, msg.Text))
+			addLines(fmt.Sprintf("<%s> %s", msg.Author, msg.Text))
 		}
+	}
+	if len(lines) > 200 {
+		lines = lines[len(lines)-200:]
 	}
 	m.chatLines = lines
 	m.chat.SetContent(strings.Join(lines, "\n"))
@@ -369,18 +440,21 @@ func (m *chromeModel) resizeViewports() {
 		if chatH < 1 {
 			chatH = 1
 		}
+		m.chatH = chatH
 		m.chat.SetWidth(m.width)
 		m.chat.SetHeight(chatH)
 	} else {
 		gameH := m.width * 9 / 16
 		chatH := m.height - 1 - gameH - 1
-		if chatH < 5 {
-			chatH = 5
+		minChatH := maxInt(5, (m.height-2)/3)
+		if chatH < minChatH {
+			chatH = minChatH
 			gameH = m.height - 1 - chatH - 1
 			if gameH < 0 {
 				gameH = 0
 			}
 		}
+		m.chatH = chatH
 		m.chat.SetWidth(m.width)
 		m.chat.SetHeight(chatH)
 	}
@@ -390,6 +464,14 @@ func (m *chromeModel) resizeViewports() {
 func (m *chromeModel) submitInput() {
 	text := strings.TrimSpace(m.input.Value())
 	m.input.SetValue("")
+	if text != "" {
+		if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != text {
+			m.inputHistory = append(m.inputHistory, text)
+			if len(m.inputHistory) > 50 {
+				m.inputHistory = m.inputHistory[1:]
+			}
+		}
+	}
 	// In-game: return to idle after submit so keys route to the game.
 	// Lobby: stay in input mode.
 	m.app.state.mu.RLock()
@@ -453,20 +535,27 @@ func currentSpinnerFrame() string {
 	return spinnerFramesChrome[frame]
 }
 
-// renderChatLines renders the last `height` lines from lines directly with
-// chatStyle, without going through a viewport. This avoids ANSI artifacts
-// caused by the viewport's own internal sequences conflicting with re-styling.
-func renderChatLines(lines []string, width, height int) string {
-	start := 0
-	if len(lines) > height {
-		start = len(lines) - height
+// renderChatLines renders `height` lines from `lines` with chatStyle, offset
+// from the bottom by `scrollOffset` lines (0 = show newest). Lines above the
+// buffer are rendered as blank rows.
+func renderChatLines(lines []string, width, height, scrollOffset int) string {
+	end := len(lines) - scrollOffset
+	if end < 0 {
+		end = 0
 	}
-	visible := lines[start:]
+	start := end - height
+	if start < 0 {
+		start = 0
+	}
+	visible := lines[start:end]
 	result := make([]string, height)
+	// visible may be shorter than height (near top of buffer); blank-pad the top
+	offset := height - len(visible)
 	for i := 0; i < height; i++ {
 		var text string
-		if i < len(visible) {
-			text = truncateStyled(visible[i], width)
+		vi := i - offset
+		if vi >= 0 && vi < len(visible) {
+			text = truncateStyled(visible[vi], width)
 		}
 		result[i] = chatStyle.Width(width).Render(text)
 	}

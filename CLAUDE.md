@@ -84,7 +84,11 @@ Players start in the **server lobby** — chat only, no game running. An admin u
 
 **Braille spinner:** the last character of every status bar row is reserved for a Braille spinner — a live indicator that the server is running. Sequence: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, advances once per second (every 10 ticks at 100ms). Status bar content must never overwrite it.
 
-**Viewport sizing:** `gameH = W * 9 / 16`. Chat gets the remaining rows (min 5). Command bar is always 1 row.
+**Viewport sizing:** Ideal `gameH = W * 9 / 16`. Chat gets the remaining rows. `minChatH = max(5, (H-2)/3)` — chat always gets at least ⅓ of content rows, so both game and chat grow proportionally on short terminals. Once `H` is large enough for ideal `gameH`, chat takes all extra rows. Command bar is always 1 row.
+
+**Chat scroll buffer:** 200 lines per player. `PgUp`/`PgDn` scroll the chat panel in both idle and input modes. Multi-line command replies (e.g. `/help`) are split into individual lines before storage.
+
+**Command history:** 50 entries per player. In input mode, `↑`/`↓` browse history. `↓` past the newest entry restores the draft that was in the input box when browsing started. History does not rotate.
 
 ### Key Packages
 
