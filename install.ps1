@@ -27,21 +27,27 @@ foreach ($f in $files) {
 
 New-Item -ItemType Directory -Force -Path (Join-Path $dest "logs") | Out-Null
 
-# Create desktop shortcut
+# Create desktop shortcuts
 $desktop  = [Environment]::GetFolderPath("Desktop")
-$lnkPath  = Join-Path $desktop "NullSpace.lnk"
 $startPs1 = Join-Path $dest "start.ps1"
-
 $shell    = New-Object -ComObject WScript.Shell
-$shortcut = $shell.CreateShortcut($lnkPath)
-$shortcut.TargetPath       = "powershell.exe"
-$shortcut.Arguments        = "-ExecutionPolicy Bypass -File `"$startPs1`""
-$shortcut.WorkingDirectory = $dest
-$shortcut.Description      = "Start the null-space server"
-$shortcut.Save()
+
+$public = $shell.CreateShortcut((Join-Path $desktop "NullSpace (public).lnk"))
+$public.TargetPath       = "powershell.exe"
+$public.Arguments        = "-ExecutionPolicy Bypass -File `"$startPs1`""
+$public.WorkingDirectory = $dest
+$public.Description      = "Start the null-space server (online multiplayer)"
+$public.Save()
+
+$private = $shell.CreateShortcut((Join-Path $desktop "NullSpace (private).lnk"))
+$private.TargetPath       = "powershell.exe"
+$private.Arguments        = "-ExecutionPolicy Bypass -File `"$startPs1`" --local"
+$private.WorkingDirectory = $dest
+$private.Description      = "Start null-space in local single-player mode"
+$private.Save()
 
 Write-Host ""
-Write-Host "Done. Desktop shortcut created: NullSpace"
+Write-Host "Done. Desktop shortcuts created: NullSpace (public), NullSpace (private)"
 Write-Host ""
 Write-Host "Double-click the shortcut, or run manually:"
 Write-Host ""
