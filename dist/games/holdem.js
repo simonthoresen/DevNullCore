@@ -196,6 +196,11 @@ var SMALL_BLIND = 10;
 var BIG_BLIND = 20;
 var BLIND_INCREASE_HANDS = 10;
 var ACTION_TIMEOUT = 300; // ticks (30 seconds)
+var MIN_PLAYERS = 5;
+var AI_THINK_MIN = 10;  // ticks (1s)
+var AI_THINK_MAX = 30;  // ticks (3s)
+var AI_NAMES = ["Ace", "Bluff", "Cash", "Dice", "Edge", "Flint", "Grit", "Hawk", "Iron", "Jinx"];
+var AI_PREFIX = "ai_";
 
 var state = {
     players: {},     // id -> { name, chips, hand, folded, bet, allIn, seatIndex, bustedOut }
@@ -639,18 +644,31 @@ function tick() {
 
     if (state.phase === "waiting") return;
 
-    // Action timer
-    if (state.actionOn >= 0 && state.actionTimer > 0) {
-        state.actionTimer--;
-        if (state.actionTimer <= 0) {
-            // Auto-fold on timeout
-            var id = state.seatOrder[state.actionOn];
-            if (id && state.players[id]) {
-                var p = state.players[id];
-                if (p.bet >= state.currentBet) {
-                    doCheck(id);
-                } else {
-                    doFold(id);
+    // Action timer & AI logic
+    if (state.actionOn >= 0 && state.actionOn < state.seatOrder.length) {
+        var id = state.seatOrder[state.actionOn];
+        var ap = id ? state.players[id] : null;
+
+        if (ap && isAI(id) && !ap.folded && !ap.allIn) {
+            // AI player: use think timer
+            if (!ap.aiThinkTimer) {
+                ap.aiThinkTimer = AI_THINK_MIN + Math.floor(Math.random() * (AI_THINK_MAX - AI_THINK_MIN));
+            }
+            ap.aiThinkTimer--;
+            if (ap.aiThinkTimer <= 0) {
+                ap.aiThinkTimer = 0;
+                aiDecide(id);
+            }
+        } else if (state.actionTimer > 0) {
+            state.actionTimer--;
+            if (state.actionTimer <= 0) {
+                // Auto-fold on timeout (human players only)
+                if (ap) {
+                    if (ap.bet >= state.currentBet) {
+                        doCheck(id);
+                    } else {
+                        doFold(id);
+                    }
                 }
             }
         }
@@ -780,7 +798,8 @@ function renderTable(playerID, width, height) {
             if (isAction && state.phase !== "waiting" && state.phase !== "showdown" && state.phase !== "between") {
                 nameStr += BOLD + WHT + "\u25b6 " + RST;
             }
-            nameStr += (isMe ? CYN + BOLD : WHT) + p.name + RST;
+            var displayName = p.name + (p.isAI ? DIM + " bot" + RST : "");
+            nameStr += (isMe ? CYN + BOLD : WHT) + displayName + RST;
             if (p.bustedOut) nameStr = DIM + "\u2620 " + p.name + RST;
             if (p.folded && !p.bustedOut) nameStr = DIM + p.name + " (fold)" + RST;
 
@@ -898,6 +917,150 @@ function getSeatLayout(count, width, height, tableTop, tableH) {
 }
 
 // ============================================================
+// AI Players
+// ============================================================
+function isAI(playerID) {
+    return playerID.indexOf(AI_PREFIX) === 0;
+}
+
+function addAIPlayer() {
+    // Pick an unused AI name
+    var usedNames = {};
+    for (var i = 0; i < state.seatOrder.length; i++) {
+        var p = state.players[state.seatOrder[i]];
+        if (p) usedNames[p.name] = true;
+    }
+    var name = null;
+    for (var n = 0; n < AI_NAMES.length; n++) {
+        if (!usedNames[AI_NAMES[n]]) { name = AI_NAMES[n]; break; }
+    }
+    if (!name) name = "Bot" + Math.floor(Math.random() * 1000);
+    var id = AI_PREFIX + name.toLowerCase();
+    state.players[id] = {
+        name: name,
+        chips: STARTING_CHIPS,
+        hand: [],
+        folded: false,
+        bet: 0,
+        roundBet: 0,
+        allIn: false,
+        seatIndex: state.seatOrder.length,
+        bustedOut: false,
+        isAI: true,
+        aiThinkTimer: 0
+    };
+    state.seatOrder.push(id);
+    chat(name + " (bot) sits down");
+}
+
+function fillAIPlayers() {
+    var active = activePlayers();
+    while (active.length < MIN_PLAYERS) {
+        addAIPlayer();
+        active = activePlayers();
+    }
+}
+
+function humanCount() {
+    var count = 0;
+    for (var i = 0; i < state.seatOrder.length; i++) {
+        var p = state.players[state.seatOrder[i]];
+        if (p && !p.bustedOut && !isAI(state.seatOrder[i])) count++;
+    }
+    return count;
+}
+
+// AI hand strength: simple heuristic (0.0 - 1.0)
+function aiHandStrength(playerID) {
+    var p = state.players[playerID];
+    if (!p || p.hand.length < 2) return 0.3;
+
+    var c1 = RANK_VAL[p.hand[0].rank];
+    var c2 = RANK_VAL[p.hand[1].rank];
+    var hi = Math.max(c1, c2);
+    var lo = Math.min(c1, c2);
+    var suited = p.hand[0].suit === p.hand[1].suit;
+    var pair = c1 === c2;
+
+    // Base strength from card ranks (0-1 scale)
+    var strength = (hi + lo - 4) / 24; // normalized: worst=0, best=1
+
+    if (pair) strength += 0.25 + (hi - 2) * 0.02;
+    if (suited) strength += 0.06;
+    if (hi - lo <= 4 && !pair) strength += 0.04; // connected
+    if (hi >= 12) strength += 0.08; // face cards
+
+    // Post-flop: use actual hand evaluation
+    if (state.community.length >= 3) {
+        var allCards = p.hand.concat(state.community);
+        var eval_ = evaluateHand(allCards);
+        // rank 0-9, normalize
+        strength = 0.2 + eval_.rank * 0.09;
+        if (eval_.rank >= 2) strength += 0.1; // two pair+
+        if (eval_.rank >= 4) strength += 0.15; // straight+
+    }
+
+    return Math.min(1.0, Math.max(0.0, strength));
+}
+
+function aiDecide(playerID) {
+    var p = state.players[playerID];
+    if (!p || p.folded || p.allIn) return;
+
+    var toCall = state.currentBet - p.bet;
+    var strength = aiHandStrength(playerID);
+    var potOdds = toCall > 0 ? toCall / (state.pot + toCall) : 0;
+    var rand = Math.random();
+
+    // Add some personality variance per AI
+    var aggression = ((playerID.charCodeAt(playerID.length - 1) % 5) - 2) * 0.05;
+    strength += aggression;
+
+    if (toCall === 0) {
+        // Can check or raise
+        if (strength > 0.65 && rand < 0.5) {
+            // Raise with good hands
+            var raiseAmt = Math.max(state.minRaise, Math.floor(state.pot * (0.3 + strength * 0.5)));
+            raiseAmt = Math.min(raiseAmt, p.chips);
+            raiseAmt = Math.max(raiseAmt, state.minRaise);
+            if (strength > 0.85 && rand < 0.15) {
+                doAllIn(playerID);
+            } else {
+                doRaise(playerID, raiseAmt);
+            }
+        } else {
+            doCheck(playerID);
+        }
+    } else {
+        // Must call, raise, or fold
+        var callRatio = toCall / p.chips;
+
+        if (strength > 0.8 && rand < 0.3) {
+            // Strong hand: raise or all-in
+            if (strength > 0.9 && rand < 0.1) {
+                doAllIn(playerID);
+            } else {
+                var raiseAmt2 = Math.max(state.minRaise, Math.floor(state.pot * 0.5));
+                raiseAmt2 = Math.min(raiseAmt2, p.chips - toCall);
+                if (raiseAmt2 >= state.minRaise) {
+                    doRaise(playerID, raiseAmt2);
+                } else {
+                    doCall(playerID);
+                }
+            }
+        } else if (strength > potOdds + 0.1 || (callRatio < 0.1 && strength > 0.25)) {
+            // Decent odds or cheap call
+            doCall(playerID);
+        } else if (strength > 0.4 && rand < 0.3) {
+            // Marginal hand, sometimes call anyway
+            doCall(playerID);
+        } else {
+            doFold(playerID);
+        }
+    }
+}
+
+// ============================================================
 // Game object
 // ============================================================
 var Game = {
@@ -916,10 +1079,15 @@ var Game = {
             roundBet: 0,
             allIn: false,
             seatIndex: state.seatOrder.length,
-            bustedOut: false
+            bustedOut: false,
+            isAI: false,
+            aiThinkTimer: 0
         };
         state.seatOrder.push(playerID);
         chat(playerName + " sits down ($" + STARTING_CHIPS + ")");
+
+        // Fill with AI players to reach MIN_PLAYERS
+        fillAIPlayers();
 
         // Auto-start when we have 2+ players and waiting
         if (state.phase === "waiting" && activePlayers().length >= 2) {
@@ -1087,6 +1255,7 @@ registerCommand({
             }
         }
         chat("New tournament started! All players reset to $" + STARTING_CHIPS);
+        fillAIPlayers();
         if (activePlayers().length >= 2) startHand();
     }
 });

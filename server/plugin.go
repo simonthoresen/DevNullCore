@@ -92,16 +92,31 @@ func (p *jsPlugin) registerGlobals() {
 		return result
 	})
 
-	p.vm.Set("registerCommand", func(spec map[string]interface{}) {
-		name, _ := spec["name"].(string)
-		desc, _ := spec["description"].(string)
-		adminOnly, _ := spec["adminOnly"].(bool)
-		firstArgIsPlayer, _ := spec["firstArgIsPlayer"].(bool)
-		handler, _ := spec["handler"].(goja.Callable)
+	p.vm.Set("registerCommand", func(call goja.FunctionCall) goja.Value {
+		specVal := call.Argument(0)
+		specObj := specVal.ToObject(p.vm)
+
+		name := ""
+		if v := specObj.Get("name"); v != nil {
+			name = v.String()
+		}
+		desc := ""
+		if v := specObj.Get("description"); v != nil {
+			desc = v.String()
+		}
+		adminOnly := false
+		if v := specObj.Get("adminOnly"); v != nil && !goja.IsUndefined(v) {
+			adminOnly = v.ToBoolean()
+		}
+		firstArgIsPlayer := false
+		if v := specObj.Get("firstArgIsPlayer"); v != nil && !goja.IsUndefined(v) {
+			firstArgIsPlayer = v.ToBoolean()
+		}
+		handler, _ := goja.AssertFunction(specObj.Get("handler"))
 
 		if name == "" || handler == nil {
 			slog.Warn("plugin registerCommand: name and handler are required")
-			return
+			return goja.Undefined()
 		}
 
 		cmd := common.Command{
@@ -129,6 +144,7 @@ func (p *jsPlugin) registerGlobals() {
 			},
 		}
 		p.commands = append(p.commands, cmd)
+		return goja.Undefined()
 	})
 }
 
