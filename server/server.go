@@ -23,6 +23,8 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/ssh"
 
+	"github.com/dop251/goja"
+
 	"null-space/common"
 )
 
@@ -857,45 +859,24 @@ func (a *Server) registerBuiltins(address string) {
 			return nil
 		},
 		Handler: func(ctx common.CommandContext, args []string) {
+			gamesDir := filepath.Join(a.dataDir, "games")
 			if len(args) == 0 {
-				available := listDir(filepath.Join(a.dataDir, "games"), ".js")
+				available := listDir(gamesDir, ".js")
 				if len(available) == 0 {
 					ctx.Reply("No games found in games/")
 					return
 				}
-				a.state.mu.RLock()
-				active := a.state.GameName
-				a.state.mu.RUnlock()
-				var lines []string
-				for _, name := range available {
-					line := "  " + name
-					if strings.HasSuffix(active, name+".js") {
-						line += "  [active]"
-					}
-					lines = append(lines, line)
-				}
-				ctx.Reply("Available games:\n" + strings.Join(lines, "\n"))
+				ctx.Reply(a.formatGameList(gamesDir, available))
 				return
 			}
 			switch args[0] {
 			case "list":
-				available := listDir(filepath.Join(a.dataDir, "games"), ".js")
+				available := listDir(gamesDir, ".js")
 				if len(available) == 0 {
 					ctx.Reply("No games found in games/")
 					return
 				}
-				a.state.mu.RLock()
-				active := a.state.GameName
-				a.state.mu.RUnlock()
-				var lines []string
-				for _, name := range available {
-					line := "  " + name
-					if strings.HasSuffix(active, name+".js") {
-						line += "  [active]"
-					}
-					lines = append(lines, line)
-				}
-				ctx.Reply("Available games:\n" + strings.Join(lines, "\n"))
+				ctx.Reply(a.formatGameList(gamesDir, available))
 			case "load":
 				if !ctx.IsAdmin {
 					ctx.Reply("Permission denied (admin only)")
@@ -1124,6 +1105,102 @@ func (a *Server) MakeCommandContext(playerID string) common.CommandContext {
 			a.serverLog(text)
 		},
 	}
+}
+
+// probeGameTeamRange reads a game JS file and extracts the Game.teamRange property
+// without fully initializing the runtime. Returns zero TeamRange if not defined.
+func probeGameTeamRange(path string) common.TeamRange {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return common.TeamRange{}
+	}
+	vm := goja.New()
+	_, err = vm.RunScript(path, string(src))
+	if err != nil {
+		return common.TeamRange{}
+	}
+	gameVal := vm.Get("Game")
+	if gameVal == nil || goja.IsUndefined(gameVal) || goja.IsNull(gameVal) {
+		return common.TeamRange{}
+	}
+	gameObj := gameVal.ToObject(vm)
+	if gameObj == nil {
+		return common.TeamRange{}
+	}
+	v := gameObj.Get("teamRange")
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return common.TeamRange{}
+	}
+	obj := v.ToObject(vm)
+	if obj == nil {
+		return common.TeamRange{}
+	}
+	var tr common.TeamRange
+	if mv := obj.Get("min"); mv != nil && !goja.IsUndefined(mv) {
+		tr.Min = int(mv.ToInteger())
+	}
+	if mv := obj.Get("max"); mv != nil && !goja.IsUndefined(mv) {
+		tr.Max = int(mv.ToInteger())
+	}
+	return tr
+}
+
+// formatGameList builds the game list output with team range info and compatibility markers.
+func (a *Server) formatGameList(gamesDir string, available []string) string {
+	a.state.mu.RLock()
+	active := a.state.GameName
+	a.state.mu.RUnlock()
+
+	teamCount := a.state.TeamCount()
+
+	var lines []string
+	for _, name := range available {
+		path := filepath.Join(gamesDir, name+".js")
+		tr := probeGameTeamRange(path)
+
+		// Compatibility check.
+		compatible := true
+		if tr.Min > 0 && teamCount < tr.Min {
+			compatible = false
+		}
+		if tr.Max > 0 && teamCount > tr.Max {
+			compatible = false
+		}
+
+		// Build the line.
+		marker := "  "
+		if tr.Min > 0 || tr.Max > 0 {
+			if compatible {
+				marker = "+ "
+			} else {
+				marker = "- "
+			}
+		}
+
+		line := marker + name
+
+		// Team range label.
+		if tr.Min > 0 && tr.Max > 0 {
+			if tr.Min == tr.Max {
+				line += fmt.Sprintf("  [%d teams]", tr.Min)
+			} else {
+				line += fmt.Sprintf("  [%d-%d teams]", tr.Min, tr.Max)
+			}
+		} else if tr.Min > 0 {
+			line += fmt.Sprintf("  [%d+ teams]", tr.Min)
+		} else if tr.Max > 0 {
+			line += fmt.Sprintf("  [up to %d teams]", tr.Max)
+		}
+
+		if name == active {
+			line += "  [active]"
+		}
+
+		lines = append(lines, line)
+	}
+
+	header := fmt.Sprintf("Available games (%d teams configured):", teamCount)
+	return header + "\n" + strings.Join(lines, "\n")
 }
 
 // listDir returns the name (without extension) of every file in dir that ends
