@@ -729,8 +729,16 @@ func (a *Server) registerBuiltins(address string) {
 			}
 			return
 		}
-		// SSH player: disconnect their session
-		a.kickPlayer(ctx.PlayerID)
+		// Try to close the SSH session; if there is none (local mode),
+		// quit the player's Bubble Tea program directly.
+		if err := a.kickPlayer(ctx.PlayerID); err != nil {
+			a.programsMu.Lock()
+			p := a.programs[ctx.PlayerID]
+			a.programsMu.Unlock()
+			if p != nil {
+				p.Quit()
+			}
+		}
 	}
 
 	a.registry.Register(common.Command{
