@@ -137,6 +137,16 @@ func main() {
 		program.Send(tea.QuitMsg{})
 	}()
 
+	// Force-exit on second Ctrl+C (safety valve if Bubble Tea is stuck)
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		<-sigCh // first signal handled by NotifyContext above
+		<-sigCh // second signal = force exit
+		fmt.Fprintf(os.Stderr, "\nForce exit (second interrupt)\n")
+		os.Exit(1)
+	}()
+
 	finishBootStep("DONE")
 	go app.LogInviteCommand()
 	if _, err := program.Run(); err != nil {

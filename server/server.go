@@ -343,6 +343,7 @@ func (a *Server) broadcastMsg(msg tea.Msg) {
 }
 
 func (a *Server) broadcastChat(msg common.Message) {
+	start := time.Now()
 	// run through plugin pipeline before committing
 	current := &msg
 	plugins, _ := a.state.GetPlugins()
@@ -362,6 +363,9 @@ func (a *Server) broadcastChat(msg common.Message) {
 	}
 
 	a.broadcastMsg(common.ChatMsg{Msg: msg})
+	if dur := time.Since(start); dur > 100*time.Millisecond {
+		slog.Warn("broadcastChat slow", "duration", dur, "text", msg.Text)
+	}
 }
 
 func (a *Server) sendToPlayer(playerID string, msg tea.Msg) {

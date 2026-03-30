@@ -180,6 +180,9 @@ func (p *jsPlugin) OnChatMessage(msg *common.Message) *common.Message {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	defer p.recoverJS("OnChatMessage")
+	defer traceJS(p.vm, "plugin.OnChatMessage")()
+	cancel := watchdogJS(p.vm, "plugin.OnChatMessage")
+	defer cancel()
 
 	jsMsg := p.vm.NewObject()
 	_ = jsMsg.Set("author", msg.Author)

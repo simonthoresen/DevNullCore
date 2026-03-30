@@ -5,11 +5,45 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/dop251/goja"
 
 	"null-space/common"
 )
+
+// jsCallTimeout is how long a JS method can run before being interrupted.
+const jsCallTimeout = 2 * time.Second
+
+// traceJS logs entry/exit of a JS method. Returns a function to call on exit.
+func traceJS(_ *goja.Runtime, method string) func() {
+	start := time.Now()
+	slog.Debug("JS enter", "method", method)
+	return func() {
+		dur := time.Since(start)
+		if dur > 100*time.Millisecond {
+			slog.Warn("JS slow call", "method", method, "duration", dur)
+		} else {
+			slog.Debug("JS exit", "method", method, "duration", dur)
+		}
+	}
+}
+
+// watchdogJS starts a goroutine that interrupts the VM after timeout.
+// Call the returned cancel func when the JS call completes.
+func watchdogJS(vm *goja.Runtime, method string) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+			return
+		case <-time.After(jsCallTimeout):
+			slog.Error("JS call timed out, interrupting VM", "method", method, "timeout", jsCallTimeout)
+			vm.Interrupt("timeout: " + method)
+		}
+	}()
+	return func() { close(done) }
+}
 
 // jsRuntime wraps a goja JS runtime and implements common.Game.
 type jsRuntime struct {
@@ -179,6 +213,9 @@ func (r *jsRuntime) OnPlayerJoin(playerID, playerName string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("OnPlayerJoin")
+	defer traceJS(r.vm, "OnPlayerJoin")()
+	cancel := watchdogJS(r.vm, "OnPlayerJoin")
+	defer cancel()
 	_, _ = r.onPlayerJoin(goja.Undefined(), r.vm.ToValue(playerID), r.vm.ToValue(playerName))
 }
 
@@ -189,6 +226,9 @@ func (r *jsRuntime) OnPlayerLeave(playerID string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("OnPlayerLeave")
+	defer traceJS(r.vm, "OnPlayerLeave")()
+	cancel := watchdogJS(r.vm, "OnPlayerLeave")
+	defer cancel()
 	_, _ = r.onPlayerLeave(goja.Undefined(), r.vm.ToValue(playerID))
 }
 
@@ -199,6 +239,9 @@ func (r *jsRuntime) OnInput(playerID, key string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("OnInput")
+	defer traceJS(r.vm, "OnInput")()
+	cancel := watchdogJS(r.vm, "OnInput")
+	defer cancel()
 	_, _ = r.onInput(goja.Undefined(), r.vm.ToValue(playerID), r.vm.ToValue(key))
 }
 
@@ -209,6 +252,9 @@ func (r *jsRuntime) View(playerID string, width, height int) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("View")
+	defer traceJS(r.vm, "View")()
+	cancel := watchdogJS(r.vm, "View")
+	defer cancel()
 	val, err := r.viewFn(goja.Undefined(), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(height))
 	if err != nil {
 		slog.Error("JS View error", "error", err)
@@ -224,6 +270,9 @@ func (r *jsRuntime) StatusBar(playerID string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("StatusBar")
+	defer traceJS(r.vm, "StatusBar")()
+	cancel := watchdogJS(r.vm, "StatusBar")
+	defer cancel()
 	val, err := r.statusBarFn(goja.Undefined(), r.vm.ToValue(playerID))
 	if err != nil {
 		slog.Error("JS StatusBar error", "error", err)
@@ -239,6 +288,9 @@ func (r *jsRuntime) CommandBar(playerID string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("CommandBar")
+	defer traceJS(r.vm, "CommandBar")()
+	cancel := watchdogJS(r.vm, "CommandBar")
+	defer cancel()
 	val, err := r.commandBarFn(goja.Undefined(), r.vm.ToValue(playerID))
 	if err != nil {
 		slog.Error("JS CommandBar error", "error", err)
