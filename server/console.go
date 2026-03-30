@@ -32,6 +32,10 @@ type consoleModel struct {
 
 	logLines  []string
 	chatLines []string
+
+	tabPrefix     string
+	tabCandidates []string
+	tabIndex      int
 }
 
 func NewConsoleModel(app *App, cancel context.CancelFunc) *consoleModel {
@@ -127,21 +131,28 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case "enter":
+			m.tabCandidates = nil
 			m.submitInput()
 			return m, nil
 		case "esc":
+			m.tabCandidates = nil
 			m.input.SetValue("")
 			return m, nil
 		case "tab":
 			if strings.HasPrefix(m.input.Value(), "/") {
-				completed, changed := m.app.registry.TabComplete(m.input.Value(), m.app.state.PlayerNames())
-				if changed {
-					m.input.SetValue(completed)
+				if m.tabCandidates == nil {
+					m.tabPrefix, m.tabCandidates = m.app.registry.TabCandidates(m.input.Value(), m.app.state.PlayerNames())
+					m.tabIndex = 0
+				}
+				if len(m.tabCandidates) > 0 {
+					m.input.SetValue(m.tabPrefix + m.tabCandidates[m.tabIndex])
 					m.input.CursorEnd()
+					m.tabIndex = (m.tabIndex + 1) % len(m.tabCandidates)
 				}
 			}
 			return m, nil
 		default:
+			m.tabCandidates = nil
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd

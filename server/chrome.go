@@ -38,6 +38,10 @@ type chromeModel struct {
 	input textinput.Model
 
 	chatLines []string // buffered chat lines visible to this player
+
+	tabPrefix     string
+	tabCandidates []string
+	tabIndex      int
 }
 
 func newChromeModel(app *App, playerID string) chromeModel {
@@ -141,23 +145,30 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// modeInput
 		switch msg.String() {
 		case "esc":
+			m.tabCandidates = nil
 			m.mode = modeIdle
 			m.input.Blur()
 			m.input.SetValue("")
 			return m, nil
 		case "enter":
+			m.tabCandidates = nil
 			m.submitInput()
 			return m, nil
 		case "tab":
 			if strings.HasPrefix(m.input.Value(), "/") {
-				completed, changed := m.app.registry.TabComplete(m.input.Value(), m.app.state.PlayerNames())
-				if changed {
-					m.input.SetValue(completed)
+				if m.tabCandidates == nil {
+					m.tabPrefix, m.tabCandidates = m.app.registry.TabCandidates(m.input.Value(), m.app.state.PlayerNames())
+					m.tabIndex = 0
+				}
+				if len(m.tabCandidates) > 0 {
+					m.input.SetValue(m.tabPrefix + m.tabCandidates[m.tabIndex])
 					m.input.CursorEnd()
+					m.tabIndex = (m.tabIndex + 1) % len(m.tabCandidates)
 				}
 			}
 			return m, nil
 		default:
+			m.tabCandidates = nil
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd
