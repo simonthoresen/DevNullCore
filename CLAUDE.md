@@ -131,6 +131,7 @@ type Plugin interface {
     OnPlayerJoin(playerID, playerName string)
     OnPlayerLeave(playerID string)
     Commands() []Command
+    Skin() *SkinColors  // returns nil if plugin doesn't provide a skin
     Unload()
 }
 ```
@@ -174,6 +175,8 @@ Both are single `.js` files in `dist/games/` or `dist/plugins/`. Loaded at runti
 **Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`. Multiple active simultaneously; persistent across game switches.
 
 The chat pipeline runs all active plugin `onChatMessage` hooks (in load order) before committing a message to history. Return `null` to drop.
+
+**Skin plugins:** A JS plugin can set `Plugin.skin = { statusBg, statusFg, chatBg, chatFg, cmdBg, cmdFg, inputBg, inputFg }` to override framework chrome colors. The first loaded plugin with a non-null skin wins. Colors are CSS hex strings. Any omitted field uses the framework default. Bundled skins: `skin-dracula`, `skin-matrix`, `skin-nord`.
 
 **Full developer documentation:** see `API-REFERENCE.md` at the repo root.
 

@@ -24,6 +24,8 @@ type jsPlugin struct {
 	onChatMessageFn goja.Callable
 	onPlayerJoinFn  goja.Callable
 	onPlayerLeaveFn goja.Callable
+
+	skin *common.SkinColors // nil if Plugin.skin is not defined
 }
 
 // LoadPlugin loads and executes a JS file from plugins/, extracts the Plugin
@@ -142,7 +144,31 @@ func (p *jsPlugin) extractPluginObject() error {
 	p.onChatMessageFn = extractCallable(obj, "onChatMessage")
 	p.onPlayerJoinFn = extractCallable(obj, "onPlayerJoin")
 	p.onPlayerLeaveFn = extractCallable(obj, "onPlayerLeave")
+
+	if skinVal := obj.Get("skin"); skinVal != nil && !goja.IsUndefined(skinVal) && !goja.IsNull(skinVal) {
+		if skinObj := skinVal.ToObject(p.vm); skinObj != nil {
+			p.skin = &common.SkinColors{
+				StatusBg: jsObjString(skinObj, "statusBg"),
+				StatusFg: jsObjString(skinObj, "statusFg"),
+				ChatBg:   jsObjString(skinObj, "chatBg"),
+				ChatFg:   jsObjString(skinObj, "chatFg"),
+				CmdBg:    jsObjString(skinObj, "cmdBg"),
+				CmdFg:    jsObjString(skinObj, "cmdFg"),
+				InputBg:  jsObjString(skinObj, "inputBg"),
+				InputFg:  jsObjString(skinObj, "inputFg"),
+			}
+		}
+	}
+
 	return nil
+}
+
+func jsObjString(obj *goja.Object, key string) string {
+	v := obj.Get(key)
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
+		return ""
+	}
+	return v.String()
 }
 
 // --- common.Plugin implementation ---
@@ -212,6 +238,12 @@ func (p *jsPlugin) Commands() []common.Command {
 	result := make([]common.Command, len(p.commands))
 	copy(result, p.commands)
 	return result
+}
+
+func (p *jsPlugin) Skin() *common.SkinColors {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.skin
 }
 
 func (p *jsPlugin) Unload() {

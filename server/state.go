@@ -60,6 +60,21 @@ func (s *CentralState) AddChat(msg common.Message) {
 	}
 }
 
+// ActiveSkin returns the SkinColors from the first loaded plugin that defines one,
+// or nil if no active plugin provides a skin.
+func (s *CentralState) ActiveSkin() *common.SkinColors {
+	s.mu.RLock()
+	plugins := make([]common.Plugin, len(s.Plugins))
+	copy(plugins, s.Plugins)
+	s.mu.RUnlock()
+	for _, p := range plugins {
+		if skin := p.Skin(); skin != nil {
+			return skin
+		}
+	}
+	return nil
+}
+
 func (s *CentralState) GetChatHistory() []common.Message {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

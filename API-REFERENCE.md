@@ -169,7 +169,22 @@ var Plugin = {
     onPlayerJoin: function(playerID, playerName) {},
 
     // Called when a player disconnects.
-    onPlayerLeave: function(playerID) {}
+    onPlayerLeave: function(playerID) {},
+
+    // Optional skin: overrides the framework chrome colors for all connected clients.
+    // Only the first loaded plugin that defines a skin is used.
+    // Omit any field (or the entire skin property) to keep the framework default for that slot.
+    // Colors are CSS hex strings (e.g. "#ff79c6") or standard terminal color names.
+    skin: {
+        statusBg: "#5e81ac", // status bar background
+        statusFg: "#eceff4", // status bar foreground
+        chatBg:   "#2e3440", // chat area background
+        chatFg:   "#d8dee9", // chat area foreground
+        cmdBg:    "#3b4252", // command bar background (idle hint mode)
+        cmdFg:    "#4c566a", // command bar foreground (idle hint mode)
+        inputBg:  "#3b4252", // input box background (while typing)
+        inputFg:  "#eceff4"  // input box foreground (while typing)
+    }
 };
 ```
 

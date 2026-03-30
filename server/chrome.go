@@ -15,15 +15,67 @@ import (
 	"null-space/common"
 )
 
+// Default framework chrome colors.
 var (
-	titleBg = lipgloss.Color("#D8C7A0")
-	titleFg = lipgloss.Color("#4A2D18")
-	cmdBg   = lipgloss.Color("#B8AA88") // dimmer variant of titleBg
+	defaultStatusBg = lipgloss.Color("#D8C7A0")
+	defaultStatusFg = lipgloss.Color("#4A2D18")
+	defaultCmdBg    = lipgloss.Color("#B8AA88")
+	defaultChatBg   = lipgloss.Color("#EADFC7")
+	defaultChatFg   = lipgloss.Color("#2C1810")
 
-	statusBarStyle = lipgloss.NewStyle().Background(titleBg).Foreground(titleFg).Bold(true)
-	chatStyle      = lipgloss.NewStyle().Background(lipgloss.Color("#EADFC7")).Foreground(lipgloss.Color("#2C1810"))
-	cmdIdleStyle = lipgloss.NewStyle().Background(cmdBg).Foreground(titleFg)
+	// Used by setInputStyle call sites that run before View() (newChromeModel).
+	titleBg = defaultStatusBg
+	titleFg = defaultStatusFg
+	cmdBg   = defaultCmdBg
 )
+
+type chromeColors struct {
+	statusBg, statusFg color.Color
+	chatBg, chatFg     color.Color
+	cmdBg, cmdFg       color.Color
+	inputBg, inputFg   color.Color
+}
+
+func resolveColors(skin *common.SkinColors) chromeColors {
+	c := chromeColors{
+		statusBg: defaultStatusBg,
+		statusFg: defaultStatusFg,
+		chatBg:   defaultChatBg,
+		chatFg:   defaultChatFg,
+		cmdBg:    defaultCmdBg,
+		cmdFg:    defaultStatusFg,
+		inputBg:  defaultStatusBg,
+		inputFg:  defaultStatusFg,
+	}
+	if skin == nil {
+		return c
+	}
+	if skin.StatusBg != "" {
+		c.statusBg = lipgloss.Color(skin.StatusBg)
+	}
+	if skin.StatusFg != "" {
+		c.statusFg = lipgloss.Color(skin.StatusFg)
+	}
+	if skin.ChatBg != "" {
+		c.chatBg = lipgloss.Color(skin.ChatBg)
+	}
+	if skin.ChatFg != "" {
+		c.chatFg = lipgloss.Color(skin.ChatFg)
+	}
+	if skin.CmdBg != "" {
+		c.cmdBg = lipgloss.Color(skin.CmdBg)
+	}
+	if skin.CmdFg != "" {
+		c.cmdFg = lipgloss.Color(skin.CmdFg)
+	}
+	if skin.InputBg != "" {
+		c.inputBg = lipgloss.Color(skin.InputBg)
+	}
+	if skin.InputFg != "" {
+		c.inputFg = lipgloss.Color(skin.InputFg)
+	}
+	return c
+}
 
 // setInputStyle applies matching background/foreground to all textinput sub-styles
 // and switches to the real terminal cursor (not the virtual cursor).
@@ -327,30 +379,42 @@ func (m chromeModel) View() tea.View {
 	spinChar := string(m.app.state.SpinnerChar())
 	m.app.state.mu.RUnlock()
 
+	col := resolveColors(m.app.state.ActiveSkin())
+	sbStyle := lipgloss.NewStyle().Background(col.statusBg).Foreground(col.statusFg).Bold(true)
+	chStyle := lipgloss.NewStyle().Background(col.chatBg).Foreground(col.chatFg)
+	ciStyle := lipgloss.NewStyle().Background(col.cmdBg).Foreground(col.cmdFg)
+
+	// Apply current skin to the input box (m is a value copy in View, safe to mutate).
+	if m.mode == modeInput {
+		setInputStyle(&m.input, col.inputBg, col.inputFg)
+	} else {
+		setInputStyle(&m.input, col.cmdBg, col.cmdFg)
+	}
+
 	var content string
 	if game == nil {
 		// Lobby layout
 		statusText := fmt.Sprintf("null-space | %d players | uptime %s", m.app.state.PlayerCount(), m.app.uptime())
-		statusBar := statusBarStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+		statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
 
 		chatH := m.height - 2
 		if chatH < 1 {
 			chatH = 1
 		}
-		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset)
+		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
 
 		var cmdBar string
 		if m.mode == modeInput {
 			cmdBar = truncateStyled(m.input.View(), m.width)
 		} else {
-			cmdBar = cmdIdleStyle.Width(m.width).Render("[Enter] to chat  /help for commands")
+			cmdBar = ciStyle.Width(m.width).Render("[Enter] to chat  /help for commands")
 		}
 
 		content = lipgloss.JoinVertical(lipgloss.Left, statusBar, chatView, cmdBar)
 	} else {
 		// In-game layout
 		statusText := game.StatusBar(m.playerID)
-		statusBar := statusBarStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+		statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
 
 		gameH := m.width * 9 / 16
 		chatH := m.height - 1 - gameH - 1
@@ -364,7 +428,7 @@ func (m chromeModel) View() tea.View {
 		}
 
 		gameView := fitBlock(game.View(m.playerID, m.width, gameH), m.width, gameH)
-		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset)
+		chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
 
 		var cmdBar string
 		if m.mode == modeInput {
@@ -374,7 +438,7 @@ func (m chromeModel) View() tea.View {
 			if idleText == "" {
 				idleText = fmt.Sprintf("[Enter] to chat  | game: %s", gameName)
 			}
-			cmdBar = cmdIdleStyle.Width(m.width).Render(idleText)
+			cmdBar = ciStyle.Width(m.width).Render(idleText)
 		}
 
 		content = lipgloss.JoinVertical(lipgloss.Left, statusBar, gameView, chatView, cmdBar)
@@ -535,10 +599,10 @@ func currentSpinnerFrame() string {
 	return spinnerFramesChrome[frame]
 }
 
-// renderChatLines renders `height` lines from `lines` with chatStyle, offset
+// renderChatLines renders `height` lines from `lines` with the given style, offset
 // from the bottom by `scrollOffset` lines (0 = show newest). Lines above the
 // buffer are rendered as blank rows.
-func renderChatLines(lines []string, width, height, scrollOffset int) string {
+func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style) string {
 	end := len(lines) - scrollOffset
 	if end < 0 {
 		end = 0
@@ -557,7 +621,7 @@ func renderChatLines(lines []string, width, height, scrollOffset int) string {
 		if vi >= 0 && vi < len(visible) {
 			text = truncateStyled(visible[vi], width)
 		}
-		result[i] = chatStyle.Width(width).Render(text)
+		result[i] = style.Width(width).Render(text)
 	}
 	return strings.Join(result, "\n")
 }
