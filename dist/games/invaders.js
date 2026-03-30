@@ -21,10 +21,8 @@ var CWHT  = "\x1b[37m";
 var MAP_W = 60;
 var MAP_H = 35;
 
-// Player ship: same emoji for all, differentiated by background color
+// Player ship colors per slot (foreground for narrow, bg+fg for wide)
 var SHIP_COLORS = [CGRN, CCYN, CMAG, CYEL, CWHT, CRED];
-var E_SHIP = "\uD83D\uDEE6";  // 🛦
-// ANSI background colors per player slot (dark shades so the emoji stays readable)
 var SHIP_BG = [
     "\x1b[48;5;22m",   // dark green
     "\x1b[48;5;24m",   // dark cyan
@@ -33,6 +31,9 @@ var SHIP_BG = [
     "\x1b[48;5;236m",  // dark gray
     "\x1b[48;5;52m"    // dark red
 ];
+// Ship glyphs: 2-char ASCII art (reliable bg coverage) + 1-char narrow
+var E_SHIP_WIDE = "/\\";    // two regular chars — bg fills both columns
+var E_SHIP_NARROW = "^";
 
 // Enemy emojis by tier (top rows = more points)
 var E_ALIEN = [
@@ -639,22 +640,23 @@ function render(pid, width, height) {
         var p = pls[plOrder[i]];
         if (!p || p.dead) continue;
         var k = p.x + "," + p.y;
+        var bg = SHIP_BG[p.ci];
+        var col = SHIP_COLORS[p.ci];
         if (cw === 2) {
             if (frame < p.invuln && frame % 4 < 2) {
                 ents[k] = emptyCell;
             } else if (p.shield > 0) {
-                ents[k] = SHIP_BG[p.ci] + E_SHIELD + RST;
+                ents[k] = bg + CWHT + CBOLD + "{}" + RST;
             } else {
-                ents[k] = SHIP_BG[p.ci] + E_SHIP + RST;
+                ents[k] = bg + CWHT + CBOLD + E_SHIP_WIDE + RST;
             }
         } else {
-            var col = SHIP_COLORS[p.ci];
             if (frame < p.invuln && frame % 4 < 2) {
                 ents[k] = " ";
             } else if (p.shield > 0) {
                 ents[k] = col + CBOLD + "O" + RST;
             } else {
-                ents[k] = (plOrder[i] === pid ? CBOLD : "") + col + "A" + RST;
+                ents[k] = (plOrder[i] === pid ? CBOLD : "") + col + E_SHIP_NARROW + RST;
             }
         }
     }
@@ -722,21 +724,14 @@ function render(pid, width, height) {
                 continue;
             }
 
-            // Walls (left, right)
-            if (wx === 0 || wx === MAP_W - 1) {
-                parts.push(wallCell);
-                visW += cw;
-                continue;
-            }
-
-            // Ceiling
+            // Ceiling row — full wall across
             if (wy === 0) {
                 parts.push(wallCell);
                 visW += cw;
                 continue;
             }
 
-            // Ground — alternating pattern for scroll feedback
+            // Ground row — including wall corners so the ground line is unbroken
             if (wy === GROUND_Y) {
                 if (cw === 2) {
                     if (Math.floor(wx / 2) % 2 === 0) {
@@ -751,6 +746,13 @@ function render(pid, width, height) {
                         parts.push("\x1b[38;5;242m\u2584" + RST);
                     }
                 }
+                visW += cw;
+                continue;
+            }
+
+            // Walls (left, right) — between ceiling and ground
+            if (wx === 0 || wx === MAP_W - 1) {
+                parts.push(wallCell);
                 visW += cw;
                 continue;
             }
