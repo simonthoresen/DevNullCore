@@ -1,0 +1,80 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
+
+	"null-space/common"
+)
+
+// NewLocal creates an App for local (non-SSH) use: a single player on the
+// local terminal. No SSH server, no networking, no host key file.
+func NewLocal(dataDir string) *App {
+	app := &App{
+		state:    newState(""),
+		registry: newCommandRegistry(),
+		dataDir:  dataDir,
+		programs: make(map[string]*tea.Program),
+		// sessions left nil — SSH middleware never runs in local mode;
+		// map reads against a nil map are safe (return zero value).
+		logCh:  make(chan string, 256),
+		chatCh: make(chan common.Message, 256),
+	}
+	app.registerBuiltins("")
+	return app
+}
+
+// RunLocal registers a local player (as admin), optionally pre-loads an app
+// and plugins, then runs the full client TUI on stdin/stdout. This is the
+// entry point for both the local single-player mode and the render test-bed.
+func (a *App) RunLocal(ctx context.Context, playerName, appName string, pluginNames []string) error {
+	const playerID = "local"
+
+	player := &common.Player{
+		ID:      playerID,
+		Name:    playerName,
+		IsAdmin: true,
+	}
+	a.state.AddPlayer(player)
+
+	for _, name := range pluginNames {
+		path := filepath.Join(a.dataDir, "plugins", name+".js")
+		if err := a.loadPlugin(name, path); err != nil {
+			return fmt.Errorf("load plugin %s: %w", name, err)
+		}
+	}
+
+	if appName != "" {
+		path := filepath.Join(a.dataDir, "apps", appName+".js")
+		if err := a.loadApp(path); err != nil {
+			return fmt.Errorf("load app %s: %w", appName, err)
+		}
+	}
+
+	program := tea.NewProgram(
+		newChromeModel(a, playerID),
+		tea.WithInput(os.Stdin),
+		tea.WithOutput(os.Stdout),
+		tea.WithFPS(60),
+		tea.WithColorProfile(colorprofile.Env(os.Environ())),
+	)
+
+	a.programsMu.Lock()
+	a.programs[playerID] = program
+	a.programsMu.Unlock()
+
+	go a.runTicker(ctx)
+
+	go func() {
+		<-ctx.Done()
+		program.Quit()
+	}()
+
+	_, err := program.Run()
+	return err
+}

@@ -23,6 +23,13 @@ go run ./cmd/null-space --data-dir dist   # equivalent to make run, add --passwo
 go test ./...
 
 ssh -p 23234 localhost   # connect as a client (host plays this way too)
+
+# Local mode — no SSH, runs full client TUI directly in the terminal.
+# Useful as a render test-bed and as a local single-player mode.
+go run ./cmd/null-space --local --data-dir dist
+go run ./cmd/null-space --local --data-dir dist --app example
+go run ./cmd/null-space --local --data-dir dist --app example --plugins foo,bar
+go run ./cmd/null-space --local --data-dir dist --app example --player alice
 ```
 
 **Environment variables:**

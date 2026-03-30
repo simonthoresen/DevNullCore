@@ -31,10 +31,33 @@ func main() {
 	var password string
 	var address string
 	var dataDir string
+	var localMode bool
+	var localApp string
+	var localPlugins string
+	var localPlayer string
 	flag.StringVar(&password, "password", "", "admin password (required)")
 	flag.StringVar(&address, "address", ":23234", "listen address")
 	flag.StringVar(&dataDir, "data-dir", defaultDataDir(), "directory containing apps/, plugins/, logs/")
+	flag.BoolVar(&localMode, "local", false, "run locally without SSH (single-player / render test)")
+	flag.StringVar(&localApp, "app", "", "app to preload (local mode)")
+	flag.StringVar(&localPlugins, "plugins", "", "comma-separated plugins to preload (local mode)")
+	flag.StringVar(&localPlayer, "player", "player", "player name (local mode)")
 	flag.Parse()
+
+	if localMode {
+		app := server.NewLocal(dataDir)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		var plugins []string
+		if localPlugins != "" {
+			plugins = strings.Split(localPlugins, ",")
+		}
+		if err := app.RunLocal(ctx, localPlayer, localApp, plugins); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if password == "" {
 		fmt.Fprintln(os.Stderr, "WARNING: no admin password set (use --password)")
