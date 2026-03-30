@@ -91,7 +91,7 @@ func main() {
 	buildInviteScript(app.State(), port)
 	finishBootStep("DONE")
 
-	// Start BubbleTea console
+	startBootStep("Starting console")
 	consoleModel := server.NewConsoleModel(app, stop)
 	program := tea.NewProgram(consoleModel, tea.WithFPS(60))
 	app.SetConsoleProgram(program)
@@ -108,11 +108,13 @@ func main() {
 		program.Send(tea.QuitMsg{})
 	}()
 
+	finishBootStep("DONE")
 	if _, err := program.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "console error: %v\n", err)
 	}
 
-	// Shutdown sequence
+	startBootStep("Initiating shutdown")
+	finishBootStep("OK")
 	startBootStep("Stopping SSH server")
 	if err := <-serverErr; err == nil || errors.Is(err, ssh.ErrServerClosed) {
 		finishBootStep("DONE")
