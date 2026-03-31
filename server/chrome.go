@@ -864,12 +864,11 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 
 	blank := strings.Repeat(" ", width)
 	blankLine := baseStyle.Width(width).Render(blank)
-	// Separator between sections: a thin line with visible foreground chars.
-	// Pure blank rows trigger a CR+LF cursor bug in the ultraviolet renderer
-	// over SSH, so we use a dim line instead.
-	sepLine := baseStyle.Faint(true).Width(width).Render(strings.Repeat("─", width))
 	for i, team := range teams {
-		lines = append(lines, sepLine)
+		// Separator with visible chars to anchor the renderer's cursor.
+		// Pure blank rows cause CR+LF mispositioning over SSH.
+		// Uses ASCII dash (not UTF-8 ─) to avoid width miscalculation.
+		lines = append(lines, baseStyle.Faint(true).Width(width).Render(strings.Repeat("-", width)))
 		block := colorSwatch(lipgloss.Color(team.Color), bg)
 		nameText := fmt.Sprintf(" %s %s", block, team.Name)
 		if m.teamEditing && i == myTeamIdx {
