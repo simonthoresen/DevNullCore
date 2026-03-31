@@ -116,39 +116,7 @@ var Game = {
         return "[arrow] Move  [Space] Score  [Enter] Chat";
     },
 
-    // Custom splash screen (optional — remove to see the default).
-    splashScreen: function(width, height) {
-        var lines = [];
-        var title = "=== EXAMPLE ARENA ===";
-        var sub = "Move with arrows, press Space to score";
-        var info = "Game lasts 30 seconds";
-        var hs = "High score: " + state.highScore;
-
-        var midY = Math.floor(height / 2) - 2;
-        for (var y = 0; y < height; y++) {
-            if (y === midY) {
-                lines.push(center(title, width));
-            } else if (y === midY + 1) {
-                lines.push(center(sub, width));
-            } else if (y === midY + 2) {
-                lines.push(center(info, width));
-            } else if (y === midY + 4) {
-                lines.push(center(hs, width));
-            } else if (y === midY + 6 && state.teams.length > 0) {
-                var teamNames = [];
-                for (var i = 0; i < state.teams.length; i++) {
-                    teamNames.push(state.teams[i].name + " (" + state.teams[i].players.length + ")");
-                }
-                lines.push(center("Teams: " + teamNames.join(" vs "), width));
-            } else {
-                lines.push("");
-            }
-        }
-        return lines.join("\n");
-    }
+    // Custom splash screen (optional — omit to use the default).
+    // This is a string property, read once at load time.
+    splashScreen: "=== EXAMPLE ARENA ===\nMove with arrows, press Space to score\nGame lasts 30 seconds"
 };
-
-function center(text, width) {
-    var pad = Math.max(0, Math.floor((width - text.length) / 2));
-    return Array(pad + 1).join(" ") + text;
-}

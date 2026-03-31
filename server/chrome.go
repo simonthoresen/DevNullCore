@@ -625,8 +625,8 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 
 func (m chromeModel) viewSplash(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	displayName := gameName
-	if lc, ok := game.(common.GameLifecycle); ok && lc.GameName() != "" {
-		displayName = lc.GameName()
+	if gn := game.GameName(); gn != "" {
+		displayName = gn
 	}
 
 	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(displayName, m.width, spinChar))
@@ -636,10 +636,7 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, sbStyle, chSt
 		viewportH = 1
 	}
 
-	var splashContent string
-	if lc, ok := game.(common.GameLifecycle); ok {
-		splashContent = lc.SplashScreen(m.width, viewportH)
-	}
+	splashContent := game.SplashScreen()
 	if splashContent == "" {
 		splashContent = m.defaultSplashScreen(displayName, m.width, viewportH)
 	}
@@ -660,8 +657,8 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, sbStyle, chSt
 
 func (m chromeModel) viewGameOver(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	displayName := gameName
-	if lc, ok := game.(common.GameLifecycle); ok && lc.GameName() != "" {
-		displayName = lc.GameName()
+	if gn := game.GameName(); gn != "" {
+		displayName = gn
 	}
 
 	statusText := displayName + " - Game Over"

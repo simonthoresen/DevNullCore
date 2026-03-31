@@ -77,7 +77,7 @@ var Game = {
         return "";
     },
 
-    // --- Lifecycle hooks (all optional) ---
+    // --- Properties (all optional) ---
 
     // Display name for splash screen and status bar. If omitted, the filename stem is used.
     gameName: "My Awesome Game",
@@ -87,6 +87,12 @@ var Game = {
     // Omit to allow any number of teams.
     teamRange: { min: 2, max: 4 },
 
+    // Custom splash screen content (multi-line string). If omitted, the framework
+    // renders the game name centered in a box. Read once at load time.
+    splashScreen: "=== MY GAME ===\nPress Enter to start",
+
+    // --- Lifecycle (optional) ---
+
     // Called once after the script loads, before onPlayerJoin.
     // config.teams = [{ name, color, players: [playerID, ...] }, ...]
     // config.savedState = previously persisted state (or null on first run)
@@ -95,13 +101,6 @@ var Game = {
         if (config.savedState) {
             // restore previous state
         }
-    },
-
-    // Custom splash screen rendered when the game loads.
-    // Return a multi-line string (width × height). If omitted, the framework
-    // renders the game name centered in a box.
-    splashScreen: function(width, height) {
-        return "";
     }
 };
 ```
@@ -337,7 +336,7 @@ GAME OVER (framework results screen, up to 15s)
 LOBBY (game unloaded, back to teams + chat)
 ```
 
-- **Splash screen**: Shown after `/game load`. If the game defines `splashScreen()`, that is rendered. Otherwise, the game name is displayed in a centered box. The admin who loaded the game can press Enter to skip to playing immediately.
+- **Splash screen**: Shown after `/game load`. If the game sets `splashScreen` (a string property), that content is rendered. Otherwise, the game name is displayed in a centered box. The admin who loaded the game can press Enter to skip to playing immediately.
 - **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called.
 - **Game over**: Triggered when JS calls `gameOver()` or `gameOver(results)`. The framework renders a "GAME OVER" screen with the ranked results list (if provided). Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
 - **Late joiners**: Players who connect while a game is running see the lobby (chat + teams for the next round). They can still chat with in-game players.

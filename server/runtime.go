@@ -45,7 +45,7 @@ func watchdogJS(vm *goja.Runtime, method string) func() {
 	return func() { close(done) }
 }
 
-// jsRuntime wraps a goja JS runtime and implements common.Game and common.GameLifecycle.
+// jsRuntime wraps a goja JS runtime and implements common.Game.
 type jsRuntime struct {
 	mu    sync.Mutex
 	vm    *goja.Runtime
@@ -63,11 +63,13 @@ type jsRuntime struct {
 	statusBarFn   goja.Callable
 	commandBarFn  goja.Callable
 
-	// lifecycle methods (nil if not defined by the game)
-	gameNameProp       string // read from Game.gameName property
-	teamRangeProp      common.TeamRange // read from Game.teamRange property
-	splashScreenFn     goja.Callable
-	initFn             goja.Callable
+	// lifecycle properties (read from Game object during extractGameObject)
+	gameNameProp      string
+	teamRangeProp     common.TeamRange
+	splashScreenProp  string // read from Game.splashScreen property (string or function result)
+
+	// init is called internally by LoadGame, not part of the Game interface
+	initFn goja.Callable
 
 	// gameOver() callback state — set by JS, detected by tick loop
 	gameOverPending bool
@@ -76,7 +78,7 @@ type jsRuntime struct {
 }
 
 // LoadGame loads and executes a JS file from games/, extracts the Game object
-// methods, and returns a common.Game (which also implements common.GameLifecycle).
+// methods, and returns a common.Game.
 // savedState is the previously persisted state (nil if none), teams is the current
 // lobby team configuration. Both are passed to Game.init() if the game defines it.
 func LoadGame(path string, state *CentralState, logFn func(string), chatFn func(common.Message), savedState any, teams []common.Team) (common.Game, error) {
@@ -305,8 +307,7 @@ func (r *jsRuntime) extractGameObject() error {
 	r.statusBarFn = extractCallable(gameObj, "statusBar")
 	r.commandBarFn = extractCallable(gameObj, "commandBar")
 
-	// Lifecycle methods (all optional)
-	r.splashScreenFn = extractCallable(gameObj, "splashScreen")
+	// Lifecycle (all optional)
 	r.initFn = extractCallable(gameObj, "init")
 
 	// Read gameName property (string, not callable)
@@ -325,6 +326,11 @@ func (r *jsRuntime) extractGameObject() error {
 				r.teamRangeProp.Max = int(mv.ToInteger())
 			}
 		}
+	}
+
+	// Read splashScreen property (string)
+	if v := gameObj.Get("splashScreen"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+		r.splashScreenProp = v.String()
 	}
 
 	return nil
@@ -451,7 +457,7 @@ func (r *jsRuntime) Unload() {
 	r.vm.Interrupt("game unloaded")
 }
 
-// --- GameLifecycle implementation ---
+// --- Lifecycle methods (part of Game interface) ---
 
 func (r *jsRuntime) GameName() string {
 	return r.gameNameProp
@@ -461,27 +467,8 @@ func (r *jsRuntime) TeamRange() common.TeamRange {
 	return r.teamRangeProp
 }
 
-func (r *jsRuntime) SplashScreen(width, height int) string {
-	if r.splashScreenFn == nil {
-		return ""
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.recoverJS("SplashScreen")
-	defer traceJS(r.vm, "SplashScreen")()
-	cancel := watchdogJS(r.vm, "SplashScreen")
-	defer cancel()
-	val, err := r.splashScreenFn(goja.Undefined(), r.vm.ToValue(width), r.vm.ToValue(height))
-	if err != nil {
-		slog.Error("JS SplashScreen error", "error", err)
-		return ""
-	}
-	return val.String()
-}
-
-func (r *jsRuntime) Init(config map[string]any) {
-	// Init is called from LoadGame directly, not through this method.
-	// This satisfies the interface but is not used directly.
+func (r *jsRuntime) SplashScreen() string {
+	return r.splashScreenProp
 }
 
 // IsGameOverPending returns true if JS called gameOver() and clears the flag.

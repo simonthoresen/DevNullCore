@@ -519,15 +519,13 @@ func (a *Server) loadGame(path string) error {
 	}
 
 	// Validate team count against game's declared range.
-	if lc, ok := rt.(common.GameLifecycle); ok {
-		tr := lc.TeamRange()
-		teamCount := len(teams)
-		if tr.Min > 0 && teamCount < tr.Min {
-			return fmt.Errorf("game requires at least %d teams (have %d)", tr.Min, teamCount)
-		}
-		if tr.Max > 0 && teamCount > tr.Max {
-			return fmt.Errorf("game supports at most %d teams (have %d)", tr.Max, teamCount)
-		}
+	tr := rt.TeamRange()
+	teamCount := len(teams)
+	if tr.Min > 0 && teamCount < tr.Min {
+		return fmt.Errorf("game requires at least %d teams (have %d)", tr.Min, teamCount)
+	}
+	if tr.Max > 0 && teamCount > tr.Max {
+		return fmt.Errorf("game supports at most %d teams (have %d)", tr.Max, teamCount)
 	}
 
 	a.state.mu.Lock()

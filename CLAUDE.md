@@ -118,7 +118,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `server/state_persist.go` | Load/save game state JSON files in `dist/state/` |
 | `server/commands.go` | `/` command registry, tab completion, permission checks |
 | `server/console.go` | Local server management terminal (not for playing) |
-| `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` + `common.GameLifecycle` |
+| `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
 | `server/plugin.go` | JS plugin runtime (goja): loads `dist/plugins/*.js`, implements `common.Plugin` |
 | `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
@@ -132,27 +132,20 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 ### The `Game` Interface (`common/interfaces.go`)
 ```go
 type Game interface {
+    GameName() string                      // display name (fallback: filename stem)
+    TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
+    SplashScreen() string                  // splash screen content (empty = use default)
     OnPlayerJoin(playerID, playerName string)
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
     View(playerID string, width, height int) string
-    StatusBar(playerID string) string   // content for top status bar (spinner appended by framework)
-    CommandBar(playerID string) string  // idle hint in command bar
+    StatusBar(playerID string) string      // content for top status bar (spinner appended by framework)
+    CommandBar(playerID string) string     // idle hint in command bar
     Commands() []Command
     Unload()
 }
 ```
-
-### The `GameLifecycle` Interface (optional, `common/interfaces.go`)
-```go
-type GameLifecycle interface {
-    GameName() string                      // display name (fallback: filename stem)
-    TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
-    SplashScreen(width, height int) string // custom splash screen
-    Init(config map[string]any)            // called after load with teams, savedState, players
-}
-```
-`jsRuntime` implements both `Game` and `GameLifecycle`. Chrome type-asserts to `GameLifecycle` for lifecycle features. All JS methods are optional — zero values returned when not defined.
+`jsRuntime` implements `Game`. All JS hooks are optional — zero values returned when not defined. `init()` is called internally by `LoadGame`, not part of the interface.
 
 ### Game Over
 
@@ -204,7 +197,7 @@ type Message struct {
 
 Both are single `.js` files in `dist/games/` or `dist/plugins/`. Loaded at runtime via `/game load <name>` / `/plugin load <name>`. A HTTPS URL can be given instead of a name — the file is downloaded and cached in `dist/games/.cache/` or `dist/plugins/.cache/`. GitHub blob URLs are converted to raw automatically.
 
-**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Optional lifecycle hooks: `gameName`, `teamRange`, `init`, `splashScreen`. Loaded one at a time; owns the viewport.
+**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Optional properties: `gameName`, `teamRange`, `splashScreen`. Optional `init(config)` called on load. Loaded one at a time; owns the viewport.
 
 **Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`. Multiple active simultaneously; persistent across game switches.
 

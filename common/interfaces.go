@@ -24,7 +24,12 @@ type CommandContext struct {
 
 // Game is the interface every loaded game must satisfy.
 // One game is active at a time and owns the viewport, status bar, and command bar.
+// All methods are implemented by jsRuntime; optional JS hooks return zero values
+// when not defined by the game script.
 type Game interface {
+	GameName() string                      // display name (fallback: filename stem)
+	TeamRange() TeamRange                  // supported team count range (zero = no constraint)
+	SplashScreen() string                  // splash screen content (empty = use default)
 	OnPlayerJoin(playerID, playerName string)
 	OnPlayerLeave(playerID string)
 	OnInput(playerID, key string)
@@ -48,16 +53,6 @@ type SkinColors struct {
 	CmdFg    string // command bar foreground (idle hint mode)
 	InputBg  string // input box background (while typing)
 	InputFg  string // input box foreground (while typing)
-}
-
-// GameLifecycle is an optional interface that games may implement alongside Game.
-// The framework type-asserts ActiveGame to GameLifecycle for splash screens
-// and initialization. All methods are optional in JS — zero values returned when not defined.
-type GameLifecycle interface {
-	GameName() string                      // display name (fallback: filename stem)
-	TeamRange() TeamRange                  // supported team count range (zero = no constraint)
-	SplashScreen(width, height int) string // custom splash screen content
-	Init(config map[string]any)            // called after load with teams, savedState, players
 }
 
 // Plugin is a passive extension that runs alongside any game (or in the lobby).
