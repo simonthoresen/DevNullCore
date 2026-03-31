@@ -196,6 +196,10 @@ func (a *Server) inviteToken() string {
 	var pinggyPort uint16
 	if n.PinggyURL != "" {
 		pinggyHost = n.PinggyURL
+		// Strip protocol prefix (e.g. "tcp://").
+		if idx := strings.Index(pinggyHost, "://"); idx >= 0 {
+			pinggyHost = pinggyHost[idx+3:]
+		}
 		pp := "22"
 		if idx := strings.LastIndex(pinggyHost, ":"); idx >= 0 {
 			pp = pinggyHost[idx+1:]
@@ -243,10 +247,9 @@ func (a *Server) inviteToken() string {
 const joinScriptURL = "https://raw.githubusercontent.com/simonthoresen/null-space/main/join.ps1"
 
 // inviteCommand returns the invite command formatted for terminal display.
-// It inserts PowerShell line continuations (backtick + newline) to keep each
-// line within the console width so the command can be copied and pasted:
-//   - Command-level backtick: between "powershell -c" and the argument
-//   - In-string backtick: inside "..." drops the newline on paste
+// The command is raw PowerShell — paste directly into a PowerShell window.
+// Line continuations (backtick + newline) are inserted to keep within console
+// width for easy copying.
 func (a *Server) inviteCommand() string {
 	token := a.inviteToken()
 	width := a.consoleWidth
@@ -254,25 +257,17 @@ func (a *Server) inviteCommand() string {
 		width = 120 // default before first resize
 	}
 
-	// Build segments that can be joined on one line or split with continuations.
-	seg1 := "powershell -c"
-	seg2 := fmt.Sprintf("\"$env:NS='%s';", token)
-	seg3 := fmt.Sprintf("irm %s|iex\"", joinScriptURL)
+	seg1 := fmt.Sprintf("$env:NS='%s';", token)
+	seg2 := fmt.Sprintf("irm %s|iex", joinScriptURL)
 
 	// Try single line first.
-	oneLine := seg1 + " " + seg2 + seg3
+	oneLine := seg1 + seg2
 	if len(oneLine) <= width {
 		return oneLine
 	}
 
-	// Try two lines: break after -c.
-	line2 := "  " + seg2 + seg3
-	if len(line2) <= width {
-		return seg1 + " `\n" + line2
-	}
-
-	// Three lines: break after -c and between token and irm.
-	return seg1 + " `\n  " + seg2 + " `\n  " + seg3
+	// Two lines: break between token assignment and irm.
+	return seg1 + " `\n" + seg2
 }
 
 // LogInviteCommand writes the current invite command to the server log.
@@ -1017,7 +1012,6 @@ func (a *Server) registerBuiltins() {
 					return
 				}
 				a.unloadGame()
-				ctx.Reply("Game unloaded.")
 			default:
 				ctx.Reply(fmt.Sprintf("Unknown subcommand '%s'. Use: list, load, unload", args[0]))
 			}

@@ -272,7 +272,6 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lobbyFocus = lobbyFocusChat
 		m.input.Blur()
 		m.resizeViewports()
-		m.syncChat()
 		return m, nil
 
 	case common.GameUnloadedMsg:
@@ -281,7 +280,6 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.mode = modeInput
 		cmd := m.input.Focus()
 		m.resizeViewports()
-		m.syncChat()
 		return m, cmd
 
 	case common.GamePhaseMsg:
@@ -315,6 +313,12 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	phase := m.app.state.GetGamePhase()
+
+	// Ctrl+C / Ctrl+D quit from any mode.
+	switch msg.String() {
+	case "ctrl+c", "ctrl+d":
+		return m, tea.Quit
+	}
 
 	// Chat scroll — handled in all modes.
 	switch msg.String() {
@@ -351,8 +355,6 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Splash phase — admin can press Enter to start, others wait.
 	if m.inActiveGame && phase == common.PhaseSplash {
 		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
 		case "enter":
 			player := m.app.state.GetPlayer(m.playerID)
 			if player != nil && player.IsAdmin {
@@ -365,8 +367,6 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Game-over phase — Enter acknowledges.
 	if m.inActiveGame && phase == common.PhaseGameOver {
 		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
 		case "enter":
 			m.app.AcknowledgeGameOver(m.playerID)
 		}
@@ -375,8 +375,6 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	if m.mode == modeIdle {
 		switch msg.String() {
-		case "ctrl+c":
-			return m, tea.Quit
 		case "enter":
 			setInputStyle(&m.input, titleBg, titleFg)
 			m.mode = modeInput
@@ -591,9 +589,9 @@ func (m chromeModel) View() tea.View {
 	ciStyle := lipgloss.NewStyle().Background(col.cmdBg).Foreground(col.cmdFg)
 
 	if !m.inActiveGame || phase == common.PhaseNone {
-		// Lobby: input uses chat panel active colors.
+		// Lobby: input uses skin-resolved colors.
 		if m.mode == modeInput {
-			setInputStyle(&m.input, lobbyChatBarActiveBg, lobbyChatBarActiveFg)
+			setInputStyle(&m.input, col.inputBg, col.inputFg)
 		}
 		if m.teamEditing {
 			setInputStyle(&m.teamEditInput, lobbyTeamActiveBg, lobbyTeamFg)
@@ -651,7 +649,7 @@ func (m chromeModel) View() tea.View {
 	return view
 }
 
-func (m chromeModel) viewLobby(_, _, _ lipgloss.Style, spinChar string) string {
+func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	contentH := m.height - 2 // status bar + command bar
 	if contentH < 1 {
 		contentH = 1
@@ -666,21 +664,22 @@ func (m chromeModel) viewLobby(_, _, _ lipgloss.Style, spinChar string) string {
 	chatActive := m.lobbyFocus == lobbyFocusChat
 
 	// Per-panel styles based on focus.
+	// Chat panel uses skin-resolved colors; team panel keeps its own blue scheme.
 	var chatBarStyle, teamBarStyle lipgloss.Style
 	var chatBodyStyle, teamBodyStyle lipgloss.Style
 	var chatCmdStyle, teamCmdStyle lipgloss.Style
 
 	if chatActive {
-		chatBarStyle = lipgloss.NewStyle().Background(lobbyChatBarActiveBg).Foreground(lobbyChatBarActiveFg).Bold(true)
-		chatBodyStyle = lipgloss.NewStyle().Background(lobbyChatActiveBg).Foreground(lobbyChatFg)
-		chatCmdStyle = lipgloss.NewStyle().Background(lobbyChatBarActiveBg).Foreground(lobbyChatBarActiveFg)
+		chatBarStyle = sbStyle
+		chatBodyStyle = chStyle
+		chatCmdStyle = ciStyle
 		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
 		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamInactiveBg).Foreground(lobbyTeamFg)
 		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
 	} else {
-		chatBarStyle = lipgloss.NewStyle().Background(lobbyChatBarInactiveBg).Foreground(lobbyChatBarInactiveFg)
-		chatBodyStyle = lipgloss.NewStyle().Background(lobbyChatInactiveBg).Foreground(lobbyChatFg)
-		chatCmdStyle = lipgloss.NewStyle().Background(lobbyChatBarInactiveBg).Foreground(lobbyChatBarInactiveFg)
+		chatBarStyle = sbStyle.Bold(false)
+		chatBodyStyle = chStyle
+		chatCmdStyle = ciStyle
 		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg).Bold(true)
 		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamActiveBg).Foreground(lobbyTeamFg)
 		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg)

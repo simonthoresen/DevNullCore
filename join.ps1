@@ -28,7 +28,8 @@ if ($bytes.Length -lt 2) {
 }
 
 # Parse SSH port (big-endian uint16).
-$sshPort = ($bytes[0] -shl 8) + $bytes[1]
+# Use multiplication instead of -shl to avoid [byte] overflow.
+$sshPort = [int]$bytes[0] * 256 + [int]$bytes[1]
 
 # Build endpoint list: localhost is always first.
 $endpoints = @(@{ Host = 'localhost'; Port = $sshPort })
@@ -51,7 +52,7 @@ if ($bytes.Length -ge 10) {
 
 # Pinggy (bytes 10-11 port, 12+ hostname).
 if ($bytes.Length -ge 12) {
-    $pPort = ($bytes[10] -shl 8) + $bytes[11]
+    $pPort = [int]$bytes[10] * 256 + [int]$bytes[11]
     if ($pPort -ne 0 -and $bytes.Length -gt 12) {
         $pHost = [System.Text.Encoding]::UTF8.GetString($bytes, 12, $bytes.Length - 12)
         $endpoints += @{ Host = $pHost; Port = $pPort }

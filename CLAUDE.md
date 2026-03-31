@@ -297,7 +297,7 @@ The server console is always admin. SSH clients elevate via `/admin <password>`.
 
 Startup order: UPnP → Pinggy → generate invite script.
 
-The invite command is a PowerShell one-liner: `powershell -c "$env:NS='<token>';irm <join.ps1 URL>|iex"`. The `NS` environment variable is a base64url-encoded binary token:
+The invite command is a raw PowerShell one-liner (paste into a PowerShell window): `$env:NS='<token>';irm <join.ps1 URL>|iex`. The `NS` environment variable is a base64url-encoded binary token:
 
 | Bytes | Field | Notes |
 |-------|-------|-------|
