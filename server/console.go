@@ -35,6 +35,10 @@ type consoleModel struct {
 	logLines  []string
 	chatLines []string
 
+	inputHistory []string
+	historyIdx   int
+	historyDraft string
+
 	tabPrefix     string
 	tabCandidates []string
 	tabIndex      int
@@ -57,11 +61,12 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	input.Focus()
 
 	return &consoleModel{
-		app:    app,
-		cancel: cancel,
-		logs:   logs,
-		chat:   chat,
-		input:  input,
+		app:        app,
+		cancel:     cancel,
+		logs:       logs,
+		chat:       chat,
+		input:      input,
+		historyIdx: -1,
 	}
 }
 
@@ -139,11 +144,41 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "enter":
 			m.tabCandidates = nil
+			m.historyIdx = -1
+			m.historyDraft = ""
 			m.submitInput()
 			return m, nil
 		case "esc":
 			m.tabCandidates = nil
+			m.historyIdx = -1
+			m.historyDraft = ""
 			m.input.SetValue("")
+			return m, nil
+		case "up":
+			if len(m.inputHistory) == 0 {
+				return m, nil
+			}
+			if m.historyIdx == -1 {
+				m.historyDraft = m.input.Value()
+				m.historyIdx = len(m.inputHistory) - 1
+			} else if m.historyIdx > 0 {
+				m.historyIdx--
+			}
+			m.input.SetValue(m.inputHistory[m.historyIdx])
+			m.input.CursorEnd()
+			return m, nil
+		case "down":
+			if m.historyIdx == -1 {
+				return m, nil
+			}
+			if m.historyIdx < len(m.inputHistory)-1 {
+				m.historyIdx++
+				m.input.SetValue(m.inputHistory[m.historyIdx])
+			} else {
+				m.historyIdx = -1
+				m.input.SetValue(m.historyDraft)
+			}
+			m.input.CursorEnd()
 			return m, nil
 		case "tab":
 			if strings.HasPrefix(m.input.Value(), "/") {
@@ -237,6 +272,12 @@ func (m *consoleModel) submitInput() {
 	m.input.SetValue("")
 	if text == "" {
 		return
+	}
+	if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != text {
+		m.inputHistory = append(m.inputHistory, text)
+		if len(m.inputHistory) > 50 {
+			m.inputHistory = m.inputHistory[1:]
+		}
 	}
 	ctx := common.CommandContext{
 		PlayerID: "", // console = admin

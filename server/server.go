@@ -280,6 +280,17 @@ func (a *Server) LogInviteCommand() {
 	a.serverLog("Invite:\n" + a.inviteCommand())
 }
 
+// LogGameList broadcasts the available game list to chat.
+func (a *Server) LogGameList() {
+	gamesDir := filepath.Join(a.dataDir, "games")
+	available := listDir(gamesDir, ".js")
+	if len(available) == 0 {
+		a.broadcastChat(common.Message{Text: "No games found in games/"})
+		return
+	}
+	a.broadcastChat(common.Message{Text: a.formatGameList(gamesDir, available)})
+}
+
 func (a *Server) sessionMiddleware() wish.Middleware {
 	return func(next ssh.Handler) ssh.Handler {
 		return func(sess ssh.Session) {
