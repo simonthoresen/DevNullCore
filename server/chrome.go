@@ -607,18 +607,19 @@ func (m chromeModel) View() tea.View {
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		// === LOBBY LAYOUT (with team panel) ===
-		content = m.viewLobby(sbStyle, chStyle, ciStyle, spinChar, col.chatBg)
+		content = m.viewLobby(sbStyle, chStyle, ciStyle, spinChar)
 	} else if phase == common.PhaseSplash {
 		content = m.viewSplash(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
 	} else if phase == common.PhaseGameOver {
 		content = m.viewGameOver(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
 	} else {
 		// === PLAYING LAYOUT ===
-		content = m.viewPlaying(game, gameName, sbStyle, chStyle, ciStyle, spinChar, col.chatBg)
+		content = m.viewPlaying(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
 	}
 
 	view.SetContent(content)
 	view.AltScreen = true
+	view.BackgroundColor = col.chatBg // fill alt screen with chat bg
 	if m.mode == modeInput {
 		if cursor := m.input.Cursor(); cursor != nil {
 			cursor.Position.Y = m.height - 1
@@ -635,9 +636,12 @@ func (m chromeModel) View() tea.View {
 			teams := m.app.state.GetTeams()
 			unassigned := m.app.state.UnassignedPlayers()
 			idx := m.app.state.PlayerTeamIndex(m.playerID)
-			row := 1 + len(unassigned) // "Unassigned" header + player rows
+			row := 0
+			if len(unassigned) > 0 {
+				row += 1 + len(unassigned)
+			}
 			for i := 0; i < idx && i < len(teams); i++ {
-				row += 1 + len(teams[i].Players) // team header + members (no blank separator)
+				row += 1 + len(teams[i].Players)
 			}
 			cursor.Position.Y = 1 + row // +1 for status bar
 			cursor.Position.X += (m.width - teamW) + 5 // +1 for border │
@@ -647,7 +651,7 @@ func (m chromeModel) View() tea.View {
 	return view
 }
 
-func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
+func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	contentH := m.height - 2 // status bar + command bar
 	if contentH < 1 {
 		contentH = 1
@@ -667,7 +671,6 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 	var chatBodyStyle, teamBodyStyle lipgloss.Style
 	var chatCmdStyle, teamCmdStyle lipgloss.Style
 
-	var teamPanelBg color.Color
 	if chatActive {
 		chatBarStyle = sbStyle
 		chatBodyStyle = chStyle
@@ -675,7 +678,6 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
 		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamInactiveBg).Foreground(lobbyTeamFg)
 		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
-		teamPanelBg = lobbyTeamInactiveBg
 	} else {
 		chatBarStyle = sbStyle.Bold(false)
 		chatBodyStyle = chStyle
@@ -683,7 +685,6 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg).Bold(true)
 		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamActiveBg).Foreground(lobbyTeamFg)
 		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg)
-		teamPanelBg = lobbyTeamActiveBg
 	}
 
 	// Status bar (split across panels). Spinner lives in the teams bar (far right).
@@ -696,14 +697,13 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 	teamStatus := teamBarStyle.Width(teamW).Render(headerWithSpinner(" Teams", teamW, spinChar))
 	statusBar := chatStatus + teamStatus
 
-	// Content area — each row is: chat content (chatW-1) + border "│" + team content (teamW-1) + border "│"
-	// The border characters are visible foreground chars that force the
-	// bubbletea/ultraviolet renderer to use absolute cursor positioning
-	// (CUP) instead of CR+LF, which mispositions content over SSH.
-	innerChatW := chatW - 1 // reserve 1 col for right border
-	innerTeamW := teamW - 1 // reserve 1 col for right border
-	chatView := renderChatLines(m.chatLines, innerChatW, contentH, m.chatScrollOffset, chatBodyStyle, chatBg)
-	teamView := m.renderTeamPanel(innerTeamW, contentH, teamBodyStyle, teamPanelBg)
+	// Content area — each row is: chat (chatW-1) + "│" + team (teamW-1) + "│"
+	// The border chars force the renderer to use absolute cursor positioning
+	// instead of CR+LF, which mispositions content over SSH.
+	innerChatW := chatW - 1
+	innerTeamW := teamW - 1
+	chatView := renderChatLines(m.chatLines, innerChatW, contentH, m.chatScrollOffset, chatBodyStyle)
+	teamView := m.renderTeamPanel(innerTeamW, contentH, teamBodyStyle)
 	chatRows := strings.Split(chatView, "\n")
 	teamRows := strings.Split(teamView, "\n")
 	chatBorder := chatBodyStyle.Render("│")
@@ -804,7 +804,7 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, sbStyle, ch
 	return lipgloss.JoinVertical(lipgloss.Left, statusBar, viewport, cmdBar)
 }
 
-func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
+func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	statusText := game.StatusBar(m.playerID)
 	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
 
@@ -820,7 +820,7 @@ func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chS
 	}
 
 	gameView := fitBlock(game.View(m.playerID, m.width, gameH), m.width, gameH)
-	chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle, chatBg)
+	chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
 
 	var cmdBar string
 	if m.mode == modeInput {
@@ -837,7 +837,7 @@ func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chS
 }
 
 // renderTeamPanel draws the team list panel for the lobby.
-func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style, bg color.Color) string {
+func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style) string {
 	teams := m.app.state.GetTeams()
 	unassigned := m.app.state.UnassignedPlayers()
 	myTeamIdx := m.app.state.PlayerTeamIndex(m.playerID)
@@ -850,7 +850,7 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 	if focused && myTeamIdx < 0 {
 		unStyle = unStyle.Bold(true)
 	}
-	grayBlock := colorSwatch(lipgloss.Color("#888888"), bg)
+	grayBlock := lipgloss.NewStyle().Background(lipgloss.Color("#888888")).Render("  ")
 	lines = append(lines, unStyle.Width(width).Render(truncateStyled(fmt.Sprintf(" %s Unassigned", grayBlock), width)))
 	for _, pid := range unassigned {
 		p := m.app.state.GetPlayer(pid)
@@ -862,15 +862,13 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 	}
 
 	blank := strings.Repeat(" ", width)
-	blankLine := baseStyle.Width(width).Render(blank)
 	for i, team := range teams {
-		// No blank separator — the color block on team headers provides
-		// enough visual distinction, and blank rows trigger a cursor
-		// positioning bug in the ultraviolet renderer over SSH.
-		block := colorSwatch(lipgloss.Color(team.Color), bg)
-		nameText := fmt.Sprintf(" %s %s", block, team.Name)
+		lines = append(lines, baseStyle.Width(width).Render(blank))
+		teamColor := lipgloss.Color(team.Color)
+		colorBlock := lipgloss.NewStyle().Background(teamColor).Render("  ")
+		nameText := fmt.Sprintf(" %s %s", colorBlock, team.Name)
 		if m.teamEditing && i == myTeamIdx {
-			nameText = fmt.Sprintf(" %s %s", block, m.teamEditInput.View())
+			nameText = fmt.Sprintf(" %s %s", colorBlock, m.teamEditInput.View())
 		}
 		teamStyle := baseStyle
 		if focused && i == myTeamIdx {
@@ -888,11 +886,9 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 		}
 	}
 
-	// Pad to fill height. Use lipgloss-styled blanks (not raw ANSI) to
-	// ensure the ultraviolet renderer doesn't use CR+LF movement
-	// optimization that mispositions content over SSH.
+	// Pad to fill height.
 	for len(lines) < height {
-		lines = append(lines, blankLine)
+		lines = append(lines, baseStyle.Width(width).Render(blank))
 	}
 	if len(lines) > height {
 		lines = lines[:height]
@@ -1136,23 +1132,7 @@ func currentSpinnerFrame() string {
 // renderChatLines renders `height` lines from `lines` with the given style, offset
 // from the bottom by `scrollOffset` lines (0 = show newest). Lines above the
 // buffer are rendered as blank rows.
-// colorToANSIBg returns a raw ANSI truecolor background escape sequence for a
-// color.Color value, e.g. "\x1b[48;2;234;223;199m".
-func colorToANSIBg(c color.Color) string {
-	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r>>8, g>>8, b>>8)
-}
-
-// colorSwatch returns a 2-char color block ("  ") that temporarily switches
-// to swatchColor and then restores parentBg. Uses raw ANSI so it can be
-// embedded inside a lipgloss.Render() call without producing a \x1b[m reset
-// that would kill the outer style. The visual width is 2 characters.
-func colorSwatch(swatchColor, parentBg color.Color) string {
-	sr, sg, sb, _ := swatchColor.RGBA()
-	return colorToANSIBg(parentBg) + fmt.Sprintf("\x1b[48;2;%d;%d;%dm  ", sr>>8, sg>>8, sb>>8) + colorToANSIBg(parentBg)
-}
-
-func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style, _ color.Color) string {
+func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style) string {
 	end := len(lines) - scrollOffset
 	if end < 0 {
 		end = 0
@@ -1167,12 +1147,15 @@ func renderChatLines(lines []string, width, height, scrollOffset int, style lipg
 	offset := height - len(visible)
 	blank := strings.Repeat(" ", width)
 	for i := 0; i < height; i++ {
+		var text string
 		vi := i - offset
 		if vi >= 0 && vi < len(visible) {
-			result[i] = style.Width(width).Render(truncateStyled(visible[vi], width))
-		} else {
-			result[i] = style.Width(width).Render(blank)
+			text = truncateStyled(visible[vi], width)
 		}
+		if text == "" {
+			text = blank
+		}
+		result[i] = style.Width(width).Render(text)
 	}
 	return strings.Join(result, "\n")
 }
