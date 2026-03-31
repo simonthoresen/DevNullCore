@@ -815,25 +815,24 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 
 	var lines []string
 
-	// Unassigned players at the top.
-	if len(unassigned) > 0 {
-		unStyle := baseStyle
-		if focused && myTeamIdx < 0 {
-			unStyle = unStyle.Bold(true)
+	// Unassigned players at the top (always shown).
+	unStyle := baseStyle
+	if focused && myTeamIdx < 0 {
+		unStyle = unStyle.Bold(true)
+	}
+	grayBlock := lipgloss.NewStyle().Background(lipgloss.Color("#888888")).Render("  ")
+	lines = append(lines, unStyle.Width(width).Render(truncateStyled(fmt.Sprintf(" %s Unassigned", grayBlock), width)))
+	for _, pid := range unassigned {
+		p := m.app.state.GetPlayer(pid)
+		name := pid
+		if p != nil {
+			name = p.Name
 		}
-		lines = append(lines, unStyle.Width(width).Render(" Unassigned"))
-		for _, pid := range unassigned {
-			p := m.app.state.GetPlayer(pid)
-			name := pid
-			if p != nil {
-				name = p.Name
-			}
-			prefix := "    "
-			if pid == m.playerID {
-				prefix = "  > "
-			}
-			lines = append(lines, baseStyle.Width(width).Render(truncateStyled(prefix+name, width)))
+		prefix := "    "
+		if pid == m.playerID {
+			prefix = "  > "
 		}
+		lines = append(lines, baseStyle.Width(width).Render(truncateStyled(prefix+name, width)))
 	}
 
 	for i, team := range teams {
