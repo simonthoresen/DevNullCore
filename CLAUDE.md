@@ -149,13 +149,15 @@ type GameLifecycle interface {
     GameName() string                      // display name (fallback: filename stem)
     TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
     SplashScreen(width, height int) string // custom splash screen
-    GameOverScreen(width, height int) string // custom game-over screen
-    Scoreboard() []ScoreEntry              // results for default game-over screen
     SaveState() any                        // state to persist between runs
     Init(config map[string]any)            // called after load with teams, savedState, players
 }
 ```
 `jsRuntime` implements both `Game` and `GameLifecycle`. Chrome type-asserts to `GameLifecycle` for lifecycle features. All JS methods are optional — zero values returned when not defined.
+
+### Game Over
+
+Games call `gameOver(results)` where `results` is an array of `{ name, result }` in ranked order. The framework renders the game-over screen — games don't need to provide their own. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). Calling `gameOver()` with no argument shows just the "GAME OVER" title.
 
 ### The `Plugin` Interface
 ```go
@@ -203,11 +205,11 @@ type Message struct {
 
 Both are single `.js` files in `dist/games/` or `dist/plugins/`. Loaded at runtime via `/game load <name>` / `/plugin load <name>`. A HTTPS URL can be given instead of a name — the file is downloaded and cached in `dist/games/.cache/` or `dist/plugins/.cache/`. GitHub blob URLs are converted to raw automatically.
 
-**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Optional lifecycle hooks: `gameName`, `teamRange`, `init`, `splashScreen`, `gameOverScreen`, `scoreboard`, `saveState`. Loaded one at a time; owns the viewport.
+**Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Optional lifecycle hooks: `gameName`, `teamRange`, `init`, `splashScreen`, `saveState`. Loaded one at a time; owns the viewport.
 
 **Plugin** — exports a global `Plugin` object with hooks `onChatMessage`, `onPlayerJoin`, `onPlayerLeave`. Multiple active simultaneously; persistent across game switches.
 
-**Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `players()`, `registerCommand()`, `gameOver()` / `gameOver(state)`.
+**Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `players()`, `registerCommand()`, `gameOver()` / `gameOver(results)`.
 
 The chat pipeline runs all active plugin `onChatMessage` hooks (in load order) before committing a message to history. Return `null` to drop.
 

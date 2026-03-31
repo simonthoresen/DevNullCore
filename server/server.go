@@ -341,22 +341,11 @@ func (a *Server) checkGameOver() {
 		return
 	}
 
-	// Save the state that was passed to gameOver() directly.
-	gameOverState := rt.GameOverStateExport()
-
-	a.state.mu.RLock()
-	gameName := a.state.GameName
-	a.state.mu.RUnlock()
-
-	if gameOverState != nil {
-		if err := saveGameState(a.dataDir, gameName, gameOverState); err != nil {
-			a.serverLog(fmt.Sprintf("warning: could not save game state: %v", err))
-		} else {
-			a.serverLog(fmt.Sprintf("game state saved: %s", gameName))
-		}
-	}
-
 	a.state.SetGamePhase(common.PhaseGameOver)
+	a.state.mu.Lock()
+	a.state.GameOverResults = rt.GameOverResults()
+	a.state.mu.Unlock()
+
 	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhaseGameOver})
 	a.broadcastChat(common.Message{Text: "Game over!"})
 	a.serverLog("game over — waiting for players to acknowledge")

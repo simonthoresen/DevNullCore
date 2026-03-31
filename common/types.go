@@ -29,11 +29,11 @@ const (
 	PhaseGameOver GamePhase = 3 // game-over screen, waiting for acknowledgment
 )
 
-// ScoreEntry is a single row in a game's scoreboard.
-type ScoreEntry struct {
-	PlayerID string
-	Name     string
-	Score    float64
+// GameResult is a single entry in the game-over results, displayed in the
+// order provided by the game (first = winner).
+type GameResult struct {
+	Name   string // display name (e.g. player name, team name)
+	Result string // freeform result text (e.g. "4200 pts", "1st", "DNF")
 }
 
 // Team is a group of players configured in the lobby before a game starts.

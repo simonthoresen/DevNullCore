@@ -67,14 +67,12 @@ type jsRuntime struct {
 	gameNameProp       string // read from Game.gameName property
 	teamRangeProp      common.TeamRange // read from Game.teamRange property
 	splashScreenFn     goja.Callable
-	gameOverScreenFn   goja.Callable
-	scoreboardFn       goja.Callable
 	saveStateFn        goja.Callable
 	initFn             goja.Callable
 
 	// gameOver() callback state — set by JS, detected by tick loop
 	gameOverPending bool
-	gameOverState   goja.Value // state argument passed to gameOver(), may be nil
+	gameOverResults []common.GameResult // results passed to gameOver()
 	gameOverFn      func(state goja.Value) // callback set by server to handle gameOver
 }
 
@@ -191,12 +189,34 @@ func (r *jsRuntime) registerGlobals() {
 	})
 
 	r.vm.Set("gameOver", func(call goja.FunctionCall) goja.Value {
-		var stateVal goja.Value
-		if len(call.Arguments) > 0 {
-			stateVal = call.Argument(0)
-		}
 		r.gameOverPending = true
-		r.gameOverState = stateVal
+		r.gameOverResults = nil
+		if len(call.Arguments) > 0 {
+			arg := call.Argument(0)
+			if arg != nil && !goja.IsUndefined(arg) && !goja.IsNull(arg) {
+				obj := arg.ToObject(r.vm)
+				if obj != nil {
+					for _, key := range obj.Keys() {
+						item := obj.Get(key)
+						if item == nil || goja.IsUndefined(item) {
+							continue
+						}
+						itemObj := item.ToObject(r.vm)
+						if itemObj == nil {
+							continue
+						}
+						entry := common.GameResult{}
+						if v := itemObj.Get("name"); v != nil && !goja.IsUndefined(v) {
+							entry.Name = v.String()
+						}
+						if v := itemObj.Get("result"); v != nil && !goja.IsUndefined(v) {
+							entry.Result = v.String()
+						}
+						r.gameOverResults = append(r.gameOverResults, entry)
+					}
+				}
+			}
+		}
 		return goja.Undefined()
 	})
 
@@ -279,8 +299,6 @@ func (r *jsRuntime) extractGameObject() error {
 
 	// Lifecycle methods (all optional)
 	r.splashScreenFn = extractCallable(gameObj, "splashScreen")
-	r.gameOverScreenFn = extractCallable(gameObj, "gameOverScreen")
-	r.scoreboardFn = extractCallable(gameObj, "scoreboard")
 	r.saveStateFn = extractCallable(gameObj, "saveState")
 	r.initFn = extractCallable(gameObj, "init")
 
@@ -454,72 +472,6 @@ func (r *jsRuntime) SplashScreen(width, height int) string {
 	return val.String()
 }
 
-func (r *jsRuntime) GameOverScreen(width, height int) string {
-	if r.gameOverScreenFn == nil {
-		return ""
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.recoverJS("GameOverScreen")
-	defer traceJS(r.vm, "GameOverScreen")()
-	cancel := watchdogJS(r.vm, "GameOverScreen")
-	defer cancel()
-	val, err := r.gameOverScreenFn(goja.Undefined(), r.vm.ToValue(width), r.vm.ToValue(height))
-	if err != nil {
-		slog.Error("JS GameOverScreen error", "error", err)
-		return ""
-	}
-	return val.String()
-}
-
-func (r *jsRuntime) Scoreboard() []common.ScoreEntry {
-	if r.scoreboardFn == nil {
-		return nil
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.recoverJS("Scoreboard")
-	defer traceJS(r.vm, "Scoreboard")()
-	cancel := watchdogJS(r.vm, "Scoreboard")
-	defer cancel()
-	val, err := r.scoreboardFn(goja.Undefined())
-	if err != nil {
-		slog.Error("JS Scoreboard error", "error", err)
-		return nil
-	}
-	if val == nil || goja.IsUndefined(val) || goja.IsNull(val) {
-		return nil
-	}
-	obj := val.ToObject(r.vm)
-	if obj == nil {
-		return nil
-	}
-	// Expect an array of {playerID, name, score}
-	var entries []common.ScoreEntry
-	for _, key := range obj.Keys() {
-		item := obj.Get(key)
-		if item == nil || goja.IsUndefined(item) {
-			continue
-		}
-		itemObj := item.ToObject(r.vm)
-		if itemObj == nil {
-			continue
-		}
-		entry := common.ScoreEntry{}
-		if v := itemObj.Get("playerID"); v != nil && !goja.IsUndefined(v) {
-			entry.PlayerID = v.String()
-		}
-		if v := itemObj.Get("name"); v != nil && !goja.IsUndefined(v) {
-			entry.Name = v.String()
-		}
-		if v := itemObj.Get("score"); v != nil && !goja.IsUndefined(v) {
-			entry.Score = v.ToFloat()
-		}
-		entries = append(entries, entry)
-	}
-	return entries
-}
-
 func (r *jsRuntime) SaveState() any {
 	if r.saveStateFn == nil {
 		return nil
@@ -557,14 +509,11 @@ func (r *jsRuntime) IsGameOverPending() bool {
 	return true
 }
 
-// GameOverStateExport exports the state value that was passed to gameOver().
-func (r *jsRuntime) GameOverStateExport() any {
+// GameOverResults returns the results array passed to gameOver().
+func (r *jsRuntime) GameOverResults() []common.GameResult {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.gameOverState == nil || goja.IsUndefined(r.gameOverState) || goja.IsNull(r.gameOverState) {
-		return nil
-	}
-	return r.gameOverState.Export()
+	return r.gameOverResults
 }
 
 func (r *jsRuntime) recoverJS(method string) {

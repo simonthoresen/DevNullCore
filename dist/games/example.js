@@ -65,13 +65,23 @@ var Game = {
 
         // Check if game is over.
         if (state.tick >= state.maxTicks) {
-            // Save high score and end the game.
+            // Update high score.
             var best = 0;
             for (var id in state.players) {
                 if (state.players[id].score > best) best = state.players[id].score;
             }
             if (best > state.highScore) state.highScore = best;
-            gameOver({ highScore: state.highScore });
+
+            // Build ranked results and end the game.
+            var results = [];
+            for (var id in state.players) {
+                var p = state.players[id];
+                results.push({ name: p.name + " (" + p.team + ")", result: p.score + " pts" });
+            }
+            results.sort(function(a, b) {
+                return parseInt(b.result) - parseInt(a.result);
+            });
+            gameOver(results);
         }
 
         var me = state.players[playerID];
@@ -135,17 +145,6 @@ var Game = {
             }
         }
         return lines.join("\n");
-    },
-
-    // Return scoreboard for the default game-over screen.
-    scoreboard: function() {
-        var entries = [];
-        for (var id in state.players) {
-            var p = state.players[id];
-            entries.push({ playerID: id, name: p.name + " (" + p.team + ")", score: p.score });
-        }
-        entries.sort(function(a, b) { return b.score - a.score; });
-        return entries;
     },
 
     // Persist high score between runs.

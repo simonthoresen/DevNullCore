@@ -31,7 +31,8 @@ type CentralState struct {
 	GamePhase  common.GamePhase
 
 	// GameOverReady tracks which players have acknowledged the game-over screen.
-	GameOverReady map[string]bool
+	GameOverReady   map[string]bool
+	GameOverResults []common.GameResult // ranked results from gameOver()
 
 	// Teams configured in the lobby before a game starts.
 	Teams []common.Team
@@ -197,6 +198,7 @@ func (s *CentralState) SetGamePhase(phase common.GamePhase) {
 		s.GameOverReady = make(map[string]bool)
 	} else {
 		s.GameOverReady = nil
+		s.GameOverResults = nil
 	}
 }
 

@@ -672,18 +672,11 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, sbStyle, ch
 		viewportH = 1
 	}
 
-	var goContent string
-	if lc, ok := game.(common.GameLifecycle); ok {
-		goContent = lc.GameOverScreen(m.width, viewportH)
-	}
-	if goContent == "" {
-		var scores []common.ScoreEntry
-		if lc, ok := game.(common.GameLifecycle); ok {
-			scores = lc.Scoreboard()
-		}
-		goContent = m.defaultGameOverScreen(scores, m.width, viewportH)
-	}
+	m.app.state.mu.RLock()
+	results := m.app.state.GameOverResults
+	m.app.state.mu.RUnlock()
 
+	goContent := m.defaultGameOverScreen(results, m.width, viewportH)
 	viewport := fitBlock(goContent, m.width, viewportH)
 
 	remaining := 15 - int(time.Since(m.gameOverStart).Seconds())
@@ -821,8 +814,8 @@ func (m chromeModel) defaultSplashScreen(name string, width, height int) string 
 	return strings.Join(lines, "\n")
 }
 
-// defaultGameOverScreen renders a "GAME OVER" screen with an optional scoreboard.
-func (m chromeModel) defaultGameOverScreen(scores []common.ScoreEntry, width, height int) string {
+// defaultGameOverScreen renders a "GAME OVER" screen with ranked results.
+func (m chromeModel) defaultGameOverScreen(results []common.GameResult, width, height int) string {
 	var lines []string
 
 	title := "G A M E   O V E R"
@@ -834,30 +827,17 @@ func (m chromeModel) defaultGameOverScreen(scores []common.ScoreEntry, width, he
 	lines = append(lines, strings.Repeat(" ", titlePad)+title)
 	lines = append(lines, "")
 
-	if len(scores) > 0 {
+	if len(results) > 0 {
 		lines = append(lines, "")
-		// Find max name length for alignment.
-		maxNameLen := 4 // "Name" header
-		for _, s := range scores {
-			if len(s.Name) > maxNameLen {
-				maxNameLen = len(s.Name)
+		maxNameLen := 0
+		for _, r := range results {
+			if len(r.Name) > maxNameLen {
+				maxNameLen = len(r.Name)
 			}
 		}
-		header := fmt.Sprintf("  %-*s  %s", maxNameLen, "Name", "Score")
-		lines = append(lines, header)
-		lines = append(lines, "  "+strings.Repeat("─", maxNameLen+10))
-		for i, s := range scores {
-			medal := "  "
-			if i == 0 {
-				medal = "1."
-			} else if i == 1 {
-				medal = "2."
-			} else if i == 2 {
-				medal = "3."
-			} else {
-				medal = fmt.Sprintf("%d.", i+1)
-			}
-			line := fmt.Sprintf("  %s %-*s  %.0f", medal, maxNameLen, s.Name, s.Score)
+		for i, r := range results {
+			pos := fmt.Sprintf("%d.", i+1)
+			line := fmt.Sprintf("  %-3s %-*s  %s", pos, maxNameLen, r.Name, r.Result)
 			lines = append(lines, line)
 		}
 	}

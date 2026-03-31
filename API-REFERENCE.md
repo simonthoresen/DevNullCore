@@ -104,21 +104,6 @@ var Game = {
         return "";
     },
 
-    // Custom game-over screen. If omitted, the framework renders a default
-    // "GAME OVER" screen using scoreboard() data if available.
-    gameOverScreen: function(width, height) {
-        return "";
-    },
-
-    // Return an array of { playerID, name, score } for the default game-over screen.
-    // Sorted by score descending. Only used when gameOverScreen is not defined.
-    scoreboard: function() {
-        return [
-            { playerID: "abc", name: "Alice", score: 1500 },
-            { playerID: "def", name: "Bob",   score: 1200 }
-        ];
-    },
-
     // Return an object to persist between game runs. Saved to dist/state/<gamename>.json.
     // Called on game over and on manual unload. Null/undefined = nothing saved.
     saveState: function() {
@@ -295,7 +280,7 @@ These are available in both games and plugins.
 | `players()` | Returns an array of `{ id, name, isAdmin }` for every connected player. |
 | `registerCommand(spec)` | Registers a slash command. See below. |
 | `gameOver()` | Signals that the game has ended. Transitions to the game-over screen. |
-| `gameOver(state)` | Same as above, but also saves the state object for next run (equivalent to `saveState()` returning it). |
+| `gameOver(results)` | Same as above, with ranked results displayed on the game-over screen. `results` is an array of `{ name, result }` in ranked order. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). |
 
 ### `registerCommand(spec)`
 
@@ -351,7 +336,7 @@ SPLASH (game splash or default, up to 10s — admin presses Enter to start early
 PLAYING (game viewport + chat)
   │  JS calls gameOver()
   ▼
-GAME OVER (game-over screen or default scoreboard, up to 15s)
+GAME OVER (framework results screen, up to 15s)
   │  all players press Enter or 15s timeout
   ▼
 LOBBY (game unloaded, back to teams + chat)
@@ -359,7 +344,7 @@ LOBBY (game unloaded, back to teams + chat)
 
 - **Splash screen**: Shown after `/game load`. If the game defines `splashScreen()`, that is rendered. Otherwise, the game name is displayed in a centered box. The admin who loaded the game can press Enter to skip to playing immediately.
 - **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called.
-- **Game over**: Triggered when JS calls `gameOver()`. If the game defines `gameOverScreen()`, that is rendered. Otherwise, a default screen shows "GAME OVER" with scoreboard data from `scoreboard()`. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
+- **Game over**: Triggered when JS calls `gameOver()` or `gameOver(results)`. The framework renders a "GAME OVER" screen with the ranked results list (if provided). Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
 - **Late joiners**: Players who connect while a game is running see the lobby (chat + teams for the next round). They can still chat with in-game players.
 
 ## Teams
@@ -388,7 +373,7 @@ The framework blocks loading if the lobby has too few or too many teams.
 
 Games can persist data between runs. Saved state is stored as JSON in `dist/state/<gamename>.json`.
 
-**Saving**: Return data from `saveState()`, or pass it to `gameOver(state)`. Both are called automatically on game end.
+**Saving**: Return data from `saveState()`. Called automatically on game unload.
 
 **Loading**: Receive previous state in `init(config)` via `config.savedState` (null on first run).
 
