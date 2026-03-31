@@ -35,16 +35,7 @@ func (a *Server) runPinggyLogBridge(ctx context.Context, statusFile string) {
 				continue
 			}
 
-			if status.TcpAddress != "" {
-				a.state.mu.Lock()
-				changed := a.state.Net.PinggyURL != status.TcpAddress
-				a.state.Net.PinggyURL = status.TcpAddress
-				a.state.mu.Unlock()
-				if changed {
-					a.LogInviteCommand()
-				}
-			}
-
+			// Process log lines before the invite so Pinggy output appears first.
 			if seenCount > len(status.LogLines) {
 				seenCount = 0
 				seenMessages = make(map[string]struct{})
@@ -58,6 +49,16 @@ func (a *Server) runPinggyLogBridge(ctx context.Context, statusFile string) {
 				a.serverLog("[pinggy] " + line)
 			}
 			seenCount = len(status.LogLines)
+
+			if status.TcpAddress != "" {
+				a.state.mu.Lock()
+				changed := a.state.Net.PinggyURL != status.TcpAddress
+				a.state.Net.PinggyURL = status.TcpAddress
+				a.state.mu.Unlock()
+				if changed {
+					a.LogInviteCommand()
+				}
+			}
 		}
 	}
 }
