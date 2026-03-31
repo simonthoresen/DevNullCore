@@ -177,7 +177,7 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 
 	input := textinput.New()
 	input.Prompt = "> "
-	input.Placeholder = "Type a message or /command"
+	input.Placeholder = ""
 	input.CharLimit = 256
 	input.SetWidth(78)
 
