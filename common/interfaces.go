@@ -30,7 +30,7 @@ type Game interface {
 	GameName() string                      // display name (fallback: filename stem)
 	TeamRange() TeamRange                  // supported team count range (zero = no constraint)
 	SplashScreen() string                  // splash screen content (empty = use default)
-	OnPlayerJoin(playerID, playerName string)
+	Init(savedState any)                   // called at game start with persisted state (or nil)
 	OnPlayerLeave(playerID string)
 	OnInput(playerID, key string)
 	View(playerID string, width, height int) string

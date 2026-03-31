@@ -53,7 +53,8 @@ LOBBY (teams + chat) → SPLASH → PLAYING → GAME OVER → LOBBY
 ```
 1. **Lobby**: Players configure teams, chat. Admin loads game with `/game load <name>`.
 2. **Splash**: Shows game splash screen (custom or default with game name). Admin presses Enter to start, or auto-starts after 10s.
-3. **Playing**: Normal game mode. Game calls `gameOver(results, state)` when done. Only players who had teams at game start participate.
+3. **Splash→Playing**: Framework locks teams, builds game player set from team members, loads saved state, calls `init(savedState)`. `players()` and `teams()` are available during init.
+4. **Playing**: Normal game mode. Game calls `gameOver(results, state)` when done.
 4. **Game Over**: Framework renders ranked results screen. All players press Enter or 15s auto-transition.
 5. Back to **Lobby** — game unloaded, teams preserved for next round.
 
@@ -135,7 +136,7 @@ type Game interface {
     GameName() string                      // display name (fallback: filename stem)
     TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
     SplashScreen() string                  // splash screen content (empty = use default)
-    OnPlayerJoin(playerID, playerName string)
+    Init(savedState any)                   // called at game start (splash→playing) with persisted state
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
     View(playerID string, width, height int) string
@@ -145,7 +146,7 @@ type Game interface {
     Unload()
 }
 ```
-`jsRuntime` implements `Game`. All JS hooks are optional — zero values returned when not defined. `init()` is called internally by `LoadGame`, not part of the interface.
+`jsRuntime` implements `Game`. `init()` is mandatory; all other JS hooks are optional. `players()` and `teams()` globals return game participants during `init()` and playing.
 
 ### Game Over
 

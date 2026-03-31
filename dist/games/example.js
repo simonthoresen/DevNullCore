@@ -17,34 +17,34 @@ var Game = {
     // Custom splash screen (optional — omit to use the default).
     splashScreen: "=== EXAMPLE ARENA ===\nMove with arrows, press Space to score\nGame lasts 30 seconds",
 
-    // Called once after loading with saved state from previous run (or null).
-    // Use the teams() and players() globals to query current teams and players.
+    // Called once at game start. players() and teams() are available.
     init: function(savedState) {
         if (savedState && savedState.highScore) {
             state.highScore = savedState.highScore;
         }
-        log("Example init: " + teams().length + " teams, high score: " + state.highScore);
-    },
 
-    onPlayerJoin: function(playerID, playerName) {
-        // Find which team this player belongs to.
-        var teamName = "none";
+        // Build a playerID→teamName lookup from teams.
+        var teamByPlayer = {};
         var t = teams();
         for (var i = 0; i < t.length; i++) {
             for (var j = 0; j < t[i].players.length; j++) {
-                if (t[i].players[j] === playerID) {
-                    teamName = t[i].name;
-                }
+                teamByPlayer[t[i].players[j]] = t[i].name;
             }
         }
-        state.players[playerID] = {
-            name: playerName,
-            team: teamName,
-            x: 5 + Math.floor(Math.random() * 20),
-            y: 2 + Math.floor(Math.random() * 8),
-            score: 0
-        };
-        chat("** " + playerName + " (" + teamName + ") entered the arena **");
+
+        // Register all game participants.
+        var p = players();
+        for (var i = 0; i < p.length; i++) {
+            var teamName = teamByPlayer[p[i].id] || "none";
+            state.players[p[i].id] = {
+                name: p[i].name,
+                team: teamName,
+                x: 5 + Math.floor(Math.random() * 20),
+                y: 2 + Math.floor(Math.random() * 8),
+                score: 0
+            };
+        }
+        log("Example init: " + t.length + " teams, " + p.length + " players, high score: " + state.highScore);
     },
 
     onPlayerLeave: function(playerID) {

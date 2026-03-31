@@ -38,17 +38,14 @@ URL-loaded files are cached in `dist/games/.cache/` or `dist/plugins/.cache/`. R
 
 ## Writing a game
 
-A game file must define a global `Game` object. Only `view` is required; all other hooks are optional.
+A game file must define a global `Game` object. `init` and `view` are required; all other hooks are optional.
 
 ```js
 var Game = {
 
-    // --- Core hooks (same as before) ---
+    // --- Core hooks ---
 
-    // Called when a player connects (or when the game starts after the splash screen).
-    onPlayerJoin: function(playerID, playerName) {},
-
-    // Called when a player disconnects.
+    // Called when a player disconnects mid-game.
     onPlayerLeave: function(playerID) {},
 
     // Called every time a player presses a key while in game mode (not while chatting).
@@ -337,24 +334,23 @@ LOBBY (game unloaded, back to teams + chat)
 ```
 
 - **Splash screen**: Shown after `/game load`. If the game sets `splashScreen` (a string property), that content is rendered. Otherwise, the game name is displayed in a centered box. The admin who loaded the game can press Enter to skip to playing immediately.
+- **Splash→Playing**: Framework locks teams, builds the game player set from team members, loads saved state, and calls `init(savedState)`. During `init()`, `players()` and `teams()` globals return game participants.
 - **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called.
-- **Game over**: Triggered when JS calls `gameOver()` or `gameOver(results)`. The framework renders a "GAME OVER" screen with the ranked results list (if provided). Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
-- **Late joiners**: Players who connect while a game is running see the lobby (chat + teams for the next round). They can still chat with in-game players.
+- **Game over**: Triggered when JS calls `gameOver(results, state)`. The framework renders a "GAME OVER" screen with the ranked results list. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
+- **Late joiners**: Players who connect while a game is running see the lobby and can chat. They do not join the active game. Teams are locked during a game.
 
 ## Teams
 
-Players configure teams in the lobby before a game starts. Each player starts in their own solo team and can move between teams using the team panel (Tab to focus, Up/Down to switch teams).
+Players start unassigned and configure teams in the lobby before a game starts. Use the team panel (Tab to focus, Up/Down to switch teams) to join or create teams.
 
 The first player in a team is the team leader:
 - **Enter** — rename the team
 - **Left/Right** — cycle the team color
 
-Games receive team data in `init(config)`:
+Games access teams and players via globals:
 ```js
-config.teams = [
-    { name: "Red Team", color: "#ff5555", players: ["player1", "player2"] },
-    { name: "Blue Team", color: "#5555ff", players: ["player3"] }
-];
+teams()   // [{name, color, players: [playerID, ...]}, ...]
+players() // [{id, name, isAdmin}, ...]
 ```
 
 Games can declare a `teamRange` property to enforce a valid team count:

@@ -492,15 +492,9 @@ func (a *Server) loadGame(path string) error {
 
 	name := strings.TrimSuffix(filepath.Base(path), ".js")
 
-	// Load saved state for this game (if any).
-	savedState, err := loadGameState(a.dataDir, name)
-	if err != nil {
-		a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
-	}
-
 	rt, err := LoadGame(path, a.state, a.serverLog, func(msg common.Message) {
 		a.broadcastChat(msg)
-	}, savedState)
+	})
 	if err != nil {
 		return err
 	}
@@ -561,18 +555,19 @@ func (a *Server) splashTimer() {
 	a.state.GamePlayerIDs = gamePlayerIDs
 	a.state.GamePhase = common.PhasePlaying
 	game := a.state.ActiveGame
+	gameName := a.state.GameName
 	a.state.mu.Unlock()
 
 	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhasePlaying})
 	a.serverLog("game started (playing)")
 
-	// Notify game of all participating players.
+	// Load saved state and call init — players() and teams() are now populated.
 	if game != nil {
-		for id := range gamePlayerIDs {
-			if p := a.state.GetPlayer(id); p != nil {
-				game.OnPlayerJoin(p.ID, p.Name)
-			}
+		savedState, err := loadGameState(a.dataDir, gameName)
+		if err != nil {
+			a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
 		}
+		game.Init(savedState)
 	}
 }
 

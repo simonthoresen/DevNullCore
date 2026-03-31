@@ -56,7 +56,6 @@ type jsRuntime struct {
 	chatFn   func(common.Message)
 
 	// game object methods (nil if not defined)
-	onPlayerJoin  goja.Callable
 	onPlayerLeave goja.Callable
 	onInput       goja.Callable
 	viewFn        goja.Callable
@@ -78,8 +77,9 @@ type jsRuntime struct {
 }
 
 // LoadGame loads and executes a JS file from games/, extracts the Game object
-// methods, and returns a common.Game. init(savedState) is called during load.
-func LoadGame(path string, state *CentralState, logFn func(string), chatFn func(common.Message), savedState any) (common.Game, error) {
+// methods, and returns a common.Game. Init() is NOT called here — the server
+// calls it at the splash→playing transition when GamePlayerIDs are set.
+func LoadGame(path string, state *CentralState, logFn func(string), chatFn func(common.Message)) (common.Game, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read game file: %w", err)
@@ -103,11 +103,10 @@ func LoadGame(path string, state *CentralState, logFn func(string), chatFn func(
 		return nil, fmt.Errorf("extract game object: %w", err)
 	}
 
-	rt.callInit(savedState)
 	return rt, nil
 }
 
-func (r *jsRuntime) callInit(savedState any) {
+func (r *jsRuntime) Init(savedState any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	defer r.recoverJS("Init")
@@ -287,7 +286,6 @@ func (r *jsRuntime) extractGameObject() error {
 	}
 
 	// Core game methods
-	r.onPlayerJoin = extractCallable(gameObj, "onPlayerJoin")
 	r.onPlayerLeave = extractCallable(gameObj, "onPlayerLeave")
 	r.onInput = extractCallable(gameObj, "onInput")
 	r.viewFn = extractCallable(gameObj, "view")
@@ -339,19 +337,6 @@ func extractCallable(obj *goja.Object, name string) goja.Callable {
 }
 
 // Implement common.Game
-
-func (r *jsRuntime) OnPlayerJoin(playerID, playerName string) {
-	if r.onPlayerJoin == nil {
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	defer r.recoverJS("OnPlayerJoin")
-	defer traceJS(r.vm, "OnPlayerJoin")()
-	cancel := watchdogJS(r.vm, "OnPlayerJoin")
-	defer cancel()
-	_, _ = r.onPlayerJoin(goja.Undefined(), r.vm.ToValue(playerID), r.vm.ToValue(playerName))
-}
 
 func (r *jsRuntime) OnPlayerLeave(playerID string) {
 	if r.onPlayerLeave == nil {
