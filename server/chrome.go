@@ -828,11 +828,7 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 		if p != nil {
 			name = p.Name
 		}
-		prefix := "    "
-		if pid == m.playerID {
-			prefix = "  > "
-		}
-		lines = append(lines, baseStyle.Width(width).Render(truncateStyled(prefix+name, width)))
+		lines = append(lines, baseStyle.Width(width).Render(truncateStyled("    "+name, width)))
 	}
 
 	for i, team := range teams {
