@@ -138,6 +138,7 @@ const (
 type chromeModel struct {
 	app      *Server
 	playerID string
+	isLocal  bool // true for local mode, false for SSH
 	width    int
 	height   int
 	mode     int
@@ -618,6 +619,7 @@ func (m chromeModel) View() tea.View {
 
 	view.SetContent(content)
 	view.AltScreen = true
+	view.BackgroundColor = col.chatBg // fill alt screen with chat bg
 	if m.mode == modeInput {
 		if cursor := m.input.Cursor(); cursor != nil {
 			cursor.Position.Y = m.height - 1
@@ -686,15 +688,33 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 	}
 
 	// Status bar (split across panels). Spinner lives in the teams bar (far right).
-	statusText := fmt.Sprintf("null-space | %d players | uptime %s", m.app.state.PlayerCount(), m.app.uptime())
+	modeLabel := "remote"
+	if m.isLocal {
+		modeLabel = "local"
+	}
+	statusText := fmt.Sprintf("null-space (%s) | %d players | uptime %s", modeLabel, m.app.state.PlayerCount(), m.app.uptime())
 	chatStatus := chatBarStyle.Width(chatW).Render(truncateStyled(statusText, chatW))
 	teamStatus := teamBarStyle.Width(teamW).Render(headerWithSpinner(" Teams", teamW, spinChar))
 	statusBar := chatStatus + teamStatus
 
-	// Content area.
+	// Content area — join chat and team rows manually to avoid
+	// lipgloss.JoinHorizontal ANSI width miscalculation over SSH.
 	chatView := renderChatLines(m.chatLines, chatW, contentH, m.chatScrollOffset, chatBodyStyle)
 	teamView := m.renderTeamPanel(teamW, contentH, teamBodyStyle)
-	middle := lipgloss.JoinHorizontal(lipgloss.Top, chatView, teamView)
+	chatRows := strings.Split(chatView, "\n")
+	teamRows := strings.Split(teamView, "\n")
+	middleRows := make([]string, contentH)
+	for i := 0; i < contentH; i++ {
+		var c, t string
+		if i < len(chatRows) {
+			c = chatRows[i]
+		}
+		if i < len(teamRows) {
+			t = teamRows[i]
+		}
+		middleRows[i] = c + t
+	}
+	middle := strings.Join(middleRows, "\n")
 
 	// Command bar (split across panels).
 	var cmdBar string
@@ -836,8 +856,9 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 		lines = append(lines, baseStyle.Width(width).Render(truncateStyled("    "+name, width)))
 	}
 
+	blank := strings.Repeat(" ", width)
 	for i, team := range teams {
-		lines = append(lines, baseStyle.Width(width).Render(""))
+		lines = append(lines, baseStyle.Width(width).Render(blank))
 		teamColor := lipgloss.Color(team.Color)
 		colorBlock := lipgloss.NewStyle().Background(teamColor).Render("  ")
 		nameText := fmt.Sprintf(" %s %s", colorBlock, team.Name)
@@ -862,7 +883,7 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 
 	// Pad to fill height.
 	for len(lines) < height {
-		lines = append(lines, baseStyle.Width(width).Render(""))
+		lines = append(lines, baseStyle.Width(width).Render(blank))
 	}
 	if len(lines) > height {
 		lines = lines[:height]
@@ -1119,11 +1140,15 @@ func renderChatLines(lines []string, width, height, scrollOffset int, style lipg
 	result := make([]string, height)
 	// visible may be shorter than height (near top of buffer); blank-pad the top
 	offset := height - len(visible)
+	blank := strings.Repeat(" ", width)
 	for i := 0; i < height; i++ {
 		var text string
 		vi := i - offset
 		if vi >= 0 && vi < len(visible) {
 			text = truncateStyled(visible[vi], width)
+		}
+		if text == "" {
+			text = blank
 		}
 		result[i] = style.Width(width).Render(text)
 	}

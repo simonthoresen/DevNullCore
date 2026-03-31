@@ -65,11 +65,19 @@ if ([string]::IsNullOrWhiteSpace($name)) {
     $name = $env:USERNAME
 }
 
+# Ensure the SSH client advertises proper terminal capabilities.
+$env:TERM = "xterm-256color"
+$env:LANG = "en_US.UTF-8"
+$env:COLORTERM = "truecolor"
+
 $sshOpts = @(
-    "-t",
+    "-tt",
     "-o", "ConnectTimeout=5",
     "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null"
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "SendEnv=TERM",
+    "-o", "SendEnv=LANG",
+    "-o", "SendEnv=COLORTERM"
 )
 
 foreach ($ep in $endpoints) {

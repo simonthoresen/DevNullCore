@@ -310,10 +310,26 @@ func (a *Server) sessionProgramOptions(sess ssh.Session) []tea.ProgramOption {
 	if pty, _, ok := sess.Pty(); ok && pty.Term != "" {
 		envs = append(envs, "TERM="+pty.Term)
 	}
+	// Default to TrueColor if the client didn't send COLORTERM.
+	// Most modern terminals (Windows Terminal, iTerm2, etc.) support it,
+	// and without this the UI degrades to ugly ANSI-16 approximations.
+	hasColorTerm := false
+	for _, e := range envs {
+		if strings.HasPrefix(e, "COLORTERM=") {
+			hasColorTerm = true
+			break
+		}
+	}
+	if !hasColorTerm {
+		envs = append(envs, "COLORTERM=truecolor")
+	}
+	cp := colorprofile.Env(envs)
+	slog.Info("SSH session color profile", "profile", cp.String(), "envs_count", len(envs))
 	opts := wishbubbletea.MakeOptions(sess)
 	opts = append(opts,
 		tea.WithFPS(60),
-		tea.WithColorProfile(colorprofile.Env(envs)),
+		tea.WithEnvironment(envs), // override MakeOptions' env to include COLORTERM
+		tea.WithColorProfile(cp),
 		tea.WithOutput(newKittyStripWriter(sess)),
 	)
 	return opts

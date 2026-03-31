@@ -66,8 +66,10 @@ func (a *Server) RunLocal(ctx context.Context, playerName, gameName string, plug
 		}
 	}
 
+	model := newChromeModel(a, playerID)
+	model.isLocal = true
 	program := tea.NewProgram(
-		newChromeModel(a, playerID),
+		model,
 		tea.WithInput(os.Stdin),
 		tea.WithOutput(os.Stdout),
 		tea.WithFPS(60),
