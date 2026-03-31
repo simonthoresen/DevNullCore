@@ -308,8 +308,6 @@ func (a *Server) registerSession(sess ssh.Session) *common.Player {
 	a.broadcastChat(joinMsg)
 	a.broadcastMsg(common.PlayerJoinedMsg{Player: player})
 
-	// Assign a lobby team for the new player.
-	a.state.EnsurePlayerTeam(player.ID)
 	a.broadcastMsg(common.TeamUpdatedMsg{})
 
 	// Check if this player was disconnected from a running game.

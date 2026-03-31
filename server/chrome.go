@@ -451,24 +451,39 @@ func (m chromeModel) handleTeamKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		cmd := m.input.Focus()
 		return m, cmd
 	case "up":
-		// Move player to the team above.
 		idx := m.app.state.PlayerTeamIndex(m.playerID)
-		if idx > 0 {
+		if idx == 0 {
+			// At first team — become unassigned.
+			m.app.state.MovePlayerToTeam(m.playerID, -1)
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		} else if idx > 0 {
+			// Move to team above.
 			m.app.state.MovePlayerToTeam(m.playerID, idx-1)
 			m.app.broadcastMsg(common.TeamUpdatedMsg{})
 		}
+		// idx == -1 (unassigned) — block, already at top.
 		return m, nil
 	case "down":
-		// Move player to the team below, or create a new solo team.
 		idx := m.app.state.PlayerTeamIndex(m.playerID)
 		teamCount := m.app.state.TeamCount()
-		if idx >= 0 && idx < teamCount-1 {
+		if idx < 0 {
+			// Unassigned — join first team, or create one if none exist.
+			if teamCount > 0 {
+				m.app.state.MovePlayerToTeam(m.playerID, 0)
+			} else {
+				m.app.state.MovePlayerToTeam(m.playerID, 0) // creates new team
+			}
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		} else if idx < teamCount-1 {
+			// Move to team below.
 			m.app.state.MovePlayerToTeam(m.playerID, idx+1)
-		} else {
-			// Below last team — create new solo team.
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		} else if !m.app.state.IsSoleMemberOfTeam(m.playerID) {
+			// On last team with others — create new solo team.
 			m.app.state.MovePlayerToTeam(m.playerID, teamCount)
+			m.app.broadcastMsg(common.TeamUpdatedMsg{})
 		}
-		m.app.broadcastMsg(common.TeamUpdatedMsg{})
+		// Sole member of last team — block to avoid drop/recreate.
 		return m, nil
 	case "enter":
 		// If first player of team, start renaming.
@@ -721,6 +736,7 @@ func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chS
 // renderTeamPanel draws the team list panel for the lobby.
 func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style) string {
 	teams := m.app.state.GetTeams()
+	unassigned := m.app.state.UnassignedPlayers()
 	myTeamIdx := m.app.state.PlayerTeamIndex(m.playerID)
 	focused := m.lobbyFocus == lobbyFocusTeams
 
@@ -729,6 +745,27 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 	headerStyle := baseStyle.Bold(true)
 	lines = append(lines, headerStyle.Width(width).Render(" Teams"))
 	lines = append(lines, baseStyle.Width(width).Render(strings.Repeat("─", width)))
+
+	// Unassigned players at the top.
+	if len(unassigned) > 0 {
+		unStyle := baseStyle
+		if focused && myTeamIdx < 0 {
+			unStyle = unStyle.Bold(true)
+		}
+		lines = append(lines, unStyle.Width(width).Render(" Unassigned"))
+		for _, pid := range unassigned {
+			p := m.app.state.GetPlayer(pid)
+			name := pid
+			if p != nil {
+				name = p.Name
+			}
+			prefix := "    "
+			if pid == m.playerID {
+				prefix = "  > "
+			}
+			lines = append(lines, baseStyle.Width(width).Render(truncateStyled(prefix+name, width)))
+		}
+	}
 
 	for i, team := range teams {
 		teamColor := lipgloss.Color(team.Color)

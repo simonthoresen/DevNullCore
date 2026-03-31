@@ -2,6 +2,7 @@ package server
 
 import (
 	"null-space/common"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -332,29 +333,6 @@ func (s *CentralState) nextAvailableColor() string {
 	return teamColors[0]
 }
 
-// EnsurePlayerTeam creates a solo team for a player if they aren't in any team.
-func (s *CentralState) EnsurePlayerTeam(playerID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, t := range s.Teams {
-		for _, id := range t.Players {
-			if id == playerID {
-				return // already in a team
-			}
-		}
-	}
-	p := s.Players[playerID]
-	name := playerID
-	if p != nil {
-		name = p.Name
-	}
-	s.Teams = append(s.Teams, common.Team{
-		Name:    name,
-		Color:   s.nextAvailableColor(),
-		Players: []string{playerID},
-	})
-}
-
 // RemovePlayerFromTeams removes a player from all teams and cleans up empty teams.
 func (s *CentralState) RemovePlayerFromTeams(playerID string) {
 	s.mu.Lock()
@@ -383,16 +361,20 @@ func (s *CentralState) removePlayerFromTeamsLocked(playerID string) {
 
 // MovePlayerToTeam moves a player to the team at the given index.
 // If teamIndex == len(Teams), a new solo team is created at the end.
+// If teamIndex < 0, the player becomes unassigned (removed from all teams).
 func (s *CentralState) MovePlayerToTeam(playerID string, teamIndex int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.removePlayerFromTeamsLocked(playerID)
+	if teamIndex < 0 {
+		return // unassigned
+	}
 	if teamIndex >= len(s.Teams) {
 		// create new solo team at the end
 		p := s.Players[playerID]
 		name := playerID
 		if p != nil {
-			name = p.Name
+			name = "Team " + p.Name
 		}
 		s.Teams = append(s.Teams, common.Team{
 			Name:    name,
@@ -400,9 +382,6 @@ func (s *CentralState) MovePlayerToTeam(playerID string, teamIndex int) {
 			Players: []string{playerID},
 		})
 		return
-	}
-	if teamIndex < 0 {
-		teamIndex = 0
 	}
 	s.Teams[teamIndex].Players = append(s.Teams[teamIndex].Players, playerID)
 }
@@ -485,6 +464,46 @@ func (s *CentralState) TeamCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.Teams)
+}
+
+// IsSoleMemberOfTeam returns true if the player is the only member of their team.
+func (s *CentralState) IsSoleMemberOfTeam(playerID string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, t := range s.Teams {
+		for _, id := range t.Players {
+			if id == playerID {
+				return len(t.Players) == 1
+			}
+		}
+	}
+	return false
+}
+
+// UnassignedPlayers returns player IDs not belonging to any team.
+func (s *CentralState) UnassignedPlayers() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	assigned := make(map[string]bool)
+	for _, t := range s.Teams {
+		for _, id := range t.Players {
+			assigned[id] = true
+		}
+	}
+	var result []string
+	for id := range s.Players {
+		if !assigned[id] {
+			result = append(result, id)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		pi, pj := s.Players[result[i]], s.Players[result[j]]
+		if pi != nil && pj != nil {
+			return pi.Name < pj.Name
+		}
+		return result[i] < result[j]
+	})
+	return result
 }
 
 // RLock/RUnlock for external readers (e.g. main.go reading Net).

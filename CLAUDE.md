@@ -63,7 +63,16 @@ LOBBY (teams + chat) → SPLASH → PLAYING → GAME OVER → LOBBY
 Late joiners see the lobby and can chat but don't join the active game. Lobby teams are independent from game teams — players can freely organize for the next round while a game is running.
 
 ### Teams
-Players manage teams in the lobby panel (right side, 30% width). New players start unassigned (no team). Tab switches focus between chat and team panel. In team panel: Up/Down moves between teams, first player can Enter to rename and Left/Right to cycle color. Games can declare `teamRange: {min, max}` to enforce valid team counts. Games access teams via the `teams()` global, which returns `[{name, color, players: [{id, name}, ...]}, ...]`. Game teams are a snapshot taken at load time — lobby teams remain editable during a game.
+Players manage teams in the lobby panel (right side, 30% width). New players start **unassigned** (shown under "Unassigned" at the top of the team list). Tab switches focus between chat and team panel. Navigation in team panel:
+- **Down** from unassigned → join first team (or create one if none exist)
+- **Down** from a team → move to team below
+- **Down** from last team → create new "Team \<your name\>" (blocked if you're the sole member, to avoid drop/recreate churn)
+- **Up** from a team → move to team above
+- **Up** from first team → become unassigned
+- **Enter** (first player in team) → rename team
+- **Left/Right** (first player in team) → cycle team color
+
+New teams default to "Team \<creator name\>" and the first unused palette color. Games can declare `teamRange: {min, max}` to enforce valid team counts. Games access teams via the `teams()` global, which returns `[{name, color, players: [{id, name}, ...]}, ...]`. Game teams are a snapshot taken at load time — lobby teams remain editable during a game. Unassigned players are excluded from the game snapshot.
 
 ### State Persistence
 Games persist state by passing it as the second argument to `gameOver(results, state)`. On the next load, it's received as the argument to `init(savedState)`. State files are stored as JSON in `dist/state/<gamename>.json`.
