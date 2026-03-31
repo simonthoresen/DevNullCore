@@ -162,13 +162,7 @@ func (r *jsRuntime) registerGlobals() {
 	})
 
 	r.vm.Set("teams", func() []map[string]any {
-		// During a game, return the game teams snapshot.
-		var teams []common.Team
-		if r.state.GetGamePhase() != common.PhaseNone {
-			teams = r.state.GetGameTeams()
-		} else {
-			teams = r.state.GetTeams()
-		}
+		teams := r.state.GetGameTeams()
 		result := make([]map[string]any, 0, len(teams))
 		for _, t := range teams {
 			playerList := make([]any, 0, len(t.Players))
