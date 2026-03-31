@@ -13,11 +13,13 @@ import (
 	"null-space/common"
 )
 
+// Console uses the same lobby palettes: blue for server log, warm for chat.
 var (
-	consoleHeaderStyle  = lipgloss.NewStyle().Background(lipgloss.Color("#B9D6F2")).Foreground(lipgloss.Color("#102A43")).Bold(true)
-	consoleSectionStyle = lipgloss.NewStyle().Background(lipgloss.Color("#D9EAF7")).Foreground(lipgloss.Color("#16324F")).Bold(true)
-	consoleBodyStyle    = lipgloss.NewStyle().Background(lipgloss.Color("#EEF6FC")).Foreground(lipgloss.Color("#16324F"))
-	consoleChatStyle    = lipgloss.NewStyle().Background(lipgloss.Color("#EADFC7")).Foreground(lipgloss.Color("#2C1810"))
+	consoleLogBarStyle  = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg).Bold(true)
+	consoleLogBodyStyle = lipgloss.NewStyle().Background(lobbyTeamActiveBg).Foreground(lobbyTeamFg)
+	consoleChatBarStyle = lipgloss.NewStyle().Background(lobbyChatBarActiveBg).Foreground(lobbyChatBarActiveFg).Bold(true)
+	consoleChatStyle    = lipgloss.NewStyle().Background(lobbyChatActiveBg).Foreground(lobbyChatFg)
+	consoleCmdStyle     = lipgloss.NewStyle().Background(lobbyChatBarActiveBg).Foreground(lobbyChatBarActiveFg)
 )
 
 type consoleModel struct {
@@ -49,7 +51,7 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 
 	input := textinput.New()
 	input.Prompt = "> "
-	input.Placeholder = "Type chat or /command"
+	input.Placeholder = ""
 	input.CharLimit = 256
 	input.SetWidth(78)
 	input.Focus()
@@ -196,26 +198,29 @@ func (m *consoleModel) View() tea.View {
 		}
 	}
 
-	headerText := fmt.Sprintf("null-space | game: %s | teams: %d | uptime %s", gameLabel, m.app.state.TeamCount(), m.app.uptime())
-	header := consoleHeaderStyle.Width(m.width).Render(headerWithSpinner(headerText, m.width, spinChar))
-
-	availH := max(6, m.height-4) // header + 2 section labels + input
+	// Layout: log title bar + log body + chat title bar + chat body + input bar
+	availH := max(6, m.height-3) // 2 title bars + input bar
 	logsH := max(3, availH/2)
 	chatH := max(3, availH-logsH)
 
-	logsLabel := consoleSectionStyle.Width(m.width).Render("Server Log")
-	chatLabel := consoleSectionStyle.Width(m.width).Render(fmt.Sprintf("Chat (%d players online)", m.app.state.PlayerCount()))
-	logsView := fitStyledBlock(m.logs.View(), m.width, logsH, consoleBodyStyle)
-	chatView := fitStyledBlock(m.chat.View(), m.width, chatH, consoleChatStyle)
-	inputView := consoleSectionStyle.Width(m.width).Render(truncateStyled(m.input.View(), m.width))
+	logTitle := fmt.Sprintf("null-space | game: %s | teams: %d | uptime %s", gameLabel, m.app.state.TeamCount(), m.app.uptime())
+	logsBar := consoleLogBarStyle.Width(m.width).Render(headerWithSpinner(logTitle, m.width, spinChar))
+	logsView := fitStyledBlock(m.logs.View(), m.width, logsH, consoleLogBodyStyle)
 
-	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, header, logsLabel, logsView, chatLabel, chatView, inputView))
+	chatTitle := fmt.Sprintf("Chat (%d players online)", m.app.state.PlayerCount())
+	chatBar := consoleChatBarStyle.Width(m.width).Render(truncateStyled(chatTitle, m.width))
+	chatView := fitStyledBlock(m.chat.View(), m.width, chatH, consoleChatStyle)
+
+	setInputStyle(&m.input, lobbyChatBarActiveBg, lobbyChatBarActiveFg)
+	inputView := truncateStyled(m.input.View(), m.width)
+
+	view.SetContent(lipgloss.JoinVertical(lipgloss.Left, logsBar, logsView, chatBar, chatView, inputView))
 	view.AltScreen = true
 	return view
 }
 
 func (m *consoleModel) resize() {
-	availH := max(6, m.height-4)
+	availH := max(6, m.height-3) // 2 title bars + input bar
 	logsH := max(3, availH/2)
 	chatH := max(3, availH-logsH)
 
