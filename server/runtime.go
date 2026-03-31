@@ -62,13 +62,12 @@ type jsRuntime struct {
 	statusBarFn   goja.Callable
 	commandBarFn  goja.Callable
 
-	// lifecycle properties (read from Game object during extractGameObject)
-	gameNameProp      string
-	teamRangeProp     common.TeamRange
-	splashScreenProp  string // read from Game.splashScreen property (string or function result)
-
-	// init is called internally by LoadGame, not part of the Game interface
-	initFn goja.Callable
+	// lifecycle
+	gameNameProp     string
+	teamRangeProp    common.TeamRange
+	splashScreenProp string // read from Game.splashScreen after init
+	initFn           goja.Callable
+	startFn          goja.Callable
 
 	// gameOver() callback state — set by JS, detected by tick loop
 	gameOverPending bool
@@ -114,6 +113,29 @@ func (r *jsRuntime) Init(savedState any) {
 	cancel := watchdogJS(r.vm, "Init")
 	defer cancel()
 	_, _ = r.initFn(goja.Undefined(), r.vm.ToValue(savedState))
+
+	// Re-read splashScreen — init() may have set it dynamically.
+	gameVal := r.vm.Get("Game")
+	if gameVal != nil && !goja.IsUndefined(gameVal) && !goja.IsNull(gameVal) {
+		if obj := gameVal.ToObject(r.vm); obj != nil {
+			if v := obj.Get("splashScreen"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
+				r.splashScreenProp = v.String()
+			}
+		}
+	}
+}
+
+func (r *jsRuntime) Start() {
+	if r.startFn == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer r.recoverJS("Start")
+	defer traceJS(r.vm, "Start")()
+	cancel := watchdogJS(r.vm, "Start")
+	defer cancel()
+	_, _ = r.startFn(goja.Undefined())
 }
 
 func (r *jsRuntime) registerGlobals() {
@@ -292,11 +314,12 @@ func (r *jsRuntime) extractGameObject() error {
 	r.statusBarFn = extractCallable(gameObj, "statusBar")
 	r.commandBarFn = extractCallable(gameObj, "commandBar")
 
-	// init is mandatory
+	// init and start are mandatory
 	r.initFn = extractCallable(gameObj, "init")
 	if r.initFn == nil {
 		return fmt.Errorf("Game must define an init(savedState) function")
 	}
+	r.startFn = extractCallable(gameObj, "start")
 
 	// Read gameName property (string, not callable)
 	if v := gameObj.Get("gameName"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {

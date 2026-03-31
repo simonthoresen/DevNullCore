@@ -52,9 +52,10 @@ go run ./cmd/null-space --local --data-dir dist --game example --player alice
 LOBBY (teams + chat) → SPLASH → PLAYING → GAME OVER → LOBBY
 ```
 1. **Lobby**: Players configure teams, chat. Admin loads game with `/game load <name>`.
-2. **Splash**: Shows game splash screen (custom or default with game name). Admin presses Enter to start, or auto-starts after 10s.
-3. **Splash→Playing**: Framework locks teams, builds game player set from team members, loads saved state, calls `init(savedState)`. `players()` and `teams()` are available during init.
-4. **Playing**: Normal game mode. Game calls `gameOver(results, state)` when done.
+2. **Load**: Framework locks teams, builds game player set from team members, loads saved state, calls `init(savedState)`. `players()` and `teams()` are available. Game can set `Game.splashScreen` dynamically.
+3. **Splash**: Shows game splash screen (custom or default with game name). Admin presses Enter to start, or auto-starts after 10s.
+4. **Splash→Playing**: Framework calls `start()`. Game sets up its playing state.
+5. **Playing**: Normal game mode. Game calls `gameOver(results, state)` when done.
 4. **Game Over**: Framework renders ranked results screen. All players press Enter or 15s auto-transition.
 5. Back to **Lobby** — game unloaded, teams preserved for next round.
 
@@ -136,7 +137,8 @@ type Game interface {
     GameName() string                      // display name (fallback: filename stem)
     TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
     SplashScreen() string                  // splash screen content (empty = use default)
-    Init(savedState any)                   // called at game start (splash→playing) with persisted state
+    Init(savedState any)                   // called before splash with persisted state
+    Start()                                // called at splash→playing transition
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
     View(playerID string, width, height int) string
@@ -146,7 +148,7 @@ type Game interface {
     Unload()
 }
 ```
-`jsRuntime` implements `Game`. `init()` is mandatory; all other JS hooks are optional. `players()` and `teams()` globals return game participants during `init()` and playing.
+`jsRuntime` implements `Game`. `init()` is mandatory; all other JS hooks are optional. `players()` and `teams()` globals return game participants during `init()`, `start()`, and playing.
 
 ### Game Over
 

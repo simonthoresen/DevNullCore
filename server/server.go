@@ -510,11 +510,27 @@ func (a *Server) loadGame(path string) error {
 		return fmt.Errorf("game supports at most %d teams (have %d)", tr.Max, teamCount)
 	}
 
+	// Lock teams and build game player set before init.
+	gamePlayerIDs := make(map[string]bool)
+	for _, t := range teams {
+		for _, id := range t.Players {
+			gamePlayerIDs[id] = true
+		}
+	}
+
 	a.state.mu.Lock()
+	a.state.GamePlayerIDs = gamePlayerIDs
 	a.state.ActiveGame = rt
 	a.state.GameName = name
 	a.state.GamePhase = common.PhaseSplash
 	a.state.mu.Unlock()
+
+	// Call init — players() and teams() now return game participants.
+	savedState, err := loadGameState(a.dataDir, name)
+	if err != nil {
+		a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
+	}
+	rt.Init(savedState)
 
 	// Register game commands.
 	for _, cmd := range rt.Commands() {
@@ -545,29 +561,15 @@ func (a *Server) splashTimer() {
 		return
 	}
 
-	// Build the set of game players: everyone who is in a team.
-	gamePlayerIDs := make(map[string]bool)
-	for _, t := range a.state.Teams {
-		for _, id := range t.Players {
-			gamePlayerIDs[id] = true
-		}
-	}
-	a.state.GamePlayerIDs = gamePlayerIDs
 	a.state.GamePhase = common.PhasePlaying
 	game := a.state.ActiveGame
-	gameName := a.state.GameName
 	a.state.mu.Unlock()
 
 	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhasePlaying})
 	a.serverLog("game started (playing)")
 
-	// Load saved state and call init — players() and teams() are now populated.
 	if game != nil {
-		savedState, err := loadGameState(a.dataDir, gameName)
-		if err != nil {
-			a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
-		}
-		game.Init(savedState)
+		game.Start()
 	}
 }
 

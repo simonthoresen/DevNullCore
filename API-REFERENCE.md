@@ -85,18 +85,22 @@ var Game = {
     teamRange: { min: 2, max: 4 },
 
     // Custom splash screen content (multi-line string). If omitted, the framework
-    // renders the game name centered in a box. Read once at load time.
+    // renders the game name centered in a box. Can be set dynamically in init().
     splashScreen: "=== MY GAME ===\nPress Enter to start",
 
-    // --- Lifecycle (mandatory) ---
+    // --- Lifecycle ---
 
-    // Called once after the script loads, before onPlayerJoin.
-    // savedState = previously persisted state (or null on first run).
-    // Use teams() and players() globals to query current teams and players.
+    // Called before splash with persisted state (or null on first run). Mandatory.
+    // players() and teams() globals are available. Can set Game.splashScreen dynamically.
     init: function(savedState) {
         if (savedState) {
             // restore previous state
         }
+    },
+
+    // Called at splash→playing transition. Set up game state here. Optional.
+    start: function() {
+        // game begins — players() and teams() available
     }
 };
 ```
@@ -333,8 +337,9 @@ GAME OVER (framework results screen, up to 15s)
 LOBBY (game unloaded, back to teams + chat)
 ```
 
-- **Splash screen**: Shown after `/game load`. If the game sets `splashScreen` (a string property), that content is rendered. Otherwise, the game name is displayed in a centered box. The admin who loaded the game can press Enter to skip to playing immediately.
-- **Splash→Playing**: Framework locks teams, builds the game player set from team members, loads saved state, and calls `init(savedState)`. During `init()`, `players()` and `teams()` globals return game participants.
+- **Load**: Framework locks teams, builds the game player set from team members, loads saved state, and calls `init(savedState)`. `players()` and `teams()` return game participants. Game can set `Game.splashScreen` dynamically.
+- **Splash screen**: If `splashScreen` is set, that content is rendered. Otherwise, the game name is displayed in a centered box. The admin can press Enter to skip, or it auto-starts after 10s.
+- **Splash→Playing**: Framework calls `start()`. Game sets up its playing state.
 - **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called.
 - **Game over**: Triggered when JS calls `gameOver(results, state)`. The framework renders a "GAME OVER" screen with the ranked results list. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
 - **Late joiners**: Players who connect while a game is running see the lobby and can chat. They do not join the active game. Teams are locked during a game.

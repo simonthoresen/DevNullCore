@@ -14,16 +14,29 @@ var Game = {
     // Require 1-4 teams.
     teamRange: { min: 1, max: 4 },
 
-    // Custom splash screen (optional — omit to use the default).
-    splashScreen: "=== EXAMPLE ARENA ===\nMove with arrows, press Space to score\nGame lasts 30 seconds",
-
-    // Called once at game start. players() and teams() are available.
+    // Called before splash. Restore state, set up splash screen.
+    // players() and teams() are available.
     init: function(savedState) {
         if (savedState && savedState.highScore) {
             state.highScore = savedState.highScore;
         }
+        // Build dynamic splash screen with team and player info.
+        var t = teams();
+        var p = players();
+        var teamNames = [];
+        for (var i = 0; i < t.length; i++) {
+            teamNames.push(t[i].name + " (" + t[i].players.length + ")");
+        }
+        Game.splashScreen = "=== EXAMPLE ARENA ===\n"
+            + "Move with arrows, press Space to score\n"
+            + "Game lasts 30 seconds\n"
+            + "\nHigh score: " + state.highScore
+            + "\nTeams: " + teamNames.join(" vs ")
+            + "\nPlayers: " + p.length;
+    },
 
-        // Build a playerID→teamName lookup from teams.
+    // Called at splash→playing transition. Set up game state.
+    start: function() {
         var teamByPlayer = {};
         var t = teams();
         for (var i = 0; i < t.length; i++) {
@@ -31,8 +44,6 @@ var Game = {
                 teamByPlayer[t[i].players[j]] = t[i].name;
             }
         }
-
-        // Register all game participants.
         var p = players();
         for (var i = 0; i < p.length; i++) {
             var teamName = teamByPlayer[p[i].id] || "none";
@@ -44,7 +55,7 @@ var Game = {
                 score: 0
             };
         }
-        log("Example init: " + t.length + " teams, " + p.length + " players, high score: " + state.highScore);
+        log("Example start: " + t.length + " teams, " + p.length + " players");
     },
 
     onPlayerLeave: function(playerID) {
