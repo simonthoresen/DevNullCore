@@ -63,7 +63,7 @@ LOBBY (teams + chat) → SPLASH → PLAYING → GAME OVER → LOBBY
 Late joiners see the lobby and can chat but don't join the active game. Lobby teams are independent from game teams — players can freely organize for the next round while a game is running.
 
 ### Teams
-Players manage teams in the lobby panel (right side, 30% width). New players start **unassigned** (shown under "Unassigned" at the top of the team list). Tab switches focus between chat and team panel. Navigation in team panel:
+Players manage teams in the lobby panel (right side, fixed 32 chars). New players start **unassigned** (shown under "Unassigned" at the top of the team list). Tab switches focus between chat and team panel. Navigation in team panel:
 - **Down** from unassigned → join first team (or create one if none exist)
 - **Down** from a team → move to team below
 - **Down** from last team → create new "Team \<your name\>" (blocked if you're the sole member, to avoid drop/recreate churn)
@@ -81,18 +81,19 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 
 **Lobby (no game loaded):**
 ```
-┌─────────────────────────────────────┐
-│ Status bar (1 row) — framework      │  e.g. "null-space | 3 players online | 00:42 ⠹"
-├──────────────────────┬──────────────┤
-│ Chat (70% width)     │ Teams (30%)  │
-│                      │  Red Team    │
+┌──────────────────────┬──────────────┐
+│ Chat title (warm)    │ Teams (blue) │  Split status bar; active panel bold+bright
+├──────────────────────┼──────────────┤
+│ Chat (fills rest)    │ Teams (32ch) │  Two color palettes: warm white + cool blue
+│                      │  Unassigned  │  Active panel = brighter bg + bold title bar
 │                      │   > alice    │
+│                      │  Red Team    │
 │                      │     bob      │
 │                      │  Blue Team   │
 │                      │     charlie  │
-├──────────────────────┴──────────────┤
-│ Command bar (1 row) — dual-purpose  │  [Tab] toggles chat/teams focus
-└─────────────────────────────────────┘  In teams: [↑↓] move, [←→] color, [Enter] rename
+├──────────────────────┼──────────────┤
+│ Chat cmd bar         │ Team cmd bar │  [Tab] toggles chat/teams focus
+└──────────────────────┴──────────────┘  In teams: [↑↓] move, [←→] color, [Enter] rename
 ```
 
 **In-game:**

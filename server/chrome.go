@@ -29,6 +29,30 @@ var (
 	cmdBg   = defaultCmdBg
 )
 
+// Lobby panel colors — chat (warm/white variant).
+var (
+	lobbyChatBarActiveBg   = lipgloss.Color("#D8C7A0")
+	lobbyChatBarActiveFg   = lipgloss.Color("#4A2D18")
+	lobbyChatBarInactiveBg = lipgloss.Color("#C4B898")
+	lobbyChatBarInactiveFg = lipgloss.Color("#8A7A68")
+	lobbyChatActiveBg      = lipgloss.Color("#EADFC7")
+	lobbyChatInactiveBg    = lipgloss.Color("#E0D6BE")
+	lobbyChatFg            = lipgloss.Color("#2C1810")
+)
+
+// Lobby panel colors — teams (blue variant).
+var (
+	lobbyTeamBarActiveBg   = lipgloss.Color("#5B7BA5")
+	lobbyTeamBarActiveFg   = lipgloss.Color("#FFFFFF")
+	lobbyTeamBarInactiveBg = lipgloss.Color("#8898B0")
+	lobbyTeamBarInactiveFg = lipgloss.Color("#C0C8D8")
+	lobbyTeamActiveBg      = lipgloss.Color("#CEDAEA")
+	lobbyTeamInactiveBg    = lipgloss.Color("#C4D0E0")
+	lobbyTeamFg            = lipgloss.Color("#1A2A40")
+)
+
+const lobbyTeamPanelW = 32
+
 type chromeColors struct {
 	statusBg, statusFg color.Color
 	chatBg, chatFg     color.Color
@@ -560,7 +584,15 @@ func (m chromeModel) View() tea.View {
 	chStyle := lipgloss.NewStyle().Background(col.chatBg).Foreground(col.chatFg)
 	ciStyle := lipgloss.NewStyle().Background(col.cmdBg).Foreground(col.cmdFg)
 
-	if m.mode == modeInput {
+	if !m.inActiveGame || phase == common.PhaseNone {
+		// Lobby: input uses chat panel active colors.
+		if m.mode == modeInput {
+			setInputStyle(&m.input, lobbyChatBarActiveBg, lobbyChatBarActiveFg)
+		}
+		if m.teamEditing {
+			setInputStyle(&m.teamEditInput, lobbyTeamActiveBg, lobbyTeamFg)
+		}
+	} else if m.mode == modeInput {
 		setInputStyle(&m.input, col.inputBg, col.inputFg)
 	} else {
 		setInputStyle(&m.input, col.cmdBg, col.cmdFg)
@@ -590,49 +622,90 @@ func (m chromeModel) View() tea.View {
 	}
 	if m.teamEditing {
 		if cursor := m.teamEditInput.Cursor(); cursor != nil {
-			// Position on the team panel — approximate row
-			cursor.Position.Y = m.height / 2
-			cursor.Position.X = m.width * 7 / 10
+			// Position cursor on the team name row in the right panel.
+			teamW := lobbyTeamPanelW
+			if teamW > m.width-10 {
+				teamW = m.width - 10
+			}
+			teams := m.app.state.GetTeams()
+			unassigned := m.app.state.UnassignedPlayers()
+			idx := m.app.state.PlayerTeamIndex(m.playerID)
+			row := 0
+			if len(unassigned) > 0 {
+				row += 1 + len(unassigned)
+			}
+			for i := 0; i < idx && i < len(teams); i++ {
+				row += 1 + len(teams[i].Players)
+			}
+			cursor.Position.Y = 1 + row // +1 for status bar
+			cursor.Position.X += (m.width - teamW) + 4
 			view.Cursor = cursor
 		}
 	}
 	return view
 }
 
-func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
-	statusText := fmt.Sprintf("null-space | %d players | uptime %s", m.app.state.PlayerCount(), m.app.uptime())
-	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
-
+func (m chromeModel) viewLobby(_, _, _ lipgloss.Style, spinChar string) string {
 	contentH := m.height - 2 // status bar + command bar
 	if contentH < 1 {
 		contentH = 1
 	}
 
-	// Split horizontally: 70% chat, 30% teams (min 20 chars for teams).
-	teamPanelW := m.width * 3 / 10
-	if teamPanelW < 20 {
-		teamPanelW = 20
+	teamW := lobbyTeamPanelW
+	if teamW > m.width-10 {
+		teamW = m.width - 10
 	}
-	if teamPanelW > m.width-10 {
-		teamPanelW = m.width - 10
+	chatW := m.width - teamW
+
+	chatActive := m.lobbyFocus == lobbyFocusChat
+
+	// Per-panel styles based on focus.
+	var chatBarStyle, teamBarStyle lipgloss.Style
+	var chatBodyStyle, teamBodyStyle lipgloss.Style
+	var chatCmdStyle, teamCmdStyle lipgloss.Style
+
+	if chatActive {
+		chatBarStyle = lipgloss.NewStyle().Background(lobbyChatBarActiveBg).Foreground(lobbyChatBarActiveFg).Bold(true)
+		chatBodyStyle = lipgloss.NewStyle().Background(lobbyChatActiveBg).Foreground(lobbyChatFg)
+		chatCmdStyle = lipgloss.NewStyle().Background(lobbyChatBarActiveBg).Foreground(lobbyChatBarActiveFg)
+		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
+		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamInactiveBg).Foreground(lobbyTeamFg)
+		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
+	} else {
+		chatBarStyle = lipgloss.NewStyle().Background(lobbyChatBarInactiveBg).Foreground(lobbyChatBarInactiveFg)
+		chatBodyStyle = lipgloss.NewStyle().Background(lobbyChatInactiveBg).Foreground(lobbyChatFg)
+		chatCmdStyle = lipgloss.NewStyle().Background(lobbyChatBarInactiveBg).Foreground(lobbyChatBarInactiveFg)
+		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg).Bold(true)
+		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamActiveBg).Foreground(lobbyTeamFg)
+		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg)
 	}
-	chatW := m.width - teamPanelW
 
-	chatView := renderChatLines(m.chatLines, chatW, contentH, m.chatScrollOffset, chStyle)
-	teamView := m.renderTeamPanel(teamPanelW, contentH, chStyle)
+	// Status bar (split across panels).
+	statusText := fmt.Sprintf("null-space | %d players | uptime %s", m.app.state.PlayerCount(), m.app.uptime())
+	chatStatus := chatBarStyle.Width(chatW).Render(headerWithSpinner(statusText, chatW, spinChar))
+	teamStatus := teamBarStyle.Width(teamW).Render(truncateStyled(" Teams", teamW))
+	statusBar := chatStatus + teamStatus
 
+	// Content area.
+	chatView := renderChatLines(m.chatLines, chatW, contentH, m.chatScrollOffset, chatBodyStyle)
+	teamView := m.renderTeamPanel(teamW, contentH, teamBodyStyle)
 	middle := lipgloss.JoinHorizontal(lipgloss.Top, chatView, teamView)
 
+	// Command bar (split across panels).
 	var cmdBar string
 	if m.teamEditing {
-		cmdBar = ciStyle.Width(m.width).Render("Rename team: " + m.teamEditInput.View())
+		cmdBar = chatCmdStyle.Width(chatW).Render("") +
+			teamCmdStyle.Width(teamW).Render(truncateStyled("[Enter] Save  [Esc] Cancel", teamW))
 	} else if m.lobbyFocus == lobbyFocusTeams {
-		hint := "[↑↓] Switch team  [←→] Color  [Enter] Rename  [Tab] Chat"
-		cmdBar = ciStyle.Width(m.width).Render(hint)
+		cmdBar = chatCmdStyle.Width(chatW).Render("[Tab] Chat") +
+			teamCmdStyle.Width(teamW).Render(truncateStyled("[↑↓] Move [←→] Color [⏎] Rename", teamW))
 	} else if m.mode == modeInput {
-		cmdBar = truncateStyled(m.input.View(), m.width)
+		m.input.SetWidth(max(1, chatW-2))
+		inputView := truncateStyled(m.input.View(), chatW)
+		cmdBar = inputView + teamCmdStyle.Width(teamW).Render("[Tab] Teams")
 	} else {
-		cmdBar = ciStyle.Width(m.width).Render("[Enter] to chat  [Tab] Teams  /help for commands")
+		cmdBar = chatCmdStyle.Width(chatW).Render("[Enter] Chat  /help for commands") +
+			teamCmdStyle.Width(teamW).Render("[Tab] Teams")
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, statusBar, middle, cmdBar)
@@ -741,10 +814,6 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 	focused := m.lobbyFocus == lobbyFocusTeams
 
 	var lines []string
-
-	headerStyle := baseStyle.Bold(true)
-	lines = append(lines, headerStyle.Width(width).Render(" Teams"))
-	lines = append(lines, baseStyle.Width(width).Render(strings.Repeat("─", width)))
 
 	// Unassigned players at the top.
 	if len(unassigned) > 0 {
@@ -935,15 +1004,12 @@ func (m *chromeModel) resizeViewports() {
 	phase := m.app.state.GetGamePhase()
 
 	if !m.inActiveGame || phase == common.PhaseNone {
-		// Lobby — chat shares space with team panel.
-		teamPanelW := m.width * 3 / 10
-		if teamPanelW < 20 {
-			teamPanelW = 20
+		// Lobby — chat shares space with fixed-width team panel.
+		teamW := lobbyTeamPanelW
+		if teamW > m.width-10 {
+			teamW = m.width - 10
 		}
-		if teamPanelW > m.width-10 {
-			teamPanelW = m.width - 10
-		}
-		chatW := m.width - teamPanelW
+		chatW := m.width - teamW
 		chatH := m.height - 2
 		if chatH < 1 {
 			chatH = 1
@@ -951,6 +1017,7 @@ func (m *chromeModel) resizeViewports() {
 		m.chatH = chatH
 		m.chat.SetWidth(chatW)
 		m.chat.SetHeight(chatH)
+		m.input.SetWidth(max(1, chatW-2))
 	} else if phase == common.PhasePlaying {
 		gameH := m.width * 9 / 16
 		chatH := m.height - 1 - gameH - 1
