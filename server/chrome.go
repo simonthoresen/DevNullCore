@@ -263,7 +263,10 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.TeamUpdatedMsg:
-		return m, nil // just triggers re-render
+		// ClearScreen forces a full redraw. The ultraviolet renderer's
+		// partial-update optimizer uses CR+LF cursor movement that
+		// mispositions team panel content over SSH.
+		return m, tea.ClearScreen
 
 	case common.GameLoadedMsg:
 		// This player was connected when the game loaded — they're in the game.
@@ -637,9 +640,9 @@ func (m chromeModel) View() tea.View {
 			idx := m.app.state.PlayerTeamIndex(m.playerID)
 			row := 1 + len(unassigned) // "Unassigned" header + player rows
 			for i := 0; i < idx && i < len(teams); i++ {
-				row += 1 + 1 + len(teams[i].Players) // separator + team header + members
+				row += 1 + 1 + len(teams[i].Players) // blank + team header + members
 			}
-			row += 1 // separator before current team
+			row += 1 // blank before current team
 			cursor.Position.Y = 1 + row // +1 for status bar
 			cursor.Position.X += (m.width - teamW) + 5 // +1 for border │
 			view.Cursor = cursor
@@ -865,10 +868,7 @@ func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style
 	blank := strings.Repeat(" ", width)
 	blankLine := baseStyle.Width(width).Render(blank)
 	for i, team := range teams {
-		// Separator with visible chars to anchor the renderer's cursor.
-		// Pure blank rows cause CR+LF mispositioning over SSH.
-		// Uses ASCII dash (not UTF-8 ─) to avoid width miscalculation.
-		lines = append(lines, baseStyle.Faint(true).Width(width).Render(strings.Repeat("-", width)))
+		lines = append(lines, blankLine)
 		block := colorSwatch(lipgloss.Color(team.Color), bg)
 		nameText := fmt.Sprintf(" %s %s", block, team.Name)
 		if m.teamEditing && i == myTeamIdx {
