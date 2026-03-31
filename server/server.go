@@ -242,11 +242,16 @@ func (a *Server) inviteToken() string {
 const joinScriptURL = "https://raw.githubusercontent.com/simonthoresen/null-space/main/join.ps1"
 
 // inviteCommand returns the invite command formatted for terminal display.
-// It inserts PowerShell line continuation (backtick + newline) so the command can
-// be copied from a wrapped terminal and still paste as a single command.
+// Uses PowerShell line continuations so the command can be copied across
+// wrapped lines and still paste as a single command:
+//   - Line 1 ends with backtick = command-level continuation
+//   - Line 2 ends with backtick inside "..." = string-level continuation
+//     (backtick + newline inside a double-quoted string drops the newline)
 func (a *Server) inviteCommand() string {
 	return fmt.Sprintf(
-		"powershell -c `\n  \"$env:NS='%s';irm %s|iex\"",
+		"powershell -c `\n"+
+			"  \"$env:NS='%s'; `\n"+
+			"  irm %s|iex\"",
 		a.inviteToken(), joinScriptURL,
 	)
 }
