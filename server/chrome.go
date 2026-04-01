@@ -127,6 +127,10 @@ type chromeModel struct {
 	pluginNames []string // parallel to plugins; display names
 
 	overlay overlayState
+
+	// Cached menu tree — rebuilt only on invalidation.
+	menuCache     []common.MenuDef
+	menuCacheGame common.Game // game pointer when cache was built (nil = no game)
 }
 
 func newChromeModel(app *Server, playerID string) chromeModel {
@@ -257,6 +261,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.GameLoadedMsg:
 		// This player was connected when the game loaded — they're in the game.
 		m.inActiveGame = true
+		m.invalidateMenuCache()
 		setInputStyle(&m.input, cmdBg, menuFg)
 		m.mode = modeIdle
 		m.lobbyFocus = lobbyFocusChat
@@ -266,6 +271,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.GameUnloadedMsg:
 		m.inActiveGame = false
+		m.invalidateMenuCache()
 		setInputStyle(&m.input, menuBg, menuFg)
 		m.mode = modeInput
 		cmd := m.input.Focus()
@@ -295,7 +301,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// NC overlay gets first crack at mouse clicks (menus, dialogs).
 		if msg.Button == tea.MouseLeft {
 			ncBarRow := 1 // NC bar is at row 1 (after framework menu bar at row 0)
-			if m.overlay.handleClick(msg.X, msg.Y, ncBarRow, m.width, m.height, m.allMenus(), m.playerID) {
+			if m.overlay.handleClick(msg.X, msg.Y, ncBarRow, m.width, m.height, m.cachedMenus(), m.playerID) {
 				return m, nil
 			}
 		}
@@ -394,7 +400,7 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Overlay intercepts keys when active (F10, menu navigation, dialog buttons).
-	if m.overlay.handleKey(msg.String(), m.allMenus(), m.playerID) {
+	if m.overlay.handleKey(msg.String(), m.cachedMenus(), m.playerID) {
 		return m, nil
 	}
 
@@ -763,39 +769,44 @@ func (m chromeModel) View() tea.View {
 		setInputStyle(&m.input, cmdBg, menuFg)
 	}
 
+	// Build menus once per frame — passed to sub-views and overlay rendering.
+	menus := m.cachedMenus()
+
 	var content string
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		// === LOBBY LAYOUT (with team panel) ===
-		content = m.viewLobby(mbStyle, chStyle, ciStyle, defaultChatBg)
+		content = m.viewLobby(menus, mbStyle, chStyle, ciStyle, defaultChatBg)
 	} else if phase == common.PhaseSplash {
-		content = m.viewSplash(game, gameName, mbStyle, chStyle, ciStyle)
+		content = m.viewSplash(menus, game, gameName, mbStyle, chStyle, ciStyle)
 	} else if phase == common.PhaseGameOver {
-		content = m.viewGameOver(game, gameName, mbStyle, chStyle, ciStyle)
+		content = m.viewGameOver(menus, game, gameName, mbStyle, chStyle, ciStyle)
 	} else {
 		// === PLAYING LAYOUT ===
-		content = m.viewPlaying(game, gameName, mbStyle, chStyle, ciStyle, defaultChatBg)
+		content = m.viewPlaying(menus, game, gameName, mbStyle, chStyle, ciStyle, defaultChatBg)
 	}
 
 	// Apply overlay layers on top of the base content.
-	menus := m.allMenus()
+	// Split once, composite all overlays on lines, join once.
 	ss := m.theme.ShadowStyle()
+	lines := strings.Split(content, "\n")
 	if m.overlay.openMenu >= 0 {
-		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 1, m.theme.PaletteAt(1), m.theme); ddStr != "" {
-			ddLines := strings.Split(ddStr, "\n")
-			content = PlaceOverlay(ddCol, ddRow, ddStr, content)
-			sh := shadowFor(ddCol, ddRow, lipgloss.Width(ddLines[0]), len(ddLines))
-			content = ApplyShadow(sh.col, sh.row, sh.width, sh.height, content, ss)
+		if dd := m.overlay.renderDropdown(menus, 1, m.theme.PaletteAt(1), m.theme); dd.content != "" {
+			overLines := strings.Split(dd.content, "\n")
+			placeOverlayLines(dd.col, dd.row, overLines, lines)
+			sh := shadowFor(dd.col, dd.row, dd.width, dd.height)
+			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
 		}
 	}
 	if m.overlay.hasDialog() {
-		if dlgStr, dlgCol, dlgRow := m.overlay.renderDialog(m.width, m.height, m.theme.PaletteAt(2), m.theme); dlgStr != "" {
-			dlgLines := strings.Split(dlgStr, "\n")
-			content = PlaceOverlay(dlgCol, dlgRow, dlgStr, content)
-			sh := shadowFor(dlgCol, dlgRow, lipgloss.Width(dlgLines[0]), len(dlgLines))
-			content = ApplyShadow(sh.col, sh.row, sh.width, sh.height, content, ss)
+		if dlg := m.overlay.renderDialog(m.width, m.height, m.theme.PaletteAt(2), m.theme); dlg.content != "" {
+			overLines := strings.Split(dlg.content, "\n")
+			placeOverlayLines(dlg.col, dlg.row, overLines, lines)
+			sh := shadowFor(dlg.col, dlg.row, dlg.width, dlg.height)
+			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
 		}
 	}
+	content = strings.Join(lines, "\n")
 
 	view.SetContent(content)
 	view.AltScreen = true
@@ -829,8 +840,8 @@ func (m chromeModel) View() tea.View {
 	return view
 }
 
-func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme.PaletteAt(1), m.theme)
+func (m chromeModel) viewLobby(menus []common.MenuDef, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
+	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.PaletteAt(1), m.theme)
 	contentH := m.height - 4 // server info + NC bar + input row + status bar
 	if contentH < 1 {
 		contentH = 1
@@ -926,8 +937,8 @@ func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg 
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, middle, inputRow, statusBar)
 }
 
-func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme.PaletteAt(1), m.theme)
+func (m chromeModel) viewSplash(menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
+	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.PaletteAt(1), m.theme)
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
@@ -961,8 +972,8 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chSt
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme.PaletteAt(1), m.theme)
+func (m chromeModel) viewGameOver(menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
+	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.PaletteAt(1), m.theme)
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
@@ -993,8 +1004,8 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, ch
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme.PaletteAt(1), m.theme)
+func (m chromeModel) viewPlaying(menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
+	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.PaletteAt(1), m.theme)
 	menuBar := mbStyle.Width(m.width).Render(truncateStyled(gameName, m.width))
 	gameStatusBar := mbStyle.Bold(false).Width(m.width).Render(game.StatusBar(m.playerID))
 
@@ -1284,7 +1295,21 @@ func (m *chromeModel) resizeViewports() {
 
 // allMenus returns the full ordered list of menus for the NC action bar:
 // the framework "File" menu followed by any game-registered menus.
-func (m *chromeModel) allMenus() []common.MenuDef {
+// invalidateMenuCache forces the next cachedMenus() call to rebuild.
+func (m *chromeModel) invalidateMenuCache() {
+	m.menuCache = nil
+}
+
+// cachedMenus returns the menu tree, rebuilding only when the active game has changed.
+func (m *chromeModel) cachedMenus() []common.MenuDef {
+	m.app.state.mu.RLock()
+	game := m.app.state.ActiveGame
+	m.app.state.mu.RUnlock()
+
+	if m.menuCache != nil && m.menuCacheGame == game {
+		return m.menuCache
+	}
+
 	fileItems := []common.MenuItemDef{
 		{Label: "&Themes...", Handler: func(_ string) { m.showPlayerListDialog("Themes", "themes", ".json") }},
 		{Label: "&Plugins...", Handler: func(_ string) { m.showPlayerListDialog("Plugins", "plugins", ".js") }},
@@ -1306,9 +1331,6 @@ func (m *chromeModel) allMenus() []common.MenuDef {
 		})
 	}
 	menus := []common.MenuDef{{Label: "&File", Items: fileItems}}
-	m.app.state.mu.RLock()
-	game := m.app.state.ActiveGame
-	m.app.state.mu.RUnlock()
 	if game != nil {
 		menus = append(menus, game.Menus()...)
 	}
@@ -1324,6 +1346,8 @@ func (m *chromeModel) allMenus() []common.MenuDef {
 			}},
 		},
 	})
+	m.menuCache = menus
+	m.menuCacheGame = game
 	return menus
 }
 

@@ -14,8 +14,12 @@ import (
 func PlaceOverlay(col, row int, overlay, bg string) string {
 	bgLines := strings.Split(bg, "\n")
 	overLines := strings.Split(overlay, "\n")
-	out := make([]string, len(bgLines))
-	copy(out, bgLines)
+	placeOverlayLines(col, row, overLines, bgLines)
+	return strings.Join(bgLines, "\n")
+}
+
+// placeOverlayLines composites overLines onto bgLines in-place at (col, row).
+func placeOverlayLines(col, row int, overLines, bgLines []string) {
 	for i, ol := range overLines {
 		r := row + i
 		if r < 0 || r >= len(bgLines) {
@@ -25,9 +29,8 @@ func PlaceOverlay(col, row int, overlay, bg string) string {
 		if w == 0 {
 			continue
 		}
-		out[r] = paintLine(col, w, ol, bgLines[r])
+		bgLines[r] = paintLine(col, w, ol, bgLines[r])
 	}
-	return strings.Join(out, "\n")
 }
 
 // paintLine replaces visual columns [col, col+overW) in bgLine with over.
@@ -56,28 +59,69 @@ func paintLine(col, overW int, over, bgLine string) string {
 // Characters from the background are preserved but re-colored with shadowStyle.
 func ApplyShadow(boxCol, boxRow, boxW, boxH int, bg string, shadowStyle lipgloss.Style) string {
 	bgLines := strings.Split(bg, "\n")
-	out := make([]string, len(bgLines))
-	copy(out, bgLines)
+	applyShadowLines(boxCol, boxRow, boxW, boxH, bgLines, shadowStyle)
+	return strings.Join(bgLines, "\n")
+}
 
+// applyShadowLines applies the L-shaped drop shadow in-place on lines.
+func applyShadowLines(boxCol, boxRow, boxW, boxH int, lines []string, shadowStyle lipgloss.Style) {
 	// Right strip (skip top-right corner: start from row+1).
 	rightCol := boxCol + boxW
 	for dy := 1; dy < boxH; dy++ {
 		r := boxRow + dy
-		if r >= 0 && r < len(out) {
-			out[r] = recolorCell(out[r], rightCol, shadowStyle)
+		if r >= 0 && r < len(lines) {
+			lines[r] = recolorCell(lines[r], rightCol, shadowStyle)
 		}
 	}
 
 	// Bottom strip (skip bottom-left corner: start from col+1).
+	// Batch all columns in a single pass to avoid O(W²) re-parsing.
 	bottomRow := boxRow + boxH
-	if bottomRow >= 0 && bottomRow < len(out) {
-		for dx := 1; dx <= boxW; dx++ {
-			c := boxCol + dx
-			out[bottomRow] = recolorCell(out[bottomRow], c, shadowStyle)
-		}
+	if bottomRow >= 0 && bottomRow < len(lines) {
+		lines[bottomRow] = recolorSpan(lines[bottomRow], boxCol+1, boxW, shadowStyle)
+	}
+}
+
+// recolorSpan replaces the styling of W consecutive characters starting at
+// visual column startCol, keeping the characters but applying newStyle.
+// This does a single parse of the line instead of W separate recolorCell calls.
+func recolorSpan(line string, startCol, count int, newStyle lipgloss.Style) string {
+	endCol := startCol + count
+	lineW := lipgloss.Width(line)
+	if startCol >= lineW || count <= 0 {
+		return line
+	}
+	if endCol > lineW {
+		endCol = lineW
 	}
 
-	return strings.Join(out, "\n")
+	// Left portion: everything before the span.
+	left := ansi.Truncate(line, startCol, "")
+	leftW := lipgloss.Width(left)
+	if leftW < startCol {
+		left += strings.Repeat(" ", startCol-leftW)
+	}
+
+	// Middle portion: extract characters in [startCol, endCol), restyle them.
+	mid := ansiSkipColumns(line, startCol)
+	// Truncate mid to only the span width.
+	midStripped := ansi.Strip(mid)
+	var styled strings.Builder
+	col := 0
+	for i := 0; i < len(midStripped) && col < endCol-startCol; {
+		r, size := utf8.DecodeRuneInString(midStripped[i:])
+		styled.WriteString(newStyle.Render(string(r)))
+		col++
+		i += size
+	}
+
+	// Right portion: everything after the span.
+	right := ""
+	if endCol < lineW {
+		right = ansiSkipColumns(line, endCol)
+	}
+
+	return left + styled.String() + right
 }
 
 // recolorCell replaces the styling of the character at visual column col

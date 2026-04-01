@@ -409,24 +409,27 @@ func (m *consoleModel) View() tea.View {
 	content := lipgloss.JoinVertical(lipgloss.Left, ncBar, panelContent, statusBar)
 
 	// Overlay layers (dropdown menus, dialogs) with drop shadows.
+	// Split once, composite all overlays on lines, join once.
 	menus := m.consoleMenus()
 	ss := t.ShadowStyle()
+	lines := strings.Split(content, "\n")
 	if m.overlay.openMenu >= 0 {
-		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 0, secondary, t); ddStr != "" {
-			ddLines := strings.Split(ddStr, "\n")
-			content = PlaceOverlay(ddCol, ddRow, ddStr, content)
-			sh := shadowFor(ddCol, ddRow, lipgloss.Width(ddLines[0]), len(ddLines))
-			content = ApplyShadow(sh.col, sh.row, sh.width, sh.height, content, ss)
+		if dd := m.overlay.renderDropdown(menus, 0, secondary, t); dd.content != "" {
+			overLines := strings.Split(dd.content, "\n")
+			placeOverlayLines(dd.col, dd.row, overLines, lines)
+			sh := shadowFor(dd.col, dd.row, dd.width, dd.height)
+			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
 		}
 	}
 	if m.overlay.hasDialog() {
-		if dlgStr, dlgCol, dlgRow := m.overlay.renderDialog(m.width, m.height, t.PaletteAt(2), t); dlgStr != "" {
-			dlgLines := strings.Split(dlgStr, "\n")
-			content = PlaceOverlay(dlgCol, dlgRow, dlgStr, content)
-			sh := shadowFor(dlgCol, dlgRow, lipgloss.Width(dlgLines[0]), len(dlgLines))
-			content = ApplyShadow(sh.col, sh.row, sh.width, sh.height, content, ss)
+		if dlg := m.overlay.renderDialog(m.width, m.height, t.PaletteAt(2), t); dlg.content != "" {
+			overLines := strings.Split(dlg.content, "\n")
+			placeOverlayLines(dlg.col, dlg.row, overLines, lines)
+			sh := shadowFor(dlg.col, dlg.row, dlg.width, dlg.height)
+			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
 		}
 	}
+	content = strings.Join(lines, "\n")
 
 	view.SetContent(content)
 	view.AltScreen = true

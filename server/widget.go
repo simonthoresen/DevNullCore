@@ -503,6 +503,14 @@ func shadowFor(col, row, boxW, boxH int) shadowBox {
 	return shadowBox{col: col, row: row, width: boxW, height: boxH}
 }
 
+// overlayBox bundles an overlay's rendered content with its position and
+// pre-computed dimensions so callers don't need to split the string.
+type overlayBox struct {
+	content       string
+	col, row      int
+	width, height int
+}
+
 // ─── Menu bar rendering ────────────────────────────────────────────────────────
 
 // renderNCBar renders the NC-style action bar row (full terminal width).
@@ -555,13 +563,13 @@ func ncBarMenuPositions(menus []common.MenuDef) []int {
 
 // renderDropdown returns (overlayString, col, row) for PlaceOverlay.
 // ncBarRow is the screen row (0-based) of the NC action bar.
-func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, p *Palette, t *Theme) (string, int, int) {
+func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, p *Palette, t *Theme) overlayBox {
 	if o.openMenu < 0 || o.openMenu >= len(menus) {
-		return "", 0, 0
+		return overlayBox{}
 	}
 	items := menus[o.openMenu].Items
 	if len(items) == 0 {
-		return "", 0, 0
+		return overlayBox{}
 	}
 
 	// Check if any item is a toggle (need checkmark column).
@@ -651,17 +659,24 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, p *P
 		anchorCol = pos[o.openMenu]
 	}
 
-	return strings.Join(lines, "\n"), anchorCol, ncBarRow + 1
+	// innerW + 2 border chars = total rendered width.
+	totalW := innerW + 2
+	return overlayBox{
+		content: strings.Join(lines, "\n"),
+		col:     anchorCol,
+		row:     ncBarRow + 1,
+		width:   totalW,
+		height:  len(lines),
+	}
 }
 
 // ─── Dialog rendering ──────────────────────────────────────────────────────────
 
-// renderDialog returns (overlayString, col, row) for PlaceOverlay, centered in
-// the screen.
-func (o *overlayState) renderDialog(screenW, screenH int, p *Palette, t *Theme) (string, int, int) {
+// renderDialog returns an overlayBox for PlaceOverlay, centered in the screen.
+func (o *overlayState) renderDialog(screenW, screenH int, p *Palette, t *Theme) overlayBox {
 	d := o.topDialog()
 	if d == nil {
-		return "", 0, 0
+		return overlayBox{}
 	}
 	btns := d.Buttons
 	if len(btns) == 0 {
@@ -770,5 +785,11 @@ func (o *overlayState) renderDialog(screenW, screenH int, p *Palette, t *Theme) 
 		row = 2
 	}
 
-	return content, col, row
+	return overlayBox{
+		content: content,
+		col:     col,
+		row:     row,
+		width:   totalW,
+		height:  totalH,
+	}
 }

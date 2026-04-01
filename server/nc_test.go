@@ -881,7 +881,8 @@ func TestAboutDialogClickDetection(t *testing.T) {
 	th := testTheme()
 
 	// Get the rendered dialog position.
-	dlgStr, renderCol, renderRow := o.renderDialog(screenW, screenH, pal, th)
+	dlgBox := o.renderDialog(screenW, screenH, pal, th)
+	dlgStr, renderCol, renderRow := dlgBox.content, dlgBox.col, dlgBox.row
 	if dlgStr == "" {
 		t.Fatal("renderDialog returned empty string")
 	}
@@ -940,7 +941,8 @@ func TestDialogClickMultiButton(t *testing.T) {
 	th := testTheme()
 
 	// Render to find button positions.
-	dlgStr, renderCol, renderRow := o.renderDialog(screenW, screenH, pal, th)
+	dlgBox := o.renderDialog(screenW, screenH, pal, th)
+	dlgStr, renderCol, renderRow := dlgBox.content, dlgBox.col, dlgBox.row
 	dlgLines := strings.Split(dlgStr, "\n")
 
 	// Find button row.
