@@ -40,8 +40,9 @@ type Server struct {
 	sessionsMu sync.RWMutex
 
 	// channels for communicating events to the console
-	logCh  chan string         // server log lines
-	chatCh chan common.Message // new chat messages
+	logCh   chan string         // server log lines
+	chatCh  chan common.Message // new chat messages
+	slogCh  chan slogLine       // slog records routed to console
 
 	shutdownFn func()
 	sshServer  *ssh.Server
@@ -65,6 +66,7 @@ func New(address, password, dataDir string) (*Server, error) {
 		sessions: make(map[string]ssh.Session),
 		logCh:    make(chan string, 256),
 		chatCh:   make(chan common.Message, 256),
+		slogCh:   make(chan slogLine, 256),
 	}
 
 	app.registerBuiltins()
@@ -96,6 +98,7 @@ func (a *Server) LogCh() <-chan string {
 	return a.logCh
 }
 
+func (a *Server) SlogCh() <-chan slogLine { return a.slogCh }
 func (a *Server) ChatCh() <-chan common.Message {
 	return a.chatCh
 }

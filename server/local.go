@@ -24,6 +24,7 @@ func NewLocal(dataDir string) *Server {
 		// sessions left nil — SSH middleware never runs in local mode;
 		// map reads against a nil map are safe (return zero value).
 		logCh:  make(chan string, 256),
+		slogCh: make(chan slogLine, 256),
 		chatCh: make(chan common.Message, 256),
 	}
 	app.registerBuiltins()

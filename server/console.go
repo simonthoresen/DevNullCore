@@ -14,6 +14,24 @@ import (
 	"null-space/common"
 )
 
+// logCategory tags console log lines for filtering.
+type logCategory int
+
+const (
+	catDebug   logCategory = iota
+	catInfo
+	catWarn
+	catError
+	catChat    // player chat, system messages
+	catCommand // "> /help" echo and command replies
+)
+
+// taggedLine is a log line with its category.
+type taggedLine struct {
+	cat  logCategory
+	text string
+}
+
 type consoleModel struct {
 	app    *Server
 	cancel context.CancelFunc
@@ -23,6 +41,10 @@ type consoleModel struct {
 	inputCtrl *NCTextInput
 	logView   *NCTextView
 	window    *NCWindow
+
+	// All log lines (tagged), and filter state.
+	allLines []taggedLine
+	filter   map[logCategory]bool // true = show this category
 
 	// Tab completion state (used by tabComplete callback).
 	tabPrefix     string
@@ -67,6 +89,14 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 		inputCtrl: inputCtrl,
 		logView:   logView,
 		window:    window,
+		filter: map[logCategory]bool{
+			catInfo:    true,
+			catWarn:    true,
+			catError:   true,
+			catChat:    true,
+			catCommand: true,
+			// catDebug defaults to false
+		},
 		theme:     DefaultTheme(),
 		overlay:   overlayState{openMenu: -1},
 	}
@@ -80,7 +110,7 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 }
 
 func (m *consoleModel) Init() tea.Cmd {
-	return listenForLogs(m.app.LogCh(), m.app.ChatCh())
+	return listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
 }
 
 func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -96,14 +126,18 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// re-render for spinner and clock update
 		return m, nil
 
+	case slogLineMsg:
+		m.appendTagged(msg.cat, msg.text)
+		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
+
 	case logLineMsg:
-		m.appendLog(string(msg))
+		m.appendTagged(catInfo, string(msg))
 		for _, pl := range m.plugins {
 			if reply := pl.OnMessage("", string(msg), true); reply != "" {
 				m.dispatchPluginReply(reply)
 			}
 		}
-		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh())
+		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
 
 	case chatLineMsg:
 		chatMsg := common.Message(msg)
@@ -132,7 +166,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			line = fmt.Sprintf("<%s> %s", chatMsg.Author, chatMsg.Text)
 		}
-		m.appendLog(line)
+		m.appendTagged(catChat, line)
 		if !chatMsg.IsReply {
 			isSystem := chatMsg.Author == ""
 			for _, pl := range m.plugins {
@@ -141,7 +175,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh())
+		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
 
 	case common.GamePhaseMsg, common.GameLoadedMsg, common.GameUnloadedMsg, common.TeamUpdatedMsg, common.PlayerJoinedMsg, common.PlayerLeftMsg:
 		return m, nil
@@ -206,6 +240,30 @@ func (m *consoleModel) consoleMenus() []common.MenuDef {
 							}
 						},
 					})
+				}},
+			},
+		},
+		{
+			Label: "&View",
+			Items: []common.MenuItemDef{
+				{Label: "&Debug", Toggle: true, Checked: func() bool { return m.filter[catDebug] }, Handler: func(_ string) {
+					m.filter[catDebug] = !m.filter[catDebug]; m.rebuildVisibleLines()
+				}},
+				{Label: "&Info", Toggle: true, Checked: func() bool { return m.filter[catInfo] }, Handler: func(_ string) {
+					m.filter[catInfo] = !m.filter[catInfo]; m.rebuildVisibleLines()
+				}},
+				{Label: "&Warnings", Toggle: true, Checked: func() bool { return m.filter[catWarn] }, Handler: func(_ string) {
+					m.filter[catWarn] = !m.filter[catWarn]; m.rebuildVisibleLines()
+				}},
+				{Label: "&Errors", Toggle: true, Checked: func() bool { return m.filter[catError] }, Handler: func(_ string) {
+					m.filter[catError] = !m.filter[catError]; m.rebuildVisibleLines()
+				}},
+				{Label: "---"},
+				{Label: "&Chat", Toggle: true, Checked: func() bool { return m.filter[catChat] }, Handler: func(_ string) {
+					m.filter[catChat] = !m.filter[catChat]; m.rebuildVisibleLines()
+				}},
+				{Label: "C&ommands", Toggle: true, Checked: func() bool { return m.filter[catCommand] }, Handler: func(_ string) {
+					m.filter[catCommand] = !m.filter[catCommand]; m.rebuildVisibleLines()
 				}},
 			},
 		},
@@ -373,13 +431,29 @@ func (m *consoleModel) resize() {
 	// Width is managed by NCWindow.Render via the grid layout.
 }
 
-func (m *consoleModel) appendLog(line string) {
+func (m *consoleModel) appendTagged(cat logCategory, line string) {
 	for _, l := range strings.Split(line, "\n") {
-		m.logView.Lines = append(m.logView.Lines, l)
+		m.allLines = append(m.allLines, taggedLine{cat: cat, text: l})
 	}
-	if len(m.logView.Lines) > 500 {
-		m.logView.Lines = m.logView.Lines[len(m.logView.Lines)-500:]
+	if len(m.allLines) > 1000 {
+		m.allLines = m.allLines[len(m.allLines)-1000:]
 	}
+	m.rebuildVisibleLines()
+}
+
+// appendLog adds a command/feedback line (for backwards compat with existing callers).
+func (m *consoleModel) appendLog(line string) {
+	m.appendTagged(catCommand, line)
+}
+
+func (m *consoleModel) rebuildVisibleLines() {
+	var visible []string
+	for _, tl := range m.allLines {
+		if m.filter[tl.cat] {
+			visible = append(visible, tl.text)
+		}
+	}
+	m.logView.Lines = visible
 }
 
 // tabComplete handles tab completion for the input control.
@@ -576,11 +650,18 @@ func (m *consoleModel) dispatchPluginReply(text string) {
 	m.app.broadcastChat(common.Message{Author: "admin", Text: text})
 }
 
+// slogLine carries a formatted slog record to the console.
+type slogLine struct {
+	cat  logCategory
+	text string
+}
+
 // tea.Msg types for channel-based updates
 type logLineMsg string
 type chatLineMsg common.Message
+type slogLineMsg slogLine
 
-func listenForLogs(logCh <-chan string, chatCh <-chan common.Message) tea.Cmd {
+func listenForLogs(logCh <-chan string, chatCh <-chan common.Message, slogCh <-chan slogLine) tea.Cmd {
 	return func() tea.Msg {
 		select {
 		case line, ok := <-logCh:
@@ -593,6 +674,11 @@ func listenForLogs(logCh <-chan string, chatCh <-chan common.Message) tea.Cmd {
 				return nil
 			}
 			return chatLineMsg(msg)
+		case sl, ok := <-slogCh:
+			if !ok {
+				return nil
+			}
+			return slogLineMsg(sl)
 		}
 	}
 }

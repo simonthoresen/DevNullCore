@@ -90,6 +90,7 @@ func main() {
 		os.Exit(1)
 	}
 	app.SetPort(port)
+	app.InstallConsoleSlogHandler()
 	finishBootStep("DONE")
 
 	if lanMode {
