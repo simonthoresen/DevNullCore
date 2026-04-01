@@ -1,6 +1,7 @@
 package server
 
 import (
+	"image/color"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -82,27 +83,41 @@ func (v *NCTextView) Render(width int, focused bool, base lipgloss.Style) string
 // ─── NCTextInput ──────────────────────────────────────────────────────────────
 
 // NCTextInput wraps a textinput.Model as a 1-row focusable control.
+// Bg/Fg are set by the panel during rendering to the input-layer colors.
 type NCTextInput struct {
-	Model *textinput.Model
+	Model  *textinput.Model
+	bg, fg color.Color // resolved by panel
 }
 
 func (ti *NCTextInput) Focusable() bool     { return true }
 func (ti *NCTextInput) Flex() bool           { return false }
 func (ti *NCTextInput) Height(_ int) int     { return 1 }
 
-func (ti *NCTextInput) Render(width int, focused bool, base lipgloss.Style) string {
-	bg := base.GetBackground()
-	fg := base.GetForeground()
-	setInputStyle(ti.Model, bg, fg)
+func (ti *NCTextInput) Render(width int, focused bool, _ lipgloss.Style) string {
+	bg := ti.bg
+	fg := ti.fg
+
+	// Apply input colors to all textinput sub-styles.
+	inputStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
+	s := ti.Model.Styles()
+	s.Focused.Prompt = inputStyle
+	s.Focused.Text = inputStyle
+	s.Focused.Placeholder = inputStyle.Faint(true)
+	s.Blurred.Prompt = inputStyle
+	s.Blurred.Text = inputStyle
+	s.Blurred.Placeholder = inputStyle.Faint(true)
+	s.Cursor.Color = fg
+	s.Cursor.Blink = true
+	ti.Model.SetStyles(s)
+	ti.Model.SetVirtualCursor(false)
 	ti.Model.SetWidth(width)
+
 	if focused {
 		ti.Model.Focus()
 	} else {
 		ti.Model.Blur()
 	}
-	// Return the textinput's own styled view — don't wrap in another style
-	// which would override the per-character styling (cursor, placeholder, etc.).
-	// Just pad the background to fill the width.
+
 	view := ti.Model.View()
 	viewW := ansi.StringWidth(view)
 	if viewW < width {
@@ -227,10 +242,12 @@ func (p *NCPanel) Render(x, y, width, height int, t *Theme) string {
 		ch := c.Height(avail)
 		focused := i == p.FocusIdx
 
-		// Use input-layer colors for text input controls.
+		// Set input-layer colors on text input controls.
 		style := boxStyle
-		if _, isInput := c.(*NCTextInput); isInput {
-			style = lipgloss.NewStyle().Background(t.InputBgC()).Foreground(t.InputFgC())
+		if ti, isInput := c.(*NCTextInput); isInput {
+			ti.bg = t.InputBgC()
+			ti.fg = t.InputFgC()
+			style = lipgloss.NewStyle().Background(ti.bg).Foreground(ti.fg)
 		}
 		content := c.Render(p.innerW, focused, style)
 		for _, line := range strings.Split(content, "\n") {
