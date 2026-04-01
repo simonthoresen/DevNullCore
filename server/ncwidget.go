@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -122,6 +123,7 @@ func (w *NCWindow) Render(x, y, width, height int, pal *Palette, t *Theme) strin
 		}
 		focused := i == w.FocusIdx
 		_ = focused
+		slog.Debug("NCWindow render child", "idx", i, "cx", cx, "cy", cy, "cw", cw, "ch", ch, "innerW", w.innerW, "width", width)
 		content := child.Control.Render(cw, ch, pal, t)
 		contentLines := strings.Split(content, "\n")
 		for j, line := range contentLines {

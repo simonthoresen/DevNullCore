@@ -160,11 +160,18 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		// Hard exit on Ctrl+D — always works, even if overlay is stuck.
+		if msg.String() == "ctrl+d" {
+			if m.cancel != nil {
+				m.cancel()
+			}
+			return m, tea.Quit
+		}
 		// Let the overlay handle F10/menu/dialog keys first.
 		if m.overlay.handleKey(msg.String(), m.consoleMenus(), "") {
 			return m, nil
 		}
-		// Everything else goes to the focused panel control.
+		// Everything else goes to the focused window control.
 		m.window.HandleUpdate(msg)
 		return m, nil
 
