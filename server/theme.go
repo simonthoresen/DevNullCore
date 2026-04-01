@@ -189,7 +189,38 @@ func LoadTheme(path string) (*Theme, error) {
 
 // DefaultTheme returns the built-in norton theme (all fields empty = use defaults).
 func DefaultTheme() *Theme {
-	return &Theme{Name: "norton"}
+	return &Theme{
+		Name: "norton",
+		Primary: Palette{
+			Bg: "#000080", Fg: "#00AAAA", Accent: "#FFFF55",
+			HighlightBg: "#00AAAA", HighlightFg: "#000000",
+			ActiveBg: "#FFFF55", ActiveFg: "#000000",
+			InputBg: "#000000", InputFg: "#55FFFF",
+			DisabledFg: "#555555",
+		},
+		Secondary: Palette{
+			Bg: "#008080", Fg: "#000000", Accent: "#FFFF55",
+			HighlightBg: "#000000", HighlightFg: "#00AAAA",
+			ActiveBg: "#FFFF55", ActiveFg: "#000000",
+			InputBg: "#000000", InputFg: "#55FFFF",
+			DisabledFg: "#555555",
+		},
+		Tertiary: Palette{
+			Bg: "#AAAAAA", Fg: "#000000", Accent: "#FFFF55",
+			HighlightBg: "#000000", HighlightFg: "#FFFFFF",
+			ActiveBg: "#FFFF55", ActiveFg: "#000000",
+			InputBg: "#000000", InputFg: "#55FFFF",
+			DisabledFg: "#555555",
+		},
+		Warning: Palette{
+			Bg: "#AA0000", Fg: "#FFFFFF", Accent: "#FFFF55",
+			HighlightBg: "#FFFFFF", HighlightFg: "#AA0000",
+			ActiveBg: "#FFFF55", ActiveFg: "#000000",
+			InputBg: "#000000", InputFg: "#55FFFF",
+			DisabledFg: "#555555",
+		},
+		ShadowBg: "#333333",
+	}
 }
 
 // ListThemes returns the names of available theme files in the themes directory.
