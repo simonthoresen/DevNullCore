@@ -1,7 +1,6 @@
 package server
 
 import (
-	"log/slog"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -124,7 +123,8 @@ func (w *NCWindow) Render(x, y, width, height int, pal *Palette, t *Theme) strin
 		}
 		focused := i == w.FocusIdx
 		_ = focused
-		slog.Debug("NCWindow render child", "idx", i, "cx", cx, "cy", cy, "cw", cw, "ch", ch, "innerW", w.innerW, "width", width)
+		// Removed: slog.Debug here caused a feedback loop when debug logging
+		// was enabled — render → slog → console event → re-render.
 		content := child.Control.Render(cw, ch, pal, t)
 		contentLines := strings.Split(content, "\n")
 		for j, line := range contentLines {

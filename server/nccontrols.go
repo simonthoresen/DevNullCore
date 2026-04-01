@@ -2,7 +2,6 @@ package server
 
 import (
 	"image/color"
-	"log/slog"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -168,7 +167,8 @@ func (ti *NCTextInput) Render(width, height int, pal *Palette, t *Theme) string 
 	ti.fg = fg
 
 	fieldW := max(1, width-2)
-	slog.Debug("NCTextInput.Render", "width", width, "fieldW", fieldW)
+	// Removed: slog.Debug here caused a feedback loop when debug logging
+	// was enabled — render → slog → console event → re-render.
 	bracketStyle := pal.BaseStyle()
 	inputStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
 	dotStyle := lipgloss.NewStyle().Background(bg).Foreground(fg).Faint(true)

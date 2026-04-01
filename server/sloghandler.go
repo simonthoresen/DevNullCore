@@ -30,11 +30,6 @@ func (h *consoleSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Always forward to the wrapped handler (file) first.
 	err := h.wrapped.Handle(ctx, r)
 
-	// Skip render-path debug messages to avoid feedback loop:
-	// render → debug log → console → re-render → more debug logs.
-	if r.Level < slog.LevelInfo && isRenderLog(r.Message) {
-		return err
-	}
 
 	cat := slogLevelToCategory(r.Level)
 	prefix := slogLevelPrefix(r.Level)
@@ -100,18 +95,6 @@ func slogLevelPrefix(level slog.Level) string {
 	default:
 		return "[DBG]"
 	}
-}
-
-// InstallConsoleSlogHandler wraps the current default slog handler to also
-// route records to the server's slogCh. Call this after the server is created.
-// isRenderLog returns true for debug messages from the render path that
-// would cause a feedback loop if routed to the console.
-func isRenderLog(msg string) bool {
-	switch msg {
-	case "NCWindow render child", "NCTextInput.Render":
-		return true
-	}
-	return false
 }
 
 // InstallConsoleSlogHandler wraps the current default slog handler to also
