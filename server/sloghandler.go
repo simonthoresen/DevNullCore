@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
+	"strings"
 )
 
 // consoleSlogHandler is a slog.Handler that routes log records to the
@@ -30,6 +32,11 @@ func (h *consoleSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Always forward to the wrapped handler (file) first.
 	err := h.wrapped.Handle(ctx, r)
 
+	// Don't route to the console channel if we're inside a View/Render call.
+	// Sending to the channel triggers Update → View → more slog calls → loop.
+	if isRenderPath() {
+		return err
+	}
 
 	cat := slogLevelToCategory(r.Level)
 	prefix := slogLevelPrefix(r.Level)
@@ -51,6 +58,28 @@ func (h *consoleSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 
 	return err
+}
+
+// isRenderPath checks the call stack for View or Render methods.
+// If found, we're inside the render cycle and must not send to the console
+// channel (which would trigger Update → View → slog → feedback loop).
+func isRenderPath() bool {
+	var pcs [16]uintptr
+	n := runtime.Callers(3, pcs[:]) // skip Callers, isRenderPath, Handle
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		frame, more := frames.Next()
+		// Check for BubbleTea View() or NC widget Render() methods.
+		fn := frame.Function
+		if strings.HasSuffix(fn, ".View") ||
+			strings.HasSuffix(fn, ".Render") {
+			return true
+		}
+		if !more {
+			break
+		}
+	}
+	return false
 }
 
 func (h *consoleSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {

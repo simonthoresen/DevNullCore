@@ -1,8 +1,12 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -777,6 +781,85 @@ func TestSlogDebugRoutedToConsole(t *testing.T) {
 		t.Errorf("expected 2 messages in console channel, got %d: %v", len(messages), messages)
 	}
 }
+
+// TestNoSlogInRenderPath ensures that render-path source files don't contain
+// slog calls. Any slog call in a Render/View method creates a feedback loop:
+// View → slog → console channel → Update → View → slog → ...
+// This caused the CPU spin-up bug and keyboard starvation.
+func TestNoSlogInRenderPath(t *testing.T) {
+	// Files that are called from View/Render and must never use slog.
+	renderFiles := []string{
+		"ncwidget.go",
+		"nccontrols.go",
+		"overlay.go",
+	}
+	slogCall := regexp.MustCompile(`\bslog\.(Debug|Info|Warn|Error)\b`)
+
+	for _, name := range renderFiles {
+		path := filepath.Join(".", name)
+		f, err := os.Open(path)
+		if err != nil {
+			// File might not exist in some build configurations; skip.
+			continue
+		}
+		scanner := bufio.NewScanner(f)
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			// Skip comments.
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			if slogCall.MatchString(line) {
+				t.Errorf("%s:%d: slog call in render path (causes feedback loop): %s", name, lineNum, trimmed)
+			}
+		}
+		f.Close()
+	}
+}
+
+// TestSlogBlockedInRenderPath verifies that the consoleSlogHandler suppresses
+// messages sent from inside a View/Render call stack (feedback loop guard).
+func TestSlogBlockedInRenderPath(t *testing.T) {
+	ch := make(chan slogLine, 10)
+	wrapped := &discardHandler{}
+	handler := NewConsoleSlogHandler(ch, wrapped)
+
+	ctx := t.Context()
+
+	// Normal call — should appear in channel.
+	rec := slog.NewRecord(time.Now(), slog.LevelInfo, "normal log", 0)
+	_ = handler.Handle(ctx, rec)
+
+	// Simulate a call from inside a Render method.
+	renderHelper := func() {
+		rec2 := slog.NewRecord(time.Now(), slog.LevelInfo, "render log", 0)
+		_ = handler.Handle(ctx, rec2)
+	}
+	// Call via a method whose name ends with ".Render" in the stack.
+	stub := &renderStub{fn: renderHelper}
+	stub.Render()
+
+	close(ch)
+	var messages []string
+	for sl := range ch {
+		messages = append(messages, sl.text)
+	}
+
+	if len(messages) != 1 {
+		t.Errorf("expected 1 message (render-path one blocked), got %d: %v", len(messages), messages)
+	}
+	if len(messages) > 0 && strings.Contains(messages[0], "render log") {
+		t.Error("render-path message should have been blocked")
+	}
+}
+
+type renderStub struct{ fn func() }
+
+//go:noinline
+func (r *renderStub) Render() { r.fn() }
 
 // discardHandler is a slog.Handler that discards all records (for testing).
 type discardHandler struct{}

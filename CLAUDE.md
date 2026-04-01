@@ -384,6 +384,14 @@ Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.
 
 ---
 
+## Slog Feedback Loop Guard
+
+**Never add `slog` calls to `View()` or `Render()` methods.** The console routes slog → channel → Update → View, so any slog call in the render path creates an infinite feedback loop (high CPU, starved keyboard events).
+
+The `consoleSlogHandler` has a runtime guard (`isRenderPath()`) that inspects the call stack and suppresses console-channel sends from inside `.View` or `.Render` methods. This is a safety net — the primary rule is still: don't log from render paths. `TestNoSlogInRenderPath` scans render-path source files for slog calls; `TestSlogBlockedInRenderPath` verifies the runtime guard.
+
+---
+
 ## Dependencies (charm.land v2 stack)
 - `charm.land/bubbletea/v2` — TUI framework
 - `charm.land/wish/v2` — SSH server (use `bubbletea.Middleware`, not deprecated wish middleware)
