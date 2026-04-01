@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -18,6 +19,10 @@ type NCControl interface {
 	// focused indicates whether this control has keyboard focus.
 	// base is the panel's resolved background/foreground style.
 	Render(width int, focused bool, base lipgloss.Style) string
+
+	// Update handles a tea.Msg for this control (key events, etc.).
+	// Only called when the control has focus.
+	Update(msg tea.Msg)
 
 	// Height returns how many rows this control occupies.
 	// available is the remaining height for flex controls (like NCTextView).
@@ -42,6 +47,7 @@ type NCTextView struct {
 	height      int // set by panel layout
 }
 
+func (v *NCTextView) Update(_ tea.Msg)     {}
 func (v *NCTextView) Focusable() bool     { return false }
 func (v *NCTextView) Flex() bool           { return true }
 func (v *NCTextView) Height(avail int) int { v.height = avail; return avail }
@@ -89,6 +95,10 @@ type NCTextInput struct {
 	bg, fg color.Color // resolved by panel
 }
 
+func (ti *NCTextInput) Update(msg tea.Msg) {
+	updated, _ := ti.Model.Update(msg)
+	*ti.Model = updated
+}
 func (ti *NCTextInput) Focusable() bool     { return true }
 func (ti *NCTextInput) Flex() bool           { return false }
 func (ti *NCTextInput) Height(_ int) int     { return 1 }
@@ -132,6 +142,7 @@ func (ti *NCTextInput) Render(width int, focused bool, _ lipgloss.Style) string 
 // NCSeparator renders an inner horizontal divider line.
 type NCSeparator struct{}
 
+func (s *NCSeparator) Update(_ tea.Msg)     {}
 func (s *NCSeparator) Focusable() bool     { return false }
 func (s *NCSeparator) Flex() bool           { return false }
 func (s *NCSeparator) Height(_ int) int     { return 1 }
@@ -268,6 +279,15 @@ func (p *NCPanel) Render(x, y, width, height int, t *Theme) string {
 	}
 
 	return strings.Join(rows, "\n")
+}
+
+// HandleUpdate routes a tea.Msg to the focused control.
+func (p *NCPanel) HandleUpdate(msg tea.Msg) {
+	if p.FocusIdx >= 0 && p.FocusIdx < len(p.Controls) {
+		if p.Controls[p.FocusIdx].Focusable() {
+			p.Controls[p.FocusIdx].Update(msg)
+		}
+	}
 }
 
 // CursorPosition returns the absolute screen position for the cursor if a

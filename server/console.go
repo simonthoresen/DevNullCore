@@ -20,10 +20,9 @@ type consoleModel struct {
 	width  int
 	height int
 
-	input textinput.Model
-
-	logView *NCTextView
-	panel   *NCPanel
+	inputCtrl *NCTextInput // owned by the panel; canonical input model
+	logView   *NCTextView
+	panel     *NCPanel
 
 	inputHistory []string
 	historyIdx   int
@@ -45,7 +44,8 @@ type consoleModel struct {
 }
 
 func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
-	input := textinput.New()
+	input := new(textinput.Model)
+	*input = textinput.New()
 	input.Prompt = "> "
 	input.Placeholder = ""
 	input.CharLimit = 256
@@ -53,27 +53,31 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	input.Focus()
 
 	logView := &NCTextView{BottomAlign: true}
-	tiControl := &NCTextInput{Model: &input}
+	inputCtrl := &NCTextInput{Model: input}
 
 	panel := &NCPanel{
 		Desktop:  true,
 		Controls: []NCControl{
 			logView,
-			tiControl,
+			inputCtrl,
 		},
 	}
 	panel.FocusFirst()
 
-	return &consoleModel{
+	m := &consoleModel{
 		app:        app,
 		cancel:     cancel,
-		input:      input,
+		inputCtrl:  inputCtrl,
 		logView:    logView,
 		panel:      panel,
 		theme:      DefaultTheme(),
 		overlay:    overlayState{openMenu: -1},
 		historyIdx: -1,
 	}
+	// Point the NCTextInput at the consoleModel's copy will not work since
+	// textinput.Model is a value type. Instead, we keep the pointer in
+	// NCTextInput and always access the model through inputCtrl.Model.
+	return m
 }
 
 func (m *consoleModel) Init() tea.Cmd {
@@ -173,20 +177,20 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tabCandidates = nil
 			m.historyIdx = -1
 			m.historyDraft = ""
-			m.input.SetValue("")
+			m.input().SetValue("")
 			return m, nil
 		case "up":
 			if len(m.inputHistory) == 0 {
 				return m, nil
 			}
 			if m.historyIdx == -1 {
-				m.historyDraft = m.input.Value()
+				m.historyDraft = m.input().Value()
 				m.historyIdx = len(m.inputHistory) - 1
 			} else if m.historyIdx > 0 {
 				m.historyIdx--
 			}
-			m.input.SetValue(m.inputHistory[m.historyIdx])
-			m.input.CursorEnd()
+			m.input().SetValue(m.inputHistory[m.historyIdx])
+			m.input().CursorEnd()
 			return m, nil
 		case "down":
 			if m.historyIdx == -1 {
@@ -194,38 +198,36 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.historyIdx < len(m.inputHistory)-1 {
 				m.historyIdx++
-				m.input.SetValue(m.inputHistory[m.historyIdx])
+				m.input().SetValue(m.inputHistory[m.historyIdx])
 			} else {
 				m.historyIdx = -1
-				m.input.SetValue(m.historyDraft)
+				m.input().SetValue(m.historyDraft)
 			}
-			m.input.CursorEnd()
+			m.input().CursorEnd()
 			return m, nil
 		case "tab":
-			if strings.HasPrefix(m.input.Value(), "/") {
+			if strings.HasPrefix(m.input().Value(), "/") {
 				if m.tabCandidates == nil {
-					m.tabPrefix, m.tabCandidates = m.app.registry.TabCandidates(m.input.Value(), m.app.state.PlayerNames())
+					m.tabPrefix, m.tabCandidates = m.app.registry.TabCandidates(m.input().Value(), m.app.state.PlayerNames())
 					m.tabIndex = 0
 				}
 				if len(m.tabCandidates) > 0 {
-					m.input.SetValue(m.tabPrefix + m.tabCandidates[m.tabIndex])
-					m.input.CursorEnd()
+					m.input().SetValue(m.tabPrefix + m.tabCandidates[m.tabIndex])
+					m.input().CursorEnd()
 					m.tabIndex = (m.tabIndex + 1) % len(m.tabCandidates)
 				}
 			}
 			return m, nil
 		default:
 			m.tabCandidates = nil
-			var cmd tea.Cmd
-			m.input, cmd = m.input.Update(msg)
-			return m, cmd
+			m.panel.HandleUpdate(msg)
+			return m, nil
 		}
 	}
 
-	// Forward to textinput for cursor blink etc.
-	var cmd tea.Cmd
-	m.input, cmd = m.input.Update(msg)
-	return m, cmd
+	// Forward other messages to focused control (cursor blink etc.)
+	m.panel.HandleUpdate(msg)
+	return m, nil
 }
 
 func (m *consoleModel) consoleMenus() []common.MenuDef {
@@ -393,7 +395,7 @@ func (m *consoleModel) View() tea.View {
 	view.MouseMode = tea.MouseModeCellMotion
 
 	if cx, cy, visible := m.panel.CursorPosition(); visible {
-		if cursor := m.input.Cursor(); cursor != nil {
+		if cursor := m.input().Cursor(); cursor != nil {
 			cursor.Position.X = cx
 			cursor.Position.Y = cy
 			view.Cursor = cursor
@@ -403,8 +405,11 @@ func (m *consoleModel) View() tea.View {
 	return view
 }
 
+// input returns the shared textinput model (canonical copy owned by NCTextInput).
+func (m *consoleModel) input() *textinput.Model { return m.inputCtrl.Model }
+
 func (m *consoleModel) resize() {
-	m.input.SetWidth(max(1, m.width-2))
+	m.inputCtrl.Model.SetWidth(max(1, m.width-2))
 }
 
 func (m *consoleModel) appendLog(line string) {
@@ -417,11 +422,14 @@ func (m *consoleModel) appendLog(line string) {
 }
 
 func (m *consoleModel) submitInput() {
-	text := strings.TrimSpace(m.input.Value())
-	m.input.SetValue("")
+	text := strings.TrimSpace(m.input().Value())
+	m.input().SetValue("")
 	if text == "" {
 		return
 	}
+	// Echo the command to the log so the user sees what was typed.
+	m.appendLog("> " + text)
+
 	if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != text {
 		m.inputHistory = append(m.inputHistory, text)
 		if len(m.inputHistory) > 50 {
