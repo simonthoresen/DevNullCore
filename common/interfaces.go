@@ -27,6 +27,7 @@ type CommandContext struct {
 // A Label consisting entirely of "-" characters renders as a separator line.
 type MenuItemDef struct {
 	Label    string
+	Hotkey   string                // e.g. "ctrl+c" — displayed right-aligned, globally bound
 	Disabled bool
 	Handler  func(playerID string) // nil for separators
 }

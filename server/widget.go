@@ -50,6 +50,18 @@ func itemShortcut(it common.MenuItemDef) rune {
 	return r
 }
 
+// hotkeyDisplay converts a key binding string (e.g. "ctrl+c") to a display
+// string (e.g. "(Ctrl+C)").
+func hotkeyDisplay(key string) string {
+	parts := strings.Split(key, "+")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return "(" + strings.Join(parts, "+") + ")"
+}
+
 // ─── Overlay state ─────────────────────────────────────────────────────────────
 
 // overlayState holds all per-player NC overlay UI state.
@@ -97,6 +109,18 @@ func (o *overlayState) isActive() bool {
 // handleKey routes a key press through the overlay state machine.
 // Returns true if the key was consumed and normal chrome should not process it.
 func (o *overlayState) handleKey(key string, menus []common.MenuDef, playerID string) bool {
+	// Global hotkeys: check all menu items for matching hotkey bindings.
+	for _, m := range menus {
+		for _, it := range m.Items {
+			if it.Hotkey != "" && it.Hotkey == key && !it.Disabled && it.Handler != nil {
+				o.openMenu = -1
+				o.menuFocused = false
+				it.Handler(playerID)
+				return true
+			}
+		}
+	}
+
 	if o.hasDialog() {
 		return o.handleDialogKey(key)
 	}
@@ -531,8 +555,12 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, t *T
 	for _, it := range items {
 		if !isSeparator(it) {
 			clean, _ := stripAmpersand(it.Label)
-			if len(clean) > maxLW {
-				maxLW = len(clean)
+			w := len(clean)
+			if it.Hotkey != "" {
+				w += 2 + len(hotkeyDisplay(it.Hotkey)) // "  (Ctrl+C)"
+			}
+			if w > maxLW {
+				maxLW = w
 			}
 		}
 	}
@@ -562,15 +590,19 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, t *T
 			continue
 		}
 		clean, _ := stripAmpersand(it.Label)
-		pad := strings.Repeat(" ", innerW-2-len(clean))
+		hk := ""
+		if it.Hotkey != "" {
+			hk = "  " + hotkeyDisplay(it.Hotkey)
+		}
+		pad := strings.Repeat(" ", innerW-2-len(clean)-len(hk))
 		var inner string
 		switch {
 		case it.Disabled:
-			inner = disabledStyle.Width(innerW).Render(" " + clean + pad + " ")
+			inner = disabledStyle.Width(innerW).Render(" " + clean + pad + hk + " ")
 		case i == o.dropCursor:
-			inner = activeStyle.Render(" ") + renderLabel(it.Label, activeStyle, activeAccent) + activeStyle.Render(pad+" ")
+			inner = activeStyle.Render(" ") + renderLabel(it.Label, activeStyle, activeAccent) + activeStyle.Render(pad+hk+" ")
 		default:
-			inner = menuStyle.Render(" ") + renderLabel(it.Label, menuStyle, menuAccent) + menuStyle.Render(pad+" ")
+			inner = menuStyle.Render(" ") + renderLabel(it.Label, menuStyle, menuAccent) + menuStyle.Render(pad+hk+" ")
 		}
 		lines = append(lines, menuStyle.Render(t.OV())+inner+menuStyle.Render(t.OV()))
 	}

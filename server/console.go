@@ -56,6 +56,7 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	tiControl := &NCTextInput{Model: &input}
 
 	panel := &NCPanel{
+		Desktop:  true,
 		Controls: []NCControl{
 			logView,
 			tiControl,
@@ -162,11 +163,6 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.String() {
-		case "ctrl+c", "ctrl+d":
-			if m.cancel != nil {
-				m.cancel()
-			}
-			return m, tea.Quit
 		case "enter":
 			m.tabCandidates = nil
 			m.historyIdx = -1
@@ -241,7 +237,7 @@ func (m *consoleModel) consoleMenus() []common.MenuDef {
 				{Label: "&Plugins...", Handler: func(_ string) { m.showListDialog("Plugins", "plugins", ".js") }},
 				{Label: "&Games...", Handler: func(_ string) { m.showListDialog("Games", "games", ".js") }},
 				{Label: "---"},
-				{Label: "S&hutdown", Handler: func(_ string) {
+				{Label: "S&hutdown", Hotkey: "ctrl+c", Handler: func(_ string) {
 					m.overlay.pushDialog(common.DialogRequest{
 						Title:   "Shutdown",
 						Body:    "Are you sure you want to shut down the server?",
