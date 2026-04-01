@@ -121,8 +121,7 @@ func (w *NCWindow) Render(x, y, width, height int, pal *Palette, t *Theme) strin
 		if cw <= 0 || ch <= 0 {
 			continue
 		}
-		focused := i == w.FocusIdx
-		_ = focused
+		_ = i == w.FocusIdx // TODO: use for focus-dependent styling
 		// Removed: slog.Debug here caused a feedback loop when debug logging
 		// was enabled — render → slog → console event → re-render.
 		content := child.Control.Render(cw, ch, pal, t)
@@ -328,6 +327,10 @@ func (w *NCWindow) HandleUpdate(msg tea.Msg) {
 			w.CycleFocus()
 		}
 	case *NCCommandInput:
+		if ti.WantTab {
+			w.CycleFocus()
+		}
+	case *NCTextView:
 		if ti.WantTab {
 			w.CycleFocus()
 		}

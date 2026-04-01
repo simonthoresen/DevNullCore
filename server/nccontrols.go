@@ -188,10 +188,14 @@ func (ti *NCTextInput) Render(width, height int, pal *Palette, t *Theme) string 
 	focused := ti.Model.Focused()
 	if focused {
 		view := ti.Model.View()
-		viewW := ansi.StringWidth(view)
-		remaining := max(0, fieldW-viewW)
-		fill := dotStyle.Render(strings.Repeat("·", remaining))
-		return bracketStyle.Render("[") + view + fill + bracketStyle.Render("]")
+		// The textinput pads its output to fieldW with spaces; strip trailing
+		// space padding so we can replace it with dot fill.
+		stripped := strings.TrimRight(ansi.Strip(view), " ")
+		usedW := ansi.StringWidth(stripped)
+		dotsW := max(0, fieldW-usedW)
+		trimmedView := ansi.Truncate(view, usedW, "")
+		fill := dotStyle.Render(strings.Repeat("·", dotsW))
+		return bracketStyle.Render("[") + trimmedView + fill + bracketStyle.Render("]")
 	}
 
 	val := ti.Model.Value()
@@ -215,18 +219,25 @@ type NCTextView struct {
 	Scrollable   bool
 	ScrollOffset int
 	height       int
+
+	// WantTab is set to true by Update when tab should cycle focus (not consumed).
+	WantTab bool
 }
 
 func (v *NCTextView) Focusable() bool     { return v.Scrollable }
 func (v *NCTextView) MinSize() (int, int) { return 1, 1 }
 
 func (v *NCTextView) Update(msg tea.Msg) {
+	v.WantTab = false
 	if !v.Scrollable {
 		return
 	}
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "tab":
+			v.WantTab = true
+			return
 		case "pgup":
 			v.ScrollOffset += v.height
 			v.clampScroll()
