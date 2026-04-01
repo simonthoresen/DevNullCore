@@ -1,0 +1,62 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries
+        run: make build
+
+      - name: Package dist folder
+        shell: bash
+        run: |
+          cd dist
+          7z a -tzip ../null-space.zip \
+            null-space.exe \
+            pinggy-helper.exe \
+            start.ps1 \
+            fonts/ \
+            games/ \
+            plugins/
+
+      - name: Get short SHA
+        id: sha
+        shell: bash
+        run: echo "short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Update rolling latest release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing latest release+tag if present
+          gh release delete latest --yes 2>/dev/null || true
+          git tag -d latest 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+
+          # Create new release with all assets
+          git tag latest
+          git push origin latest
+          gh release create latest \
+            null-space.zip \
+            dist/null-space.exe \
+            dist/pinggy-helper.exe \
+            --title "Latest Build (${{ steps.sha.outputs.short }})" \
+            --notes "Auto-built from main at ${{ github.sha }}.
+
+          **Fresh install:** save and run [install.ps1](https://github.com/simonthoresen/null-space/raw/main/install.ps1).
+          **Existing install:** \`start.ps1\` auto-updates binaries on each launch." \
+            --latest

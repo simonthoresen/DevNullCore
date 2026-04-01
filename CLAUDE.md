@@ -12,6 +12,15 @@ A framework for hosting terminal-based multiplayer **games** over SSH. **Only th
 
 Games and plugins are written in JavaScript (goja) and loaded at runtime from `dist/games/` and `dist/plugins/`. The server binary itself is game/plugin-agnostic.
 
+## Release & Distribution
+
+**Binaries are NOT checked into git.** They are built and published automatically by GitHub Actions on every push to `main`.
+
+- **GitHub Actions** (`.github/workflows/release.yml`): builds `null-space.exe` + `pinggy-helper.exe`, packages the full `dist/` folder into `null-space.zip`, and publishes a rolling `latest` release.
+- **`install.ps1`** (repo root): one-liner installer for operators — downloads and extracts the latest release zip, creates desktop shortcuts. Usage: `irm https://github.com/simonthoresen/null-space/raw/main/install.ps1 | iex`
+- **`start.ps1`** (in `dist/`): auto-updates on each launch — checks the GitHub release for a newer version and downloads the full zip (binaries, games, plugins) before starting.
+- **Version tracking**: `dist/.version` stores the commit SHA of the installed release. Not tracked in git.
+
 ## Commands
 
 ```bash
@@ -145,7 +154,9 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `common/types.go` | Shared types: `Message`, `Player`, `TickMsg`, `ChatMsg`, etc. |
 | `cmd/null-space/` | Entry point: boot sequence, console setup, signal handling |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
-| `dist/start.ps1` | PowerShell launcher: starts pinggy-helper, then null-space.exe |
+| `dist/start.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then null-space.exe |
+| `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
+| `.github/workflows/release.yml` | CI: builds binaries and publishes rolling `latest` release on every push to main |
 
 ### The `Game` Interface (`common/interfaces.go`)
 ```go

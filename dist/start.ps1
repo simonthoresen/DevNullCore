@@ -35,6 +35,7 @@ if (-not $Local -and -not $Password) {
 
 $root = $PSScriptRoot
 $logsDir = Join-Path $root "logs"
+$repo = "simonthoresen/null-space"
 $script:tunnelShell = $null
 $script:tunnelWatcher = $null
 $script:tunnelStatus = $null
@@ -212,6 +213,62 @@ function Wait-ForTunnelReady {
     if ($details.Count -gt 0) { $message += "`n`n" + ($details -join "`n`n") }
     throw $message
 }
+
+# ── auto-update binaries ────────────────────────────────────────────────────
+
+function Update-FromRelease {
+    Write-BootStepStart "Checking for updates"
+    try {
+        $headers = @{ Accept = "application/vnd.github+json" }
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/latest" -Headers $headers -TimeoutSec 10
+
+        # Compare release commit SHA with local version stamp
+        $versionFile = Join-Path $root ".version"
+        $localVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
+        $remoteVersion = ""
+        if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
+
+        if ($localVersion -eq $remoteVersion -and $localVersion -ne "") {
+            Write-BootStepEnd "DONE"
+            return
+        }
+
+        Write-BootStepEnd "DONE"
+
+        # Download the full release zip (includes binaries, games, plugins, etc.)
+        $zipAsset = $release.assets | Where-Object { $_.name -eq "null-space.zip" } | Select-Object -First 1
+        if (-not $zipAsset) {
+            Write-RunLogLine "no null-space.zip in release, skipping update"
+            return
+        }
+
+        Write-BootStepStart "Downloading update"
+        $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "null-space-update.zip"
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "null-space-update"
+        Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $tempZip -TimeoutSec 120
+
+        # Extract to temp folder, then merge into install dir (preserves user's custom files)
+        if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
+        Expand-Archive -Path $tempZip -DestinationPath $tempDir -Force
+        Get-ChildItem -Path $tempDir -Recurse -File | ForEach-Object {
+            $rel  = $_.FullName.Substring($tempDir.Length + 1)
+            $dest = Join-Path $root $rel
+            $dir  = Split-Path $dest -Parent
+            if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+            Copy-Item -Path $_.FullName -Destination $dest -Force
+        }
+        Remove-Item $tempZip -Force
+        Remove-Item $tempDir -Recurse -Force
+        Write-BootStepEnd "DONE"
+
+        if ($remoteVersion) { Set-Content -Path $versionFile -Value $remoteVersion -NoNewline }
+    } catch {
+        Write-BootStepEnd "SKIP"
+        Write-RunLogLine ("auto-update check failed: {0}" -f $_)
+    }
+}
+
+Update-FromRelease
 
 # ── local / single-player mode ───────────────────────────────────────────────
 # No SSH, no tunnel, no port — just run the TUI directly in this terminal.
