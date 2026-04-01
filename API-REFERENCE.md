@@ -377,7 +377,7 @@ Games can persist data between runs. Saved state is stored as JSON in `dist/stat
 **Lobby:**
 ```
 ┌────────────────────────┬───────────┐
-│ menu bar (full width)               │  ← framework: server name, players, uptime ⠹
+│ menu bar (full width)               │  ← framework: server name, players, uptime
 ├────────────────────────┬───────────┤
 │ chat (70% width)       │ teams     │
 │                        │ panel     │
@@ -392,7 +392,7 @@ Games can persist data between runs. Saved state is stored as JSON in `dist/stat
 **In-game (playing):**
 ```
 ┌────────────────────────────────────┐
-│ menu bar (1 row)                   │  ← framework: game name ⠹
+│ menu bar (1 row)                   │  ← framework: game name
 ├────────────────────────────────────┤
 │ status bar (1 row)                 │  ← Game.statusBar(playerID)
 ├────────────────────────────────────┤
@@ -411,7 +411,7 @@ Games can persist data between runs. Saved state is stored as JSON in `dist/stat
 - `width` = full terminal width
 - `height` = `width * 9 / 16` (clamped down if terminal is too short to leave 5 rows for chat)
 - Return exactly `height` newline-separated rows from `view()`. Fewer rows are padded; more are clipped.
-- The menu bar has **one reserved character at the right edge** for the braille spinner — keep `gameName` shorter than the full width.
+- The menu bar is full width — `gameName` can use it entirely.
 
 ---
 

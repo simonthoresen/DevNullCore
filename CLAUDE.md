@@ -101,7 +101,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 **In-game:**
 ```
 ┌─────────────────────────────────────┐
-│ Menu bar (1 row) — framework        │  game name ⠹
+│ Menu bar (1 row) — framework        │  game name
 ├─────────────────────────────────────┤
 │ Status bar (1 row) — game-owned     │  Game.StatusBar(playerID) → "HP: 100  Score: 4200"
 ├─────────────────────────────────────┤
@@ -119,7 +119,6 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 └─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
 ```
 
-**Braille spinner:** the last character of the menu bar is reserved for a Braille spinner — a live indicator that the server is running. Sequence: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, advances once per second (every 10 ticks at 100ms). Menu bar content must never overwrite it.
 
 **Viewport sizing:** Ideal `gameH = W * 9 / 16`. Chat gets the remaining rows. `minChatH = max(5, (H-4)/3)` — chat always gets at least ⅓ of content rows (4 overhead rows: menu bar + game status bar + command bar + status bar). Command bar is always 1 row.
 
@@ -283,7 +282,7 @@ Shutting down network ...................................... [ SKIP ]  ← Go
 
 ```
 ┌─────────────────────────────────────┐
-│ Status bar (1 row)                  │  "null-space | game: none | uptime 00:42 ⠹"
+│ Status bar (1 row)                  │  "null-space | game: none | uptime 00:42 ⠹"  ← console keeps spinner
 ├─────────────────────────────────────┤
 │ Server log (top half, scrollable)   │  internal log lines; never sent to players
 ├─────────────────────────────────────┤

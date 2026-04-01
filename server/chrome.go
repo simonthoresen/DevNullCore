@@ -128,7 +128,6 @@ const (
 	modeInput = 1
 )
 
-var spinnerFramesChrome = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 const (
 	lobbyFocusChat  = 0
@@ -584,7 +583,6 @@ func (m chromeModel) View() tea.View {
 	game := m.app.state.ActiveGame
 	gameName := m.app.state.GameName
 	phase := m.app.state.GamePhase
-	spinChar := string(m.app.state.SpinnerChar())
 	m.app.state.mu.RUnlock()
 
 	col := resolveColors(m.app.state.ActiveSkin())
@@ -610,14 +608,14 @@ func (m chromeModel) View() tea.View {
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		// === LOBBY LAYOUT (with team panel) ===
-		content = m.viewLobby(mbStyle, chStyle, ciStyle, spinChar, col.chatBg)
+		content = m.viewLobby(mbStyle, chStyle, ciStyle, col.chatBg)
 	} else if phase == common.PhaseSplash {
-		content = m.viewSplash(game, gameName, mbStyle, chStyle, ciStyle, spinChar)
+		content = m.viewSplash(game, gameName, mbStyle, chStyle, ciStyle)
 	} else if phase == common.PhaseGameOver {
-		content = m.viewGameOver(game, gameName, mbStyle, chStyle, ciStyle, spinChar)
+		content = m.viewGameOver(game, gameName, mbStyle, chStyle, ciStyle)
 	} else {
 		// === PLAYING LAYOUT ===
-		content = m.viewPlaying(game, gameName, mbStyle, chStyle, ciStyle, spinChar, col.chatBg)
+		content = m.viewPlaying(game, gameName, mbStyle, chStyle, ciStyle, col.chatBg)
 	}
 
 	view.SetContent(content)
@@ -651,7 +649,7 @@ func (m chromeModel) View() tea.View {
 	return view
 }
 
-func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
+func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
 	contentH := m.height - 3 // menu bar + input row + status bar
 	if contentH < 1 {
 		contentH = 1
@@ -697,7 +695,7 @@ func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 	}
 	menuText := fmt.Sprintf("null-space (%s) | %d players | uptime %s", modeLabel, m.app.state.PlayerCount(), m.app.uptime())
 	chatMenu := chatBarStyle.Width(chatW).Render(truncateStyled(menuText, chatW))
-	teamMenu := teamBarStyle.Width(teamW).Render(headerWithSpinner(" Teams", teamW, spinChar))
+	teamMenu := teamBarStyle.Width(teamW).Render(truncateStyled(" Teams", teamW))
 	menuBar := chatMenu + teamMenu
 
 	// Content area — each row is: chat content (chatW-1) + border "│" + team content (teamW-1) + border "│"
@@ -747,13 +745,13 @@ func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, middle, inputRow, statusBar)
 }
 
-func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
 	}
 
-	menuBar := mbStyle.Width(m.width).Render(headerWithSpinner(displayName, m.width, spinChar))
+	menuBar := mbStyle.Width(m.width).Render(truncateStyled(displayName, m.width))
 
 	viewportH := m.height - 3
 	if viewportH < 1 {
@@ -781,13 +779,13 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chSt
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
 	}
 
-	menuBar := mbStyle.Width(m.width).Render(headerWithSpinner(displayName+" - Game Over", m.width, spinChar))
+	menuBar := mbStyle.Width(m.width).Render(truncateStyled(displayName+" - Game Over", m.width))
 
 	viewportH := m.height - 3
 	if viewportH < 1 {
@@ -812,8 +810,8 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, ch
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
-	menuBar := mbStyle.Width(m.width).Render(headerWithSpinner(gameName, m.width, spinChar))
+func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
+	menuBar := mbStyle.Width(m.width).Render(truncateStyled(gameName, m.width))
 	gameStatusBar := mbStyle.Bold(false).Width(m.width).Render(game.StatusBar(m.playerID))
 
 	// Available rows: total - menu bar - game status bar - command bar - status bar
@@ -1149,11 +1147,6 @@ func headerWithSpinner(text string, width int, spinner string) string {
 	return left + strings.Repeat(" ", spaces) + spinner
 }
 
-func currentSpinnerFrame() string {
-	interval := int64(125) // ms
-	frame := (time.Now().UnixMilli() / interval) % int64(len(spinnerFramesChrome))
-	return spinnerFramesChrome[frame]
-}
 
 // renderChatLines renders `height` lines from `lines` with the given style, offset
 // from the bottom by `scrollOffset` lines (0 = show newest). Lines above the
