@@ -19,10 +19,11 @@ type GameNCWindow struct {
 	onInput  func(action string)        // bound to game.OnInput(playerID, ...)
 }
 
-// ncCachedControl pairs a control type name with the reusable instance.
+// ncCachedControl pairs a control with metadata for reuse decisions.
 type ncCachedControl struct {
 	nodeType string
 	control  NCControl
+	hash     uint64 // WidgetNode.Hash() at build time; 0 = always rebuild
 }
 
 // HasFocusable returns true if the window contains any focusable controls.
@@ -97,10 +98,28 @@ func ReconcileGameWindow(
 // buildControl creates an NCControl from a WidgetNode, reusing prev controls
 // where the type matches. Returns the control and a flat list of all focusable
 // descendants (for focus management).
+//
+// Per-node caching: if the node's Hash() is non-zero (no interactive/gameview
+// descendants) and matches the cached hash at the same path, the entire subtree
+// is reused without rebuilding. This means only dynamic subtrees (containing
+// gameview or interactive nodes) are rebuilt each frame.
 func (gw *GameNCWindow) buildControl(node *common.WidgetNode, path string, prev map[string]ncCachedControl) (NCControl, []NCControl) {
 	if node == nil {
 		label := &NCLabel{Text: ""}
 		return label, nil
+	}
+
+	// Fast path: if the node's hash is non-zero and matches the previous
+	// frame at the same path, reuse the entire cached subtree.
+	hash := node.Hash()
+	if hash != 0 {
+		if cached, ok := prev[path]; ok && cached.hash == hash {
+			// Subtree unchanged — reuse control and propagate all cached
+			// descendants (they were stored during the previous build).
+			gw.controls[path] = cached
+			gw.reuseCachedSubtree(path, prev)
+			return cached.control, nil
+		}
 	}
 
 	var ctrl NCControl
@@ -134,13 +153,24 @@ func (gw *GameNCWindow) buildControl(node *common.WidgetNode, path string, prev 
 		ctrl = gw.buildGameView(node)
 	}
 
-	gw.controls[path] = ncCachedControl{nodeType: node.Type, control: ctrl}
+	gw.controls[path] = ncCachedControl{nodeType: node.Type, control: ctrl, hash: hash}
 
 	if ctrl.Focusable() {
 		focusable = append(focusable, ctrl)
 	}
 
 	return ctrl, focusable
+}
+
+// reuseCachedSubtree copies all descendants of the given path from prev into
+// the current controls map, so they survive to the next frame's cache check.
+func (gw *GameNCWindow) reuseCachedSubtree(path string, prev map[string]ncCachedControl) {
+	prefix := path + "."
+	for k, v := range prev {
+		if len(k) > len(prefix) && k[:len(prefix)] == prefix {
+			gw.controls[k] = v
+		}
+	}
 }
 
 func (gw *GameNCWindow) buildLabel(node *common.WidgetNode) *NCLabel {

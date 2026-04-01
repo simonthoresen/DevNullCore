@@ -196,6 +196,105 @@ func TestReconcileTable(t *testing.T) {
 	}
 }
 
+func TestReconcileCacheSkipsStaticSubtree(t *testing.T) {
+	// An hsplit with a static panel and a gameview. The static panel should
+	// be reused from cache on the second reconcile (same hash, same path).
+	tree := &common.WidgetNode{
+		Type: "hsplit",
+		Children: []*common.WidgetNode{
+			{Type: "panel", Title: "Stats", Width: 12, Children: []*common.WidgetNode{
+				{Type: "label", Text: "HP: 100"},
+			}},
+			{Type: "gameview", Weight: 1},
+		},
+	}
+
+	viewCallCount := 0
+	viewFn := func(w, h int) string {
+		viewCallCount++
+		return "frame"
+	}
+
+	gw1 := ReconcileGameWindow(nil, tree, viewFn, nil)
+	_ = gw1.Window.Render(0, 0, 30, 5, DefaultTheme().LayerAt(0))
+	if viewCallCount != 1 {
+		t.Fatalf("expected 1 viewFn call, got %d", viewCallCount)
+	}
+
+	// The panel subtree at path "0.0" should have a non-zero hash.
+	panelNode := tree.Children[0]
+	if panelNode.Hash() == 0 {
+		t.Fatal("static panel should have non-zero hash")
+	}
+
+	// Second reconcile with same tree — static panel should be reused.
+	tree2 := &common.WidgetNode{
+		Type: "hsplit",
+		Children: []*common.WidgetNode{
+			{Type: "panel", Title: "Stats", Width: 12, Children: []*common.WidgetNode{
+				{Type: "label", Text: "HP: 100"},
+			}},
+			{Type: "gameview", Weight: 1},
+		},
+	}
+
+	gw2 := ReconcileGameWindow(gw1, tree2, viewFn, nil)
+	_ = gw2.Window.Render(0, 0, 30, 5, DefaultTheme().LayerAt(0))
+
+	// viewFn should be called again (gameview always rebuilds).
+	if viewCallCount != 2 {
+		t.Errorf("expected 2 viewFn calls, got %d", viewCallCount)
+	}
+
+	// The cached panel control at "0.0" should be the exact same pointer.
+	cached1, ok1 := gw1.controls["0.0"]
+	cached2, ok2 := gw2.controls["0.0"]
+	if !ok1 || !ok2 {
+		t.Fatal("expected panel control at path 0.0 in both reconciles")
+	}
+	if cached1.control != cached2.control {
+		t.Error("static panel control should be reused (same pointer), but got different instances")
+	}
+}
+
+func TestReconcileCacheInvalidatesOnChange(t *testing.T) {
+	tree1 := &common.WidgetNode{
+		Type: "hsplit",
+		Children: []*common.WidgetNode{
+			{Type: "label", Text: "v1", Width: 10},
+			{Type: "gameview", Weight: 1},
+		},
+	}
+
+	gw1 := ReconcileGameWindow(nil, tree1, func(w, h int) string { return "" }, nil)
+
+	// Change the label text — hash should differ, so it gets rebuilt.
+	tree2 := &common.WidgetNode{
+		Type: "hsplit",
+		Children: []*common.WidgetNode{
+			{Type: "label", Text: "v2", Width: 10},
+			{Type: "gameview", Weight: 1},
+		},
+	}
+
+	gw2 := ReconcileGameWindow(gw1, tree2, func(w, h int) string { return "" }, nil)
+
+	cached1 := gw1.controls["0.0"]
+	cached2 := gw2.controls["0.0"]
+	if cached1.control == cached2.control {
+		t.Error("label control should be rebuilt when text changes, but same pointer was reused")
+	}
+
+	// Verify the new label has the updated text.
+	if label, ok := cached2.control.(*NCLabel); ok {
+		if label.Text != "v2" {
+			t.Errorf("expected label text 'v2', got %q", label.Text)
+		}
+	} else {
+		t.Error("expected *NCLabel at path 0.0")
+	}
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 // findButton searches a control tree for the first NCButton.
