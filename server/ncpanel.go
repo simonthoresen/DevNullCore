@@ -91,16 +91,25 @@ func (ti *NCTextInput) Flex() bool           { return false }
 func (ti *NCTextInput) Height(_ int) int     { return 1 }
 
 func (ti *NCTextInput) Render(width int, focused bool, base lipgloss.Style) string {
-	style := base
+	bg := base.GetBackground()
+	fg := base.GetForeground()
+	setInputStyle(ti.Model, bg, fg)
+	ti.Model.SetWidth(width)
 	if focused {
-		bg := base.GetBackground()
-		fg := base.GetForeground()
-		setInputStyle(ti.Model, bg, fg)
 		ti.Model.Focus()
 	} else {
 		ti.Model.Blur()
 	}
-	return style.Width(width).Render(truncateStyled(ti.Model.View(), width))
+	// Return the textinput's own styled view — don't wrap in another style
+	// which would override the per-character styling (cursor, placeholder, etc.).
+	// Just pad the background to fill the width.
+	view := ti.Model.View()
+	viewW := ansi.StringWidth(view)
+	if viewW < width {
+		pad := lipgloss.NewStyle().Background(bg).Width(width - viewW).Render("")
+		return view + pad
+	}
+	return view
 }
 
 // ─── NCSeparator ──────────────────────────────────────────────────────────────
