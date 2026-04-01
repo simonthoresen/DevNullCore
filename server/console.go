@@ -231,7 +231,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *consoleModel) consoleMenus() []common.MenuDef {
 	return []common.MenuDef{
 		{
-			Label: "&Server",
+			Label: "&File",
 			Items: []common.MenuItemDef{
 				{Label: "&Themes...", Handler: func(_ string) { m.showListDialog("Themes", "themes", ".json") }},
 				{Label: "&Plugins...", Handler: func(_ string) { m.showListDialog("Plugins", "plugins", ".js") }},
