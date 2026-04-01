@@ -33,9 +33,8 @@ if (-not $Local -and $positionals.Count -ge 1 -and $positionals[0]) {
     $Password = $positionals[0]
 }
 
-if (-not $Local -and -not $Password) {
-    $Password = Read-Host "Enter admin password (leave empty for none)"
-}
+# Password is optional — pass via first positional arg or --password in the future.
+# If not provided, the server starts without one (can be set at runtime via /password).
 
 $root = $PSScriptRoot
 $logsDir = Join-Path $root "logs"
