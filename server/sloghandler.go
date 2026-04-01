@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 )
 
 // consoleSlogHandler is a slog.Handler that routes log records to the
@@ -28,12 +27,20 @@ func (h *consoleSlogHandler) Enabled(ctx context.Context, level slog.Level) bool
 }
 
 func (h *consoleSlogHandler) Handle(ctx context.Context, r slog.Record) error {
-	// Format for console display.
+	// Always forward to the wrapped handler (file) first.
+	err := h.wrapped.Handle(ctx, r)
+
+	// Only route INFO and above to the console channel to avoid a
+	// feedback loop: debug logs from rendering → console → re-render → more logs.
+	// Debug logs still go to the file via the wrapped handler above.
+	if r.Level < slog.LevelInfo {
+		return err
+	}
+
 	cat := slogLevelToCategory(r.Level)
 	prefix := slogLevelPrefix(r.Level)
 	ts := r.Time.Format("15:04:05")
 
-	// Build key=value pairs from attrs.
 	var attrs string
 	r.Attrs(func(a slog.Attr) bool {
 		if a.Key != "component" && a.Key != "pid" {
@@ -47,11 +54,9 @@ func (h *consoleSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	select {
 	case h.ch <- slogLine{cat: cat, text: text}:
 	default:
-		// Drop if channel is full.
 	}
 
-	// Forward to wrapped handler (file).
-	return h.wrapped.Handle(ctx, r)
+	return err
 }
 
 func (h *consoleSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
@@ -100,32 +105,10 @@ func slogLevelPrefix(level slog.Level) string {
 
 // InstallConsoleSlogHandler wraps the current default slog handler to also
 // route records to the server's slogCh. Call this after the server is created.
+// InstallConsoleSlogHandler wraps the current default slog handler to also
+// route INFO+ records to the server's slogCh. Call after server creation.
 func (a *Server) InstallConsoleSlogHandler() {
 	existing := slog.Default().Handler()
 	handler := NewConsoleSlogHandler(a.slogCh, existing)
-	// Re-enable debug level for the console handler since we filter in the UI.
-	wrapper := &slogMinLevelHandler{inner: handler, level: slog.LevelDebug}
-	slog.SetDefault(slog.New(wrapper))
+	slog.SetDefault(slog.New(handler))
 }
-
-// slogMinLevelHandler overrides the Enabled check to allow all levels.
-type slogMinLevelHandler struct {
-	inner slog.Handler
-	level slog.Level
-}
-
-func (h *slogMinLevelHandler) Enabled(_ context.Context, level slog.Level) bool {
-	return level >= h.level
-}
-func (h *slogMinLevelHandler) Handle(ctx context.Context, r slog.Record) error {
-	return h.inner.Handle(ctx, r)
-}
-func (h *slogMinLevelHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &slogMinLevelHandler{inner: h.inner.WithAttrs(attrs), level: h.level}
-}
-func (h *slogMinLevelHandler) WithGroup(name string) slog.Handler {
-	return &slogMinLevelHandler{inner: h.inner.WithGroup(name), level: h.level}
-}
-
-// Silence the "unused" warning for time import.
-var _ = time.Now
