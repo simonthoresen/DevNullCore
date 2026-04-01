@@ -50,6 +50,17 @@ type Theme struct {
 
 	// Drop shadow
 	ShadowBg string `json:"shadowBg"`
+
+	// Border characters (single-char strings; empty = use defaults)
+	BorderTL  string `json:"borderTL"`  // top-left corner     (default "┌")
+	BorderTR  string `json:"borderTR"`  // top-right corner    (default "┐")
+	BorderBL  string `json:"borderBL"`  // bottom-left corner  (default "└")
+	BorderBR  string `json:"borderBR"`  // bottom-right corner (default "┘")
+	BorderH   string `json:"borderH"`   // horizontal bar      (default "─")
+	BorderV   string `json:"borderV"`   // vertical bar        (default "│")
+	BorderTL2 string `json:"borderTeeL"` // left tee            (default "├")
+	BorderTR2 string `json:"borderTeeR"` // right tee           (default "┤")
+	BarSep    string `json:"barSep"`    // action bar separator (default "│")
 }
 
 // tc converts a hex string to a color.Color, returning fallback if empty.
@@ -83,6 +94,25 @@ func (t *Theme) HighlightFgC() color.Color { return tc(t.HighlightFg, "#FFFFFF")
 // Extras
 func (t *Theme) DisabledFgC() color.Color { return tc(t.DisabledFg, "#888888") }
 func (t *Theme) ShadowBgC() color.Color   { return tc(t.ShadowBg, "#333333") }
+
+// ts returns s if non-empty, otherwise fallback.
+func ts(s, fallback string) string {
+	if s == "" {
+		return fallback
+	}
+	return s
+}
+
+// Border character accessors.
+func (t *Theme) TL() string   { return ts(t.BorderTL, "┌") }
+func (t *Theme) TR() string   { return ts(t.BorderTR, "┐") }
+func (t *Theme) BL() string   { return ts(t.BorderBL, "└") }
+func (t *Theme) BR() string   { return ts(t.BorderBR, "┘") }
+func (t *Theme) H() string    { return ts(t.BorderH, "─") }
+func (t *Theme) V() string    { return ts(t.BorderV, "│") }
+func (t *Theme) TeeL() string { return ts(t.BorderTL2, "├") }
+func (t *Theme) TeeR() string { return ts(t.BorderTR2, "┤") }
+func (t *Theme) Sep() string  { return ts(t.BarSep, "│") }
 
 // LoadTheme reads a theme JSON file and returns the parsed Theme.
 func LoadTheme(path string) (*Theme, error) {

@@ -11,5 +11,14 @@
     "highlightBg": "#4A90D9",
     "highlightFg": "#FFFFFF",
     "disabledFg":  "#999999",
-    "shadowBg":    "#AAAAAA"
+    "shadowBg":    "#AAAAAA",
+    "borderTL":    "╔",
+    "borderTR":    "╗",
+    "borderBL":    "╚",
+    "borderBR":    "╝",
+    "borderH":     "═",
+    "borderV":     "║",
+    "borderTeeL":  "╠",
+    "borderTeeR":  "╣",
+    "barSep":      "║"
 }
