@@ -14,7 +14,8 @@ import (
 // NCControl is the base interface for all NC widgets.
 type NCControl interface {
 	// Render returns the styled content for this control at the given size.
-	Render(width, height int, layer *ThemeLayer) string
+	// focused is true when this control currently has keyboard focus.
+	Render(width, height int, focused bool, layer *ThemeLayer) string
 	// Update handles a tea.Msg. Only called when this control has focus.
 	Update(msg tea.Msg)
 	// MinSize returns the minimum (width, height) this control needs.
@@ -38,6 +39,7 @@ const (
 type GridChild struct {
 	Control    NCControl
 	Constraint GridConstraint
+	TabIndex   int // focus order — lower values receive focus first (default 0)
 }
 
 // GridConstraint positions a control in the grid layout.
@@ -121,10 +123,8 @@ func (w *NCWindow) Render(x, y, width, height int, layer *ThemeLayer) string {
 		if cw <= 0 || ch <= 0 {
 			continue
 		}
-		_ = i == w.FocusIdx // TODO: use for focus-dependent styling
-		// Removed: slog.Debug here caused a feedback loop when debug logging
-		// was enabled — render → slog → console event → re-render.
-		content := child.Control.Render(cw, ch, layer)
+		hasFocus := i == w.FocusIdx
+		content := child.Control.Render(cw, ch, hasFocus, layer)
 		contentLines := strings.Split(content, "\n")
 		for j, line := range contentLines {
 			ry := cy - (y + 1) + j // relative to inner area
@@ -308,8 +308,13 @@ func overlayAt(row string, rx int, overlay string, baseStyle lipgloss.Style) str
 
 // ─── Focus management ─────────────────────────────────────────────────────────
 
+// TabWanter is implemented by controls that signal tab/shift-tab to the window.
+type TabWanter interface {
+	TabWant() (wantTab, wantBackTab bool)
+}
+
 // HandleUpdate routes a tea.Msg to the focused child control.
-// If the control signals WantTab (tab not consumed), cycles focus.
+// If the control signals WantTab/WantBackTab, cycles focus forward/backward.
 func (w *NCWindow) HandleUpdate(msg tea.Msg) {
 	if w.FocusIdx < 0 || w.FocusIdx >= len(w.Children) {
 		return
@@ -320,47 +325,75 @@ func (w *NCWindow) HandleUpdate(msg tea.Msg) {
 	}
 	c.Update(msg)
 
-	// Check if the control wants to pass tab to the window for focus cycling.
-	switch ti := c.(type) {
-	case *NCTextInput:
-		if ti.WantTab {
+	if tw, ok := c.(TabWanter); ok {
+		fwd, back := tw.TabWant()
+		if fwd {
 			w.CycleFocus()
-		}
-	case *NCCommandInput:
-		if ti.WantTab {
-			w.CycleFocus()
-		}
-	case *NCTextView:
-		if ti.WantTab {
-			w.CycleFocus()
+		} else if back {
+			w.CycleFocusBack()
 		}
 	}
 }
 
-// CycleFocus advances focus to the next focusable control.
+// focusOrder returns child indices sorted by TabIndex (stable, preserving
+// declaration order within the same TabIndex).
+func (w *NCWindow) focusOrder() []int {
+	n := len(w.Children)
+	order := make([]int, 0, n)
+	for i := range w.Children {
+		if w.Children[i].Control.Focusable() {
+			order = append(order, i)
+		}
+	}
+	// Stable sort by TabIndex.
+	for i := 1; i < len(order); i++ {
+		for j := i; j > 0 && w.Children[order[j]].TabIndex < w.Children[order[j-1]].TabIndex; j-- {
+			order[j], order[j-1] = order[j-1], order[j]
+		}
+	}
+	return order
+}
+
+// CycleFocus advances focus to the next focusable control by TabIndex order.
 func (w *NCWindow) CycleFocus() {
-	if len(w.Children) == 0 {
+	w.cycleFocusDir(+1)
+}
+
+// CycleFocusBack moves focus to the previous focusable control by TabIndex order.
+func (w *NCWindow) CycleFocusBack() {
+	w.cycleFocusDir(-1)
+}
+
+func (w *NCWindow) cycleFocusDir(dir int) {
+	order := w.focusOrder()
+	if len(order) == 0 {
 		return
 	}
-	start := w.FocusIdx
-	for i := 1; i <= len(w.Children); i++ {
-		idx := (start + i) % len(w.Children)
-		if w.Children[idx].Control.Focusable() {
-			w.FocusIdx = idx
-			return
+	// Find current position in tab order.
+	cur := -1
+	for i, idx := range order {
+		if idx == w.FocusIdx {
+			cur = i
+			break
 		}
 	}
+	if cur < 0 {
+		// Current focus not in order — jump to first.
+		w.FocusIdx = order[0]
+		return
+	}
+	next := (cur + dir + len(order)) % len(order)
+	w.FocusIdx = order[next]
 }
 
-// FocusFirst sets focus to the first focusable control.
+// FocusFirst sets focus to the focusable control with the lowest TabIndex.
 func (w *NCWindow) FocusFirst() {
-	for i, child := range w.Children {
-		if child.Control.Focusable() {
-			w.FocusIdx = i
-			return
-		}
+	order := w.focusOrder()
+	if len(order) == 0 {
+		w.FocusIdx = -1
+		return
 	}
-	w.FocusIdx = -1
+	w.FocusIdx = order[0]
 }
 
 // CursorPosition returns the absolute cursor position if a text input has focus.

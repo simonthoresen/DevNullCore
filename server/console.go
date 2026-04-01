@@ -80,9 +80,9 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 
 	window := &NCWindow{
 		Children: []GridChild{
-			{Control: logView, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth}},
+			{Control: logView, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth}, TabIndex: 1},
 			{Control: &NCHDivider{Connected: true}, Constraint: GridConstraint{Col: 0, Row: 1}},
-			{Control: inputCtrl, Constraint: GridConstraint{Col: 0, Row: 2, WeightX: 1, Fill: FillHorizontal}},
+			{Control: inputCtrl, Constraint: GridConstraint{Col: 0, Row: 2, WeightX: 1, Fill: FillHorizontal}, TabIndex: 0},
 		},
 	}
 	window.FocusFirst()

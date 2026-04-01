@@ -17,10 +17,10 @@ type NCLabel struct {
 	Text string
 }
 
-func (l *NCLabel) Update(_ tea.Msg)                              {}
-func (l *NCLabel) Focusable() bool                               { return false }
-func (l *NCLabel) MinSize() (int, int)                           { return ansi.StringWidth(l.Text), 1 }
-func (l *NCLabel) Render(w, h int, layer *ThemeLayer) string {
+func (l *NCLabel) Update(_ tea.Msg)                                      {}
+func (l *NCLabel) Focusable() bool                                       { return false }
+func (l *NCLabel) MinSize() (int, int)                                   { return ansi.StringWidth(l.Text), 1 }
+func (l *NCLabel) Render(w, h int, _ bool, layer *ThemeLayer) string {
 	return layer.BaseStyle().Width(w).Render(truncateStyled(l.Text, w))
 }
 
@@ -35,9 +35,12 @@ type NCTextInput struct {
 	fg       color.Color
 	OnSubmit func(text string) // called on Enter (nil = do nothing)
 
-	// WantTab is set to true by Update when tab should cycle focus (not consumed).
-	WantTab bool
+	// WantTab/WantBackTab are set by Update when tab should cycle focus.
+	WantTab     bool
+	WantBackTab bool
 }
+
+func (ti *NCTextInput) TabWant() (bool, bool) { return ti.WantTab, ti.WantBackTab }
 
 func (ti *NCTextInput) Focusable() bool     { return true }
 func (ti *NCTextInput) MinSize() (int, int) { return 4, 1 }
@@ -46,6 +49,7 @@ func (ti *NCTextInput) SetValue(s string)   { ti.Model.SetValue(s) }
 
 func (ti *NCTextInput) Update(msg tea.Msg) {
 	ti.WantTab = false
+	ti.WantBackTab = false
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -59,7 +63,10 @@ func (ti *NCTextInput) Update(msg tea.Msg) {
 			}
 			return
 		case "tab":
-			ti.WantTab = true // signal parent to cycle focus
+			ti.WantTab = true
+			return
+		case "shift+tab":
+			ti.WantBackTab = true
 			return
 		}
 	}
@@ -98,6 +105,7 @@ func (ci *NCCommandInput) AddHistory(text string) {
 
 func (ci *NCCommandInput) Update(msg tea.Msg) {
 	ci.WantTab = false
+	ci.WantBackTab = false
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -154,13 +162,16 @@ func (ci *NCCommandInput) Update(msg tea.Msg) {
 			}
 			ci.WantTab = true // empty = cycle focus
 			return
+		case "shift+tab":
+			ci.WantBackTab = true
+			return
 		}
 	}
 	updated, _ := ci.Model.Update(msg)
 	*ci.Model = updated
 }
 
-func (ti *NCTextInput) Render(width, height int, layer *ThemeLayer) string {
+func (ti *NCTextInput) Render(width, height int, focused bool, layer *ThemeLayer) string {
 	bg := layer.InputBgC()
 	fg := layer.InputFgC()
 	ti.bg = bg
@@ -185,8 +196,8 @@ func (ti *NCTextInput) Render(width, height int, layer *ThemeLayer) string {
 	ti.Model.SetStyles(s)
 	ti.Model.SetVirtualCursor(false)
 
-	focused := ti.Model.Focused()
-	if focused {
+	hasCursor := ti.Model.Focused()
+	if hasCursor {
 		view := ti.Model.View()
 		// The textinput pads its output to fieldW with spaces; strip trailing
 		// space padding so we can replace it with dot fill.
@@ -220,15 +231,19 @@ type NCTextView struct {
 	ScrollOffset int
 	height       int
 
-	// WantTab is set to true by Update when tab should cycle focus (not consumed).
-	WantTab bool
+	// WantTab/WantBackTab are set by Update when tab should cycle focus.
+	WantTab     bool
+	WantBackTab bool
 }
+
+func (v *NCTextView) TabWant() (bool, bool) { return v.WantTab, v.WantBackTab }
 
 func (v *NCTextView) Focusable() bool     { return v.Scrollable }
 func (v *NCTextView) MinSize() (int, int) { return 1, 1 }
 
 func (v *NCTextView) Update(msg tea.Msg) {
 	v.WantTab = false
+	v.WantBackTab = false
 	if !v.Scrollable {
 		return
 	}
@@ -237,6 +252,9 @@ func (v *NCTextView) Update(msg tea.Msg) {
 		switch msg.String() {
 		case "tab":
 			v.WantTab = true
+			return
+		case "shift+tab":
+			v.WantBackTab = true
 			return
 		case "pgup":
 			v.ScrollOffset += v.height
@@ -270,7 +288,7 @@ func (v *NCTextView) clampScroll() {
 	}
 }
 
-func (v *NCTextView) Render(width, height int, layer *ThemeLayer) string {
+func (v *NCTextView) Render(width, height int, focused bool, layer *ThemeLayer) string {
 	style := layer.BaseStyle()
 	v.height = height
 	h := max(1, height)
@@ -336,15 +354,27 @@ type NCTextArea struct {
 	height     int
 
 	OnSubmit func(lines []string) // called on Ctrl+Enter
+
+	WantTab     bool
+	WantBackTab bool
 }
 
-func (a *NCTextArea) Focusable() bool     { return true }
-func (a *NCTextArea) MinSize() (int, int) { return 4, 1 }
+func (a *NCTextArea) Focusable() bool                 { return true }
+func (a *NCTextArea) MinSize() (int, int)              { return 4, 1 }
+func (a *NCTextArea) TabWant() (bool, bool)            { return a.WantTab, a.WantBackTab }
 
 func (a *NCTextArea) Update(msg tea.Msg) {
+	a.WantTab = false
+	a.WantBackTab = false
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "tab":
+			a.WantTab = true
+			return
+		case "shift+tab":
+			a.WantBackTab = true
+			return
 		case "up":
 			if a.CursorRow > 0 {
 				a.CursorRow--
@@ -407,7 +437,7 @@ func (a *NCTextArea) Update(msg tea.Msg) {
 	}
 }
 
-func (a *NCTextArea) Render(width, height int, layer *ThemeLayer) string {
+func (a *NCTextArea) Render(width, height int, focused bool, layer *ThemeLayer) string {
 	a.height = height
 	fieldW := max(1, width-2) // -2 for "[" and "]"
 
@@ -456,22 +486,36 @@ func (a *NCTextArea) Render(width, height int, layer *ThemeLayer) string {
 type NCButton struct {
 	Label   string
 	OnPress func()
+
+	WantTab     bool
+	WantBackTab bool
 }
 
-func (b *NCButton) Focusable() bool     { return true }
-func (b *NCButton) MinSize() (int, int) { return len(b.Label) + 4, 1 } // "[ " + label + " ]"
+func (b *NCButton) Focusable() bool              { return true }
+func (b *NCButton) MinSize() (int, int)           { return len(b.Label) + 4, 1 } // "[ " + label + " ]"
+func (b *NCButton) TabWant() (bool, bool)         { return b.WantTab, b.WantBackTab }
 func (b *NCButton) Update(msg tea.Msg) {
-	if km, ok := msg.(tea.KeyPressMsg); ok && (km.String() == "enter" || km.String() == " ") {
-		if b.OnPress != nil {
-			b.OnPress()
+	b.WantTab = false
+	b.WantBackTab = false
+	if km, ok := msg.(tea.KeyPressMsg); ok {
+		switch km.String() {
+		case "enter", " ":
+			if b.OnPress != nil {
+				b.OnPress()
+			}
+		case "tab":
+			b.WantTab = true
+		case "shift+tab":
+			b.WantBackTab = true
 		}
 	}
 }
-func (b *NCButton) Render(width, height int, layer *ThemeLayer) string {
-	// Buttons use highlight style when focused (handled by parent),
-	// but we render with palette's active style since buttons are action items.
+func (b *NCButton) Render(width, height int, focused bool, layer *ThemeLayer) string {
 	label := "[ " + b.Label + " ]"
-	return layer.HighlightStyle().Render(label)
+	if focused {
+		return layer.HighlightStyle().Render(label)
+	}
+	return layer.BaseStyle().Render(label)
 }
 
 // ─── NCCheckbox ───────────────────────────────────────────────────────────────
@@ -481,25 +525,42 @@ type NCCheckbox struct {
 	Label    string
 	Checked  bool
 	OnToggle func(checked bool)
+
+	WantTab     bool
+	WantBackTab bool
 }
 
-func (cb *NCCheckbox) Focusable() bool     { return true }
-func (cb *NCCheckbox) MinSize() (int, int) { return 4 + len(cb.Label), 1 } // "[x] " + label
+func (cb *NCCheckbox) Focusable() bool          { return true }
+func (cb *NCCheckbox) MinSize() (int, int)       { return 4 + len(cb.Label), 1 } // "[x] " + label
+func (cb *NCCheckbox) TabWant() (bool, bool)     { return cb.WantTab, cb.WantBackTab }
 func (cb *NCCheckbox) Update(msg tea.Msg) {
-	if km, ok := msg.(tea.KeyPressMsg); ok && (km.String() == "enter" || km.String() == " ") {
-		cb.Checked = !cb.Checked
-		if cb.OnToggle != nil {
-			cb.OnToggle(cb.Checked)
+	cb.WantTab = false
+	cb.WantBackTab = false
+	if km, ok := msg.(tea.KeyPressMsg); ok {
+		switch km.String() {
+		case "enter", " ":
+			cb.Checked = !cb.Checked
+			if cb.OnToggle != nil {
+				cb.OnToggle(cb.Checked)
+			}
+		case "tab":
+			cb.WantTab = true
+		case "shift+tab":
+			cb.WantBackTab = true
 		}
 	}
 }
-func (cb *NCCheckbox) Render(width, height int, layer *ThemeLayer) string {
+func (cb *NCCheckbox) Render(width, height int, focused bool, layer *ThemeLayer) string {
 	mark := " "
 	if cb.Checked {
 		mark = "x"
 	}
 	text := "[" + mark + "] " + cb.Label
-	return layer.BaseStyle().Width(width).Render(truncateStyled(text, width))
+	style := layer.BaseStyle()
+	if focused {
+		style = layer.HighlightStyle()
+	}
+	return style.Width(width).Render(truncateStyled(text, width))
 }
 
 // ─── NCHDivider ───────────────────────────────────────────────────────────────
@@ -514,7 +575,7 @@ type NCHDivider struct {
 func (d *NCHDivider) Update(_ tea.Msg)     {}
 func (d *NCHDivider) Focusable() bool      { return false }
 func (d *NCHDivider) MinSize() (int, int)  { return 1, 1 }
-func (d *NCHDivider) Render(width, height int, layer *ThemeLayer) string {
+func (d *NCHDivider) Render(width, height int, _ bool, layer *ThemeLayer) string {
 	// The actual junction chars are rendered by the window — here we just render the inner line.
 	return layer.BaseStyle().Render(strings.Repeat(layer.IH(), width))
 }
@@ -531,7 +592,7 @@ type NCVDivider struct {
 func (d *NCVDivider) Update(_ tea.Msg)     {}
 func (d *NCVDivider) Focusable() bool      { return false }
 func (d *NCVDivider) MinSize() (int, int)  { return 1, 1 }
-func (d *NCVDivider) Render(width, height int, layer *ThemeLayer) string {
+func (d *NCVDivider) Render(width, height int, _ bool, layer *ThemeLayer) string {
 	style := layer.BaseStyle()
 	var rows []string
 	for i := 0; i < height; i++ {
@@ -558,7 +619,7 @@ func (p *NCPanel) Focusable() bool     { return false } // panels aren't directl
 func (p *NCPanel) MinSize() (int, int) { return 4, 3 }  // min border box
 func (p *NCPanel) Update(msg tea.Msg)  {}               // updates go to children directly
 
-func (p *NCPanel) Render(width, height int, layer *ThemeLayer) string {
+func (p *NCPanel) Render(width, height int, _ bool, layer *ThemeLayer) string {
 	p.innerW = max(1, width-2)
 	p.innerH = max(1, height-2)
 
@@ -597,7 +658,7 @@ func (p *NCPanel) Render(width, height int, layer *ThemeLayer) string {
 		if ch <= 0 {
 			continue
 		}
-		content := child.Control.Render(p.innerW, ch, layer)
+		content := child.Control.Render(p.innerW, ch, false, layer)
 		for j, line := range strings.Split(content, "\n") {
 			if cy+j < p.innerH {
 				innerRows[cy+j] = line
