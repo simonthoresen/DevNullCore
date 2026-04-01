@@ -22,7 +22,8 @@ type consoleModel struct {
 
 	input textinput.Model
 
-	logLines []string
+	logView *NCTextView
+	panel   *NCPanel
 
 	inputHistory []string
 	historyIdx   int
@@ -51,10 +52,24 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	input.SetWidth(78)
 	input.Focus()
 
+	logView := &NCTextView{BottomAlign: true}
+	tiControl := &NCTextInput{Model: &input}
+
+	panel := &NCPanel{
+		Title: "Server Log",
+		Controls: []NCControl{
+			logView,
+			tiControl,
+		},
+	}
+	panel.FocusFirst()
+
 	return &consoleModel{
 		app:        app,
 		cancel:     cancel,
 		input:      input,
+		logView:    logView,
+		panel:      panel,
 		theme:      DefaultTheme(),
 		overlay:    overlayState{openMenu: -1},
 		historyIdx: -1,
@@ -137,6 +152,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.overlay.handleClick(msg.X, msg.Y, 0, m.width, m.height, m.consoleMenus(), "") {
 				return m, nil
 			}
+			m.panel.HandleClick(msg.X, msg.Y)
 		}
 		return m, nil
 
@@ -241,67 +257,16 @@ func (m *consoleModel) View() tea.View {
 	}
 
 	t := m.theme
-	boxStyle := lipgloss.NewStyle().Background(t.DialogBgC()).Foreground(t.DialogFgC())
-	titleStyle := lipgloss.NewStyle().Background(t.HighlightBgC()).Foreground(t.HighlightFgC()).Bold(true)
 	statusStyle := lipgloss.NewStyle().Background(t.DesktopBgC()).Foreground(t.DesktopFgC()).Bold(true)
-
-	setInputStyle(&m.input, t.DialogBgC(), t.DialogFgC())
 
 	// NC action bar (row 0)
 	ncBar := m.overlay.renderNCBar(m.width, m.consoleMenus(), t)
 
-	// NC panel: bordered box with title, log area, divider, and input row.
-	// Layout:  ┌─ Server Log ──┐   (title bar)
-	//          │ log line       │   (log rows, bottom-aligned)
-	//          ├────────────────┤   (inner divider)
-	//          │ > input        │   (command input)
-	//          └────────────────┘   (bottom border)
-	innerW := m.width - 2 // subtract left+right border
-	if innerW < 1 {
-		innerW = 1
-	}
+	// NC panel with log + input (rows 1 through height-2)
+	panelH := m.height - 2 // subtract NC bar and status bar
+	panelContent := m.panel.Render(0, 1, m.width, panelH, t)
 
-	// Title bar row
-	titleText := " Server Log "
-	titleRendered := titleStyle.Render(titleText)
-	titleFill := innerW - len(titleText)
-	if titleFill < 0 {
-		titleFill = 0
-	}
-	topRow := boxStyle.Render(t.OTL()) + boxStyle.Render(t.IH()) + titleRendered + boxStyle.Render(strings.Repeat(t.OH(), titleFill-1)) + boxStyle.Render(t.OTR())
-
-	// Log rows — bottom-aligned within available height.
-	// Panel overhead: title(1) + divider(1) + input(1) + bottom border(1) + status bar(1) + NC bar(1) = 6
-	logH := max(1, m.height-6)
-	n := len(m.logLines)
-	var logRows []string
-	if n >= logH {
-		logRows = m.logLines[n-logH:]
-	} else {
-		for i := 0; i < logH-n; i++ {
-			logRows = append(logRows, "")
-		}
-		logRows = append(logRows, m.logLines...)
-	}
-
-	lv := boxStyle.Render(t.OV())
-	var logLines []string
-	for _, line := range logRows {
-		cell := boxStyle.Width(innerW).Render(truncateStyled(line, innerW))
-		logLines = append(logLines, lv+cell+lv)
-	}
-
-	// Inner divider
-	divider := boxStyle.Render(t.XL() + strings.Repeat(t.IH(), innerW) + t.XR())
-
-	// Input row
-	inputContent := boxStyle.Width(innerW).Render(truncateStyled(m.input.View(), innerW))
-	inputRow := lv + inputContent + lv
-
-	// Bottom border
-	bottomBorder := boxStyle.Render(t.OBL() + strings.Repeat(t.OH(), innerW) + t.OBR())
-
-	// Status bar
+	// Status bar (bottom row)
 	m.app.state.mu.RLock()
 	gameName := m.app.state.GameName
 	phase := m.app.state.GamePhase
@@ -321,11 +286,7 @@ func (m *consoleModel) View() tea.View {
 	statusText := fmt.Sprintf("game: %s | teams: %d | uptime %s | %s", gameLabel, m.app.state.TeamCount(), m.app.uptime(), time.Now().Format("15:04:05"))
 	statusBar := statusStyle.Width(m.width).Render(truncateStyled(statusText, m.width))
 
-	// Assemble panel
-	parts := []string{ncBar, topRow}
-	parts = append(parts, logLines...)
-	parts = append(parts, divider, inputRow, bottomBorder, statusBar)
-	content := lipgloss.JoinVertical(lipgloss.Left, parts...)
+	content := lipgloss.JoinVertical(lipgloss.Left, ncBar, panelContent, statusBar)
 
 	// Overlay layers (dropdown menus, dialogs)
 	menus := m.consoleMenus()
@@ -344,17 +305,15 @@ func (m *consoleModel) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 
-	if cursor := m.input.Cursor(); cursor != nil {
-		cursor.Position.Y = m.height - 3 // input row: above bottom border and status bar
-		cursor.Position.X += 1           // offset for left border
-		view.Cursor = cursor
+	if cx, cy, visible := m.panel.CursorPosition(); visible {
+		if cursor := m.input.Cursor(); cursor != nil {
+			cursor.Position.X = cx
+			cursor.Position.Y = cy
+			view.Cursor = cursor
+		}
 	}
 
 	return view
-}
-
-func (m *consoleModel) logHeight() int {
-	return max(1, m.height-6) // NC bar + title + divider + input + bottom border + status bar
 }
 
 func (m *consoleModel) resize() {
@@ -363,10 +322,10 @@ func (m *consoleModel) resize() {
 
 func (m *consoleModel) appendLog(line string) {
 	for _, l := range strings.Split(line, "\n") {
-		m.logLines = append(m.logLines, l)
+		m.logView.Lines = append(m.logView.Lines, l)
 	}
-	if len(m.logLines) > 500 {
-		m.logLines = m.logLines[len(m.logLines)-500:]
+	if len(m.logView.Lines) > 500 {
+		m.logView.Lines = m.logView.Lines[len(m.logView.Lines)-500:]
 	}
 }
 
