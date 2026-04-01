@@ -168,14 +168,14 @@ func (p *jsPlugin) extractPluginObject() error {
 	if skinVal := obj.Get("skin"); skinVal != nil && !goja.IsUndefined(skinVal) && !goja.IsNull(skinVal) {
 		if skinObj := skinVal.ToObject(p.vm); skinObj != nil {
 			p.skin = &common.SkinColors{
-				StatusBg: jsObjString(skinObj, "statusBg"),
-				StatusFg: jsObjString(skinObj, "statusFg"),
-				ChatBg:   jsObjString(skinObj, "chatBg"),
-				ChatFg:   jsObjString(skinObj, "chatFg"),
-				CmdBg:    jsObjString(skinObj, "cmdBg"),
-				CmdFg:    jsObjString(skinObj, "cmdFg"),
-				InputBg:  jsObjString(skinObj, "inputBg"),
-				InputFg:  jsObjString(skinObj, "inputFg"),
+				MenuBg:  jsObjString(skinObj, "menuBg"),
+				MenuFg:  jsObjString(skinObj, "menuFg"),
+				ChatBg:  jsObjString(skinObj, "chatBg"),
+				ChatFg:  jsObjString(skinObj, "chatFg"),
+				CmdBg:   jsObjString(skinObj, "cmdBg"),
+				CmdFg:   jsObjString(skinObj, "cmdFg"),
+				InputBg: jsObjString(skinObj, "inputBg"),
+				InputFg: jsObjString(skinObj, "inputFg"),
 			}
 		}
 	}

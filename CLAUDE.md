@@ -82,7 +82,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 **Lobby (no game loaded):**
 ```
 ┌──────────────────────┬──────────────┐
-│ Chat title (warm)    │ Teams (blue) │  Split status bar; active panel bold+bright
+│ Menu bar (warm)      │ Teams (blue) │  Split menu bar; active panel bold+bright
 ├──────────────────────┼──────────────┤
 │ Chat (fills rest)    │ Teams (32ch) │  Two color palettes: warm white + cool blue
 │                      │  Unassigned  │  Active panel = brighter bg + bold title bar
@@ -92,14 +92,18 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 │                      │  Blue Team   │
 │                      │     charlie  │
 ├──────────────────────┼──────────────┤
-│ Chat cmd bar         │ Team cmd bar │  [Tab] toggles chat/teams focus
-└──────────────────────┴──────────────┘  In teams: [↑↓] move, [←→] color, [Enter] rename
+│ Chat input row       │ Team cmd bar │  [Tab] toggles chat/teams focus
+├──────────────────────┴──────────────┤
+│ Status bar (always)                 │  server time right-aligned
+└─────────────────────────────────────┘  In teams: [↑↓] move, [←→] color, [Enter] rename
 ```
 
 **In-game:**
 ```
 ┌─────────────────────────────────────┐
-│ Status bar (1 row) — game-owned     │  Game.StatusBar(playerID) → "HP: 100  Score: 4200 ⠹"
+│ Menu bar (1 row) — framework        │  game name ⠹
+├─────────────────────────────────────┤
+│ Status bar (1 row) — game-owned     │  Game.StatusBar(playerID) → "HP: 100  Score: 4200"
 ├─────────────────────────────────────┤
 │                                     │
 │ Game viewport (W × W*9/16 rows)     │  Game.View(playerID, W, H)
@@ -110,12 +114,14 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 │                                     │
 ├─────────────────────────────────────┤
 │ Command bar (1 row) — dual-purpose  │  idle: Game.CommandBar(playerID) → "[↑↓] Move"
+├─────────────────────────────────────┤
+│ Status bar (1 row) — framework      │  server time right-aligned              always
 └─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
 ```
 
-**Braille spinner:** the last character of every status bar row is reserved for a Braille spinner — a live indicator that the server is running. Sequence: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, advances once per second (every 10 ticks at 100ms). Status bar content must never overwrite it.
+**Braille spinner:** the last character of the menu bar is reserved for a Braille spinner — a live indicator that the server is running. Sequence: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`, advances once per second (every 10 ticks at 100ms). Menu bar content must never overwrite it.
 
-**Viewport sizing:** Ideal `gameH = W * 9 / 16`. Chat gets the remaining rows. `minChatH = max(5, (H-2)/3)` — chat always gets at least ⅓ of content rows, so both game and chat grow proportionally on short terminals. Once `H` is large enough for ideal `gameH`, chat takes all extra rows. Command bar is always 1 row.
+**Viewport sizing:** Ideal `gameH = W * 9 / 16`. Chat gets the remaining rows. `minChatH = max(5, (H-4)/3)` — chat always gets at least ⅓ of content rows (4 overhead rows: menu bar + game status bar + command bar + status bar). Command bar is always 1 row.
 
 **Chat scroll buffer:** 200 lines per player. `PgUp`/`PgDn` scroll the chat panel in both idle and input modes. Multi-line command replies (e.g. `/help`) are split into individual lines before storage.
 
@@ -153,8 +159,8 @@ type Game interface {
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
     View(playerID string, width, height int) string
-    StatusBar(playerID string) string      // content for top status bar (spinner appended by framework)
-    CommandBar(playerID string) string     // idle hint in command bar
+    StatusBar(playerID string) string      // game status bar (2nd row, below menu bar)
+    CommandBar(playerID string) string     // command bar (above framework status bar)
     Commands() []Command
     Unload()
 }
@@ -219,7 +225,7 @@ Both are single `.js` files in `dist/games/` or `dist/plugins/`. Loaded at runti
 
 The chat pipeline runs all active plugin `onChatMessage` hooks (in load order) before committing a message to history. Return `null` to drop.
 
-**Skin plugins:** A JS plugin can set `Plugin.skin = { statusBg, statusFg, chatBg, chatFg, cmdBg, cmdFg, inputBg, inputFg }` to override framework chrome colors. The first loaded plugin with a non-null skin wins. Colors are CSS hex strings. Any omitted field uses the framework default. Bundled skins: `skin-dracula`, `skin-matrix`, `skin-nord`.
+**Skin plugins:** A JS plugin can set `Plugin.skin = { menuBg, menuFg, chatBg, chatFg, cmdBg, cmdFg, inputBg, inputFg }` to override framework chrome colors. The first loaded plugin with a non-null skin wins. Colors are CSS hex strings. Any omitted field uses the framework default. Bundled skins: `skin-dracula`, `skin-matrix`, `skin-nord`.
 
 **Full developer documentation:** see `API-REFERENCE.md` at the repo root.
 

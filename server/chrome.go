@@ -17,16 +17,16 @@ import (
 
 // Default framework chrome colors.
 var (
-	defaultStatusBg = lipgloss.Color("#D8C7A0")
-	defaultStatusFg = lipgloss.Color("#4A2D18")
-	defaultCmdBg    = lipgloss.Color("#B8AA88")
-	defaultChatBg   = lipgloss.Color("#EADFC7")
-	defaultChatFg   = lipgloss.Color("#2C1810")
+	defaultMenuBg = lipgloss.Color("#D8C7A0")
+	defaultMenuFg = lipgloss.Color("#4A2D18")
+	defaultCmdBg  = lipgloss.Color("#B8AA88")
+	defaultChatBg = lipgloss.Color("#EADFC7")
+	defaultChatFg = lipgloss.Color("#2C1810")
 
 	// Used by setInputStyle call sites that run before View() (newChromeModel).
-	titleBg = defaultStatusBg
-	titleFg = defaultStatusFg
-	cmdBg   = defaultCmdBg
+	menuBg = defaultMenuBg
+	menuFg = defaultMenuFg
+	cmdBg  = defaultCmdBg
 )
 
 // Lobby panel colors — chat (warm/white variant).
@@ -54,31 +54,31 @@ var (
 const lobbyTeamPanelW = 32
 
 type chromeColors struct {
-	statusBg, statusFg color.Color
-	chatBg, chatFg     color.Color
-	cmdBg, cmdFg       color.Color
-	inputBg, inputFg   color.Color
+	menuBg, menuFg   color.Color
+	chatBg, chatFg   color.Color
+	cmdBg, cmdFg     color.Color
+	inputBg, inputFg color.Color
 }
 
 func resolveColors(skin *common.SkinColors) chromeColors {
 	c := chromeColors{
-		statusBg: defaultStatusBg,
-		statusFg: defaultStatusFg,
-		chatBg:   defaultChatBg,
-		chatFg:   defaultChatFg,
-		cmdBg:    defaultCmdBg,
-		cmdFg:    defaultStatusFg,
-		inputBg:  defaultStatusBg,
-		inputFg:  defaultStatusFg,
+		menuBg:  defaultMenuBg,
+		menuFg:  defaultMenuFg,
+		chatBg:  defaultChatBg,
+		chatFg:  defaultChatFg,
+		cmdBg:   defaultCmdBg,
+		cmdFg:   defaultMenuFg,
+		inputBg: defaultMenuBg,
+		inputFg: defaultMenuFg,
 	}
 	if skin == nil {
 		return c
 	}
-	if skin.StatusBg != "" {
-		c.statusBg = lipgloss.Color(skin.StatusBg)
+	if skin.MenuBg != "" {
+		c.menuBg = lipgloss.Color(skin.MenuBg)
 	}
-	if skin.StatusFg != "" {
-		c.statusFg = lipgloss.Color(skin.StatusFg)
+	if skin.MenuFg != "" {
+		c.menuFg = lipgloss.Color(skin.MenuFg)
 	}
 	if skin.ChatBg != "" {
 		c.chatBg = lipgloss.Color(skin.ChatBg)
@@ -198,7 +198,7 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 	m.syncChat()
 	// Always start in lobby/input mode. GameLoadedMsg will transition
 	// participating players into game mode. Late joiners stay in lobby.
-	setInputStyle(&m.input, titleBg, titleFg)
+	setInputStyle(&m.input, menuBg, menuFg)
 	m.mode = modeInput
 	m.input.Focus()
 	return m
@@ -271,7 +271,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.GameLoadedMsg:
 		// This player was connected when the game loaded — they're in the game.
 		m.inActiveGame = true
-		setInputStyle(&m.input, cmdBg, titleFg)
+		setInputStyle(&m.input, cmdBg, menuFg)
 		m.mode = modeIdle
 		m.lobbyFocus = lobbyFocusChat
 		m.input.Blur()
@@ -280,7 +280,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case common.GameUnloadedMsg:
 		m.inActiveGame = false
-		setInputStyle(&m.input, titleBg, titleFg)
+		setInputStyle(&m.input, menuBg, menuFg)
 		m.mode = modeInput
 		cmd := m.input.Focus()
 		m.resizeViewports()
@@ -292,7 +292,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Phase == common.PhaseNone {
 			m.inActiveGame = false
-			setInputStyle(&m.input, titleBg, titleFg)
+			setInputStyle(&m.input, menuBg, menuFg)
 			m.mode = modeInput
 			cmd := m.input.Focus()
 			m.resizeViewports()
@@ -380,7 +380,7 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.mode == modeIdle {
 		switch msg.String() {
 		case "enter":
-			setInputStyle(&m.input, titleBg, titleFg)
+			setInputStyle(&m.input, menuBg, menuFg)
 			m.mode = modeInput
 			cmd := m.input.Focus()
 			return m, cmd
@@ -410,7 +410,7 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.historyDraft = ""
 		m.input.SetValue("")
 		if m.inActiveGame {
-			setInputStyle(&m.input, cmdBg, titleFg)
+			setInputStyle(&m.input, cmdBg, menuFg)
 			m.mode = modeIdle
 			m.input.Blur()
 		}
@@ -588,7 +588,7 @@ func (m chromeModel) View() tea.View {
 	m.app.state.mu.RUnlock()
 
 	col := resolveColors(m.app.state.ActiveSkin())
-	sbStyle := lipgloss.NewStyle().Background(col.statusBg).Foreground(col.statusFg).Bold(true)
+	mbStyle := lipgloss.NewStyle().Background(col.menuBg).Foreground(col.menuFg).Bold(true)
 	chStyle := lipgloss.NewStyle().Background(col.chatBg).Foreground(col.chatFg)
 	ciStyle := lipgloss.NewStyle().Background(col.cmdBg).Foreground(col.cmdFg)
 
@@ -610,21 +610,21 @@ func (m chromeModel) View() tea.View {
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		// === LOBBY LAYOUT (with team panel) ===
-		content = m.viewLobby(sbStyle, chStyle, ciStyle, spinChar, col.chatBg)
+		content = m.viewLobby(mbStyle, chStyle, ciStyle, spinChar, col.chatBg)
 	} else if phase == common.PhaseSplash {
-		content = m.viewSplash(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
+		content = m.viewSplash(game, gameName, mbStyle, chStyle, ciStyle, spinChar)
 	} else if phase == common.PhaseGameOver {
-		content = m.viewGameOver(game, gameName, sbStyle, chStyle, ciStyle, spinChar)
+		content = m.viewGameOver(game, gameName, mbStyle, chStyle, ciStyle, spinChar)
 	} else {
 		// === PLAYING LAYOUT ===
-		content = m.viewPlaying(game, gameName, sbStyle, chStyle, ciStyle, spinChar, col.chatBg)
+		content = m.viewPlaying(game, gameName, mbStyle, chStyle, ciStyle, spinChar, col.chatBg)
 	}
 
 	view.SetContent(content)
 	view.AltScreen = true
 	if m.mode == modeInput {
 		if cursor := m.input.Cursor(); cursor != nil {
-			cursor.Position.Y = m.height - 1
+			cursor.Position.Y = m.height - 2 // row above framework status bar
 			view.Cursor = cursor
 		}
 	}
@@ -643,7 +643,7 @@ func (m chromeModel) View() tea.View {
 				row += 1 + 1 + len(teams[i].Players) // blank + team header + members
 			}
 			row += 1 // blank before current team
-			cursor.Position.Y = 1 + row // +1 for status bar
+			cursor.Position.Y = 1 + row // +1 for menu bar
 			cursor.Position.X += (m.width - teamW) + 5 // +1 for border │
 			view.Cursor = cursor
 		}
@@ -651,8 +651,8 @@ func (m chromeModel) View() tea.View {
 	return view
 }
 
-func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
-	contentH := m.height - 2 // status bar + command bar
+func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
+	contentH := m.height - 3 // menu bar + input row + status bar
 	if contentH < 1 {
 		contentH = 1
 	}
@@ -673,7 +673,7 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 
 	var teamPanelBg color.Color
 	if chatActive {
-		chatBarStyle = sbStyle
+		chatBarStyle = mbStyle
 		chatBodyStyle = chStyle
 		chatCmdStyle = ciStyle
 		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
@@ -681,7 +681,7 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
 		teamPanelBg = lobbyTeamInactiveBg
 	} else {
-		chatBarStyle = sbStyle.Bold(false)
+		chatBarStyle = mbStyle.Bold(false)
 		chatBodyStyle = chStyle
 		chatCmdStyle = ciStyle
 		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg).Bold(true)
@@ -690,15 +690,15 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 		teamPanelBg = lobbyTeamActiveBg
 	}
 
-	// Status bar (split across panels). Spinner lives in the teams bar (far right).
+	// Menu bar (split across panels). Spinner lives in the teams bar (far right).
 	modeLabel := "remote"
 	if m.isLocal {
 		modeLabel = "local"
 	}
-	statusText := fmt.Sprintf("null-space (%s) | %d players | uptime %s", modeLabel, m.app.state.PlayerCount(), m.app.uptime())
-	chatStatus := chatBarStyle.Width(chatW).Render(truncateStyled(statusText, chatW))
-	teamStatus := teamBarStyle.Width(teamW).Render(headerWithSpinner(" Teams", teamW, spinChar))
-	statusBar := chatStatus + teamStatus
+	menuText := fmt.Sprintf("null-space (%s) | %d players | uptime %s", modeLabel, m.app.state.PlayerCount(), m.app.uptime())
+	chatMenu := chatBarStyle.Width(chatW).Render(truncateStyled(menuText, chatW))
+	teamMenu := teamBarStyle.Width(teamW).Render(headerWithSpinner(" Teams", teamW, spinChar))
+	menuBar := chatMenu + teamMenu
 
 	// Content area — each row is: chat content (chatW-1) + border "│" + team content (teamW-1) + border "│"
 	// The border characters are visible foreground chars that force the
@@ -725,35 +725,37 @@ func (m chromeModel) viewLobby(sbStyle, chStyle, ciStyle lipgloss.Style, spinCha
 	}
 	middle := strings.Join(middleRows, "\n")
 
-	// Command bar (split across panels).
-	var cmdBar string
+	// Input row (split across panels).
+	var inputRow string
 	if m.teamEditing {
-		cmdBar = chatCmdStyle.Width(chatW).Render("") +
+		inputRow = chatCmdStyle.Width(chatW).Render("") +
 			teamCmdStyle.Width(teamW).Render(truncateStyled("[Enter] Save  [Esc] Cancel", teamW))
 	} else if m.lobbyFocus == lobbyFocusTeams {
-		cmdBar = chatCmdStyle.Width(chatW).Render("[Tab] Chat") +
+		inputRow = chatCmdStyle.Width(chatW).Render("[Tab] Chat") +
 			teamCmdStyle.Width(teamW).Render(truncateStyled("[↑↓] Move [←→] Color [⏎] Rename", teamW))
 	} else if m.mode == modeInput {
 		m.input.SetWidth(max(1, chatW-2))
 		inputView := truncateStyled(m.input.View(), chatW)
-		cmdBar = inputView + teamCmdStyle.Width(teamW).Render("[Tab] Teams")
+		inputRow = inputView + teamCmdStyle.Width(teamW).Render("[Tab] Teams")
 	} else {
-		cmdBar = chatCmdStyle.Width(chatW).Render("[Enter] Chat  /help for commands") +
+		inputRow = chatCmdStyle.Width(chatW).Render("[Enter] Chat  /help for commands") +
 			teamCmdStyle.Width(teamW).Render("[Tab] Teams")
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, statusBar, middle, cmdBar)
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+
+	return lipgloss.JoinVertical(lipgloss.Left, menuBar, middle, inputRow, statusBar)
 }
 
-func (m chromeModel) viewSplash(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
 	}
 
-	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(displayName, m.width, spinChar))
+	menuBar := mbStyle.Width(m.width).Render(headerWithSpinner(displayName, m.width, spinChar))
 
-	viewportH := m.height - 2
+	viewportH := m.height - 3
 	if viewportH < 1 {
 		viewportH = 1
 	}
@@ -774,19 +776,20 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, sbStyle, chSt
 		cmdBar = ciStyle.Width(m.width).Render("Waiting for host to start...")
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, statusBar, viewport, cmdBar)
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+
+	return lipgloss.JoinVertical(lipgloss.Left, menuBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewGameOver(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
+func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string) string {
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
 	}
 
-	statusText := displayName + " - Game Over"
-	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+	menuBar := mbStyle.Width(m.width).Render(headerWithSpinner(displayName+" - Game Over", m.width, spinChar))
 
-	viewportH := m.height - 2
+	viewportH := m.height - 3
 	if viewportH < 1 {
 		viewportH = 1
 	}
@@ -802,22 +805,24 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, sbStyle, ch
 	if remaining < 0 {
 		remaining = 0
 	}
-	cmdText := fmt.Sprintf("[Enter] Continue to lobby (%ds remaining)", remaining)
-	cmdBar := ciStyle.Width(m.width).Render(cmdText)
+	cmdBar := ciStyle.Width(m.width).Render(fmt.Sprintf("[Enter] Continue to lobby (%ds remaining)", remaining))
 
-	return lipgloss.JoinVertical(lipgloss.Left, statusBar, viewport, cmdBar)
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+
+	return lipgloss.JoinVertical(lipgloss.Left, menuBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
-	statusText := game.StatusBar(m.playerID)
-	statusBar := sbStyle.Width(m.width).Render(headerWithSpinner(statusText, m.width, spinChar))
+func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, spinChar string, chatBg color.Color) string {
+	menuBar := mbStyle.Width(m.width).Render(headerWithSpinner(gameName, m.width, spinChar))
+	gameStatusBar := mbStyle.Bold(false).Width(m.width).Render(game.StatusBar(m.playerID))
 
+	// Available rows: total - menu bar - game status bar - command bar - status bar
 	gameH := m.width * 9 / 16
-	chatH := m.height - 1 - gameH - 1
-	minChatH := max(5, (m.height-2)/3)
+	chatH := m.height - 4 - gameH
+	minChatH := max(5, (m.height-4)/3)
 	if chatH < minChatH {
 		chatH = minChatH
-		gameH = m.height - 1 - chatH - 1
+		gameH = m.height - 4 - chatH
 		if gameH < 0 {
 			gameH = 0
 		}
@@ -837,7 +842,9 @@ func (m chromeModel) viewPlaying(game common.Game, gameName string, sbStyle, chS
 		cmdBar = ciStyle.Width(m.width).Render(idleText)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, statusBar, gameView, chatView, cmdBar)
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+
+	return lipgloss.JoinVertical(lipgloss.Left, menuBar, gameStatusBar, gameView, chatView, cmdBar, statusBar)
 }
 
 // renderTeamPanel draws the team list panel for the lobby.
@@ -1045,13 +1052,13 @@ func (m *chromeModel) resizeViewports() {
 	phase := m.app.state.GetGamePhase()
 
 	if !m.inActiveGame || phase == common.PhaseNone {
-		// Lobby — chat shares space with fixed-width team panel.
+		// Lobby — menu bar + input row + status bar = 3 overhead rows.
 		teamW := lobbyTeamPanelW
 		if teamW > m.width-10 {
 			teamW = m.width - 10
 		}
 		chatW := m.width - teamW
-		chatH := m.height - 2
+		chatH := m.height - 3
 		if chatH < 1 {
 			chatH = 1
 		}
@@ -1060,9 +1067,10 @@ func (m *chromeModel) resizeViewports() {
 		m.chat.SetHeight(chatH)
 		m.input.SetWidth(max(1, chatW-2))
 	} else if phase == common.PhasePlaying {
+		// menu bar + game status bar + command bar + status bar = 4 overhead rows.
 		gameH := m.width * 9 / 16
-		chatH := m.height - 1 - gameH - 1
-		minChatH := max(5, (m.height-2)/3)
+		chatH := m.height - 4 - gameH
+		minChatH := max(5, (m.height-4)/3)
 		if chatH < minChatH {
 			chatH = minChatH
 		}
@@ -1090,7 +1098,7 @@ func (m *chromeModel) submitInput() {
 	// In-game: return to idle after submit so keys route to the game.
 	// Lobby: stay in input mode.
 	if m.inActiveGame {
-		setInputStyle(&m.input, cmdBg, titleFg)
+		setInputStyle(&m.input, cmdBg, menuFg)
 		m.mode = modeIdle
 		m.input.Blur()
 	}

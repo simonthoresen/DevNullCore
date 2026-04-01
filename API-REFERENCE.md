@@ -11,7 +11,7 @@ This document explains how to write games and plugins for null-space. Both are p
 | **Game** | One active at a time; owns the viewport, status bar, and command bar |
 | **Plugin** | Multiple active simultaneously; passive hooks; persists across game switches |
 | **Lobby** | The state when no game is loaded; only chat is visible |
-| **Viewport** | The rectangular region your game renders into (below the status bar, above chat) |
+| **Viewport** | The rectangular region your game renders into (below the game status bar, above chat) |
 
 ---
 
@@ -60,14 +60,13 @@ var Game = {
         return "";
     },
 
-    // Returns the text for the top status bar (1 row).
-    // The framework appends a braille spinner at the right edge — do not include one.
-    // Keep content shorter than width to avoid overwriting the spinner.
+    // Returns the text for the game status bar (1 row, below the menu bar).
+    // Keep content shorter than width.
     statusBar: function(playerID) {
-        return "My Game";
+        return "HP: 100  Score: 0";
     },
 
-    // Returns the idle hint shown in the command bar when the player is not chatting.
+    // Returns the idle hint shown in the command bar (above the framework status bar).
     // Example: "[↑↓←→] Move  [Enter] Chat"
     // Return "" to show the default hint.
     commandBar: function(playerID) {
@@ -76,7 +75,7 @@ var Game = {
 
     // --- Properties (all optional) ---
 
-    // Display name for splash screen and status bar. If omitted, the filename stem is used.
+    // Display name shown in the menu bar and splash screen. If omitted, the filename stem is used.
     gameName: "My Awesome Game",
 
     // Supported team count range. The framework blocks loading if the lobby has
@@ -204,14 +203,14 @@ var Plugin = {
     // Omit any field (or the entire skin property) to keep the framework default for that slot.
     // Colors are CSS hex strings (e.g. "#ff79c6") or standard terminal color names.
     skin: {
-        statusBg: "#5e81ac", // status bar background
-        statusFg: "#eceff4", // status bar foreground
-        chatBg:   "#2e3440", // chat area background
-        chatFg:   "#d8dee9", // chat area foreground
-        cmdBg:    "#3b4252", // command bar background (idle hint mode)
-        cmdFg:    "#4c566a", // command bar foreground (idle hint mode)
-        inputBg:  "#3b4252", // input box background (while typing)
-        inputFg:  "#eceff4"  // input box foreground (while typing)
+        menuBg:  "#5e81ac", // menu bar background (top row, always present)
+        menuFg:  "#eceff4", // menu bar foreground
+        chatBg:  "#2e3440", // chat area background
+        chatFg:  "#d8dee9", // chat area foreground
+        cmdBg:   "#3b4252", // command bar background (idle hint mode)
+        cmdFg:   "#4c566a", // command bar foreground (idle hint mode)
+        inputBg: "#3b4252", // input box background (while typing)
+        inputFg: "#eceff4"  // input box foreground (while typing)
     }
 };
 ```
@@ -341,7 +340,7 @@ LOBBY (game unloaded, back to teams + chat)
 - **Load**: Framework snapshots teams for the game (lobby stays independent), loads saved state, calls `init(savedState)`. `teams()` returns game teams. Game can set `Game.splashScreen` dynamically.
 - **Splash screen**: If `splashScreen` is set, that content is rendered. Otherwise, the game name is displayed in a centered box. The admin can press Enter to skip, or it auto-starts after 10s.
 - **Splash→Playing**: Framework calls `start()`. Game sets up its playing state.
-- **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called.
+- **Playing**: Normal game mode — `view()`, `onInput()`, `statusBar()`, `commandBar()` are called each tick.
 - **Game over**: Triggered when JS calls `gameOver(results, state)`. The framework renders a "GAME OVER" screen with the ranked results list. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
 - **Late joiners**: Players connecting during a game see the lobby and can chat. Lobby teams are independent — players can organize for the next round.
 - **Reconnect**: If a player disconnects mid-game and reconnects with the same name, they rejoin the game automatically. Game teams persist through disconnects.
@@ -378,20 +377,24 @@ Games can persist data between runs. Saved state is stored as JSON in `dist/stat
 **Lobby:**
 ```
 ┌────────────────────────┬───────────┐
-│ status bar (full width)             │
+│ menu bar (full width)               │  ← framework: server name, players, uptime ⠹
 ├────────────────────────┬───────────┤
 │ chat (70% width)       │ teams     │
 │                        │ panel     │
 │                        │ (30%)     │
 ├────────────────────────┴───────────┤
-│ command bar (full width)            │
+│ input row (full width)              │  ← text input / team controls
+├─────────────────────────────────────┤
+│ status bar (full width)             │  ← framework: server time (always present)
 └─────────────────────────────────────┘
 ```
 
 **In-game (playing):**
 ```
 ┌────────────────────────────────────┐
-│ status bar (1 row)                 │  ← Game.statusBar(); spinner added at right edge
+│ menu bar (1 row)                   │  ← framework: game name ⠹
+├────────────────────────────────────┤
+│ status bar (1 row)                 │  ← Game.statusBar(playerID)
 ├────────────────────────────────────┤
 │                                    │
 │ game viewport (width × height)     │  ← Game.view(playerID, width, height)
@@ -399,14 +402,16 @@ Games can persist data between runs. Saved state is stored as JSON in `dist/stat
 ├────────────────────────────────────┤
 │ chat (remaining rows, min 5)       │
 ├────────────────────────────────────┤
-│ command bar (1 row)                │  ← Game.commandBar() when idle
+│ command bar (1 row)                │  ← Game.commandBar() when idle; text input on Enter
+├────────────────────────────────────┤
+│ status bar (1 row)                 │  ← framework: server time (always present)
 └────────────────────────────────────┘
 ```
 
 - `width` = full terminal width
 - `height` = `width * 9 / 16` (clamped down if terminal is too short to leave 5 rows for chat)
 - Return exactly `height` newline-separated rows from `view()`. Fewer rows are padded; more are clipped.
-- The status bar has **one reserved character at the right edge** for the braille spinner — keep content shorter than the full width.
+- The menu bar has **one reserved character at the right edge** for the braille spinner — keep `gameName` shorter than the full width.
 
 ---
 
@@ -418,7 +423,7 @@ Games can persist data between runs. Saved state is stored as JSON in `dist/stat
 
 **Rendering is character-based.** Each character is one cell wide. For box-drawing or emoji that span multiple columns, count display width carefully — the framework does not reflow.
 
-**ANSI escape codes work.** You can use ANSI color codes in `view()`, `statusBar()`, and `commandBar()` output. Example:
+**ANSI escape codes work.** You can use ANSI color codes in `view()`, `statusBar()`, and `commandBar()` output (but not in `gameName`, which is rendered by lipgloss). Example:
 
 ```js
 view: function(playerID, width, height) {

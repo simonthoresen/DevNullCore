@@ -3,8 +3,8 @@
 
 var Plugin = {
     skin: {
-        statusBg: "#bd93f9", // purple
-        statusFg: "#282a36", // background (dark text on purple)
+        menuBg: "#bd93f9", // purple
+        menuFg: "#282a36", // background (dark text on purple)
         chatBg:   "#282a36", // dark background
         chatFg:   "#f8f8f2", // foreground
         cmdBg:    "#44475a", // current line

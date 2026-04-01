@@ -3,8 +3,8 @@
 
 var Plugin = {
     skin: {
-        statusBg: "#5e81ac", // nord10 blue
-        statusFg: "#eceff4", // nord6 snow
+        menuBg: "#5e81ac", // nord10 blue
+        menuFg: "#eceff4", // nord6 snow
         chatBg:   "#2e3440", // nord0 polar night
         chatFg:   "#d8dee9", // nord4 snow storm
         cmdBg:    "#3b4252", // nord1

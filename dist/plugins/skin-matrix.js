@@ -3,8 +3,8 @@
 
 var Plugin = {
     skin: {
-        statusBg: "#003300", // dark green
-        statusFg: "#00ff41", // bright matrix green
+        menuBg: "#003300", // dark green
+        menuFg: "#00ff41", // bright matrix green
         chatBg:   "#0d0d0d", // near-black
         chatFg:   "#00cc33", // medium green
         cmdBg:    "#001a00", // very dark green
