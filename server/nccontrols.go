@@ -136,7 +136,7 @@ func (ti *NCTextInput) Render(width, height int, pal *Palette, t *Theme) string 
 
 	ti.Model.Prompt = ""
 	ti.Model.Placeholder = ""
-	ti.Model.SetWidth(fieldW + 1)
+	ti.Model.SetWidth(fieldW)
 	s := ti.Model.Styles()
 	s.Focused.Prompt = lipgloss.NewStyle()
 	s.Focused.Text = inputStyle

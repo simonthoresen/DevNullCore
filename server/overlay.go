@@ -48,35 +48,35 @@ func paintLine(col, overW int, over, bgLine string) string {
 	return left + over + right
 }
 
-// ApplyShadow re-colors a rectangular region of bg with the shadow style.
-// The characters from bg are preserved but rendered with shadowStyle colors.
-// Skips the top-right corner (row 0, rightmost col) and bottom-left corner
-// (last row, col 0) to match the NC shadow shape.
-func ApplyShadow(col, row, width, height int, bg string, shadowStyle lipgloss.Style) string {
+// ApplyShadow renders an L-shaped drop shadow around a box at (boxCol, boxRow)
+// with dimensions boxW × boxH. The shadow is:
+//   - Right strip: 1 cell wide at col=boxCol+boxW, rows boxRow+1 through boxRow+boxH-1
+//   - Bottom strip: 1 cell tall at row=boxRow+boxH, cols boxCol+1 through boxCol+boxW
+//
+// Characters from the background are preserved but re-colored with shadowStyle.
+func ApplyShadow(boxCol, boxRow, boxW, boxH int, bg string, shadowStyle lipgloss.Style) string {
 	bgLines := strings.Split(bg, "\n")
 	out := make([]string, len(bgLines))
 	copy(out, bgLines)
 
-	for dy := 0; dy < height; dy++ {
-		r := row + dy
-		if r < 0 || r >= len(bgLines) {
-			continue
-		}
-		for dx := 0; dx < width; dx++ {
-			c := col + dx
-
-			// Skip top-right corner.
-			if dy == 0 && dx == width-1 {
-				continue
-			}
-			// Skip bottom-left corner.
-			if dy == height-1 && dx == 0 {
-				continue
-			}
-
-			out[r] = recolorCell(out[r], c, shadowStyle)
+	// Right strip (skip top-right corner: start from row+1).
+	rightCol := boxCol + boxW
+	for dy := 1; dy < boxH; dy++ {
+		r := boxRow + dy
+		if r >= 0 && r < len(out) {
+			out[r] = recolorCell(out[r], rightCol, shadowStyle)
 		}
 	}
+
+	// Bottom strip (skip bottom-left corner: start from col+1).
+	bottomRow := boxRow + boxH
+	if bottomRow >= 0 && bottomRow < len(out) {
+		for dx := 1; dx <= boxW; dx++ {
+			c := boxCol + dx
+			out[bottomRow] = recolorCell(out[bottomRow], c, shadowStyle)
+		}
+	}
+
 	return strings.Join(out, "\n")
 }
 

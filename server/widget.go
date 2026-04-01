@@ -491,23 +491,15 @@ func prevSelectable(items []common.MenuItemDef, cur int) int {
 
 // ─── Drop shadow ──────────────────────────────────────────────────────────────
 
-// shadowRegion describes the drop shadow area relative to a box at (col, row).
-// The shadow is 1 cell right and 1 cell down from the box, excluding the
-// top-right and bottom-left corners.
-type shadowRegion struct {
-	col, row      int // absolute screen position of shadow top-left
-	width, height int // shadow region size
+// shadowBox holds the position and size of a box for drop shadow rendering.
+type shadowBox struct {
+	col, row      int
+	width, height int
 }
 
-// shadowFor returns the shadow region for a box placed at (col, row) with
-// the given width and height.
-func shadowFor(col, row, boxW, boxH int) shadowRegion {
-	return shadowRegion{
-		col:    col + 1,
-		row:    row + 1,
-		width:  boxW,
-		height: boxH,
-	}
+// shadowFor returns the box descriptor for ApplyShadow.
+func shadowFor(col, row, boxW, boxH int) shadowBox {
+	return shadowBox{col: col, row: row, width: boxW, height: boxH}
 }
 
 // ─── Menu bar rendering ────────────────────────────────────────────────────────
