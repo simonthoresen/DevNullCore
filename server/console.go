@@ -370,7 +370,7 @@ func (m *consoleModel) View() tea.View {
 			gameLabel += " [game over]"
 		}
 	}
-	statusText := fmt.Sprintf("game: %s | teams: %d | uptime %s | %s", gameLabel, m.app.state.TeamCount(), m.app.uptime(), time.Now().Format("15:04:05"))
+	statusText := fmt.Sprintf("game: %s | players: %d | uptime %s | %s", gameLabel, m.app.state.PlayerCount(), m.app.uptime(), time.Now().Format("15:04:05"))
 	statusBar := statusStyle.Width(m.width).Render(truncateStyled(statusText, m.width))
 
 	content := lipgloss.JoinVertical(lipgloss.Left, ncBar, panelContent, statusBar)
