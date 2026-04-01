@@ -11,12 +11,10 @@ import (
 func TestIncludeSingleFile(t *testing.T) {
 	dir := t.TempDir()
 
-	// Helper file defines a function.
 	os.WriteFile(filepath.Join(dir, "helper.js"), []byte(`
 		function greet(name) { return "Hello, " + name; }
 	`), 0o644)
 
-	// Main game file includes the helper and uses it.
 	mainJS := filepath.Join(dir, "main.js")
 	os.WriteFile(mainJS, []byte(`
 		include("helper.js");
@@ -58,26 +56,8 @@ func TestIncludeIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadGame: %v", err)
 	}
-	// include is idempotent — counter should be 1, not 2
 	if game.GameName() != "count-1" {
 		t.Errorf("got gameName=%q, want %q", game.GameName(), "count-1")
-	}
-}
-
-func TestNethackGameLoads(t *testing.T) {
-	// Test that the actual nethack game loads through the framework.
-	mainJS := filepath.Join("../dist/games/nethack", "main.js")
-	if _, err := os.Stat(mainJS); err != nil {
-		t.Skip("nethack game not found at", mainJS)
-	}
-
-	chatCh := make(chan common.Message, 64)
-	game, err := LoadGame(mainJS, func(string) {}, chatCh)
-	if err != nil {
-		t.Fatalf("LoadGame nethack: %v", err)
-	}
-	if game.GameName() != "NetHack" {
-		t.Errorf("got gameName=%q, want %q", game.GameName(), "NetHack")
 	}
 }
 
@@ -94,5 +74,37 @@ func TestIncludeRejectsPathTraversal(t *testing.T) {
 	_, err := LoadGame(mainJS, func(string) {}, chatCh)
 	if err == nil {
 		t.Fatal("expected error for path traversal, got nil")
+	}
+}
+
+func TestNethackGameLoads(t *testing.T) {
+	mainJS := filepath.Join("../dist/games/nethack", "main.js")
+	if _, err := os.Stat(mainJS); err != nil {
+		t.Skip("nethack game not found at", mainJS)
+	}
+
+	chatCh := make(chan common.Message, 64)
+	game, err := LoadGame(mainJS, func(string) {}, chatCh)
+	if err != nil {
+		t.Fatalf("LoadGame nethack: %v", err)
+	}
+	if game.GameName() != "NetHack" {
+		t.Errorf("got gameName=%q, want %q", game.GameName(), "NetHack")
+	}
+}
+
+func TestHoldemGameLoads(t *testing.T) {
+	mainJS := filepath.Join("../dist/games/holdem", "main.js")
+	if _, err := os.Stat(mainJS); err != nil {
+		t.Skip("holdem game not found at", mainJS)
+	}
+
+	chatCh := make(chan common.Message, 64)
+	game, err := LoadGame(mainJS, func(string) {}, chatCh)
+	if err != nil {
+		t.Fatalf("LoadGame holdem: %v", err)
+	}
+	if game.GameName() != "Texas Hold'em" {
+		t.Errorf("got gameName=%q, want %q", game.GameName(), "Texas Hold'em")
 	}
 }
