@@ -29,6 +29,8 @@ type MenuItemDef struct {
 	Label    string
 	Hotkey   string                // e.g. "ctrl+c" — displayed right-aligned, globally bound
 	Disabled bool
+	Toggle   bool                  // if true, this is a toggle item with a checkmark column
+	Checked  func() bool           // returns current toggle state (nil = not a toggle)
 	Handler  func(playerID string) // nil for separators
 }
 

@@ -551,20 +551,33 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, t *T
 		return "", 0, 0
 	}
 
+	// Check if any item is a toggle (need checkmark column).
+	hasToggles := false
+	for _, it := range items {
+		if it.Toggle {
+			hasToggles = true
+			break
+		}
+	}
+	checkW := 0
+	if hasToggles {
+		checkW = 2 // "√ " or "  "
+	}
+
 	maxLW := 0
 	for _, it := range items {
 		if !isSeparator(it) {
 			clean, _ := stripAmpersand(it.Label)
 			w := len(clean)
 			if it.Hotkey != "" {
-				w += 2 + len(hotkeyDisplay(it.Hotkey)) // "  (Ctrl+C)"
+				w += 2 + len(hotkeyDisplay(it.Hotkey))
 			}
 			if w > maxLW {
 				maxLW = w
 			}
 		}
 	}
-	innerW := maxLW + 2 // 1-space padding each side
+	innerW := maxLW + checkW + 2 // checkmark + 1-space padding each side
 	if innerW < 14 {
 		innerW = 14
 	}
@@ -590,20 +603,31 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, t *T
 			lines = append(lines, sepRow)
 			continue
 		}
+
+		// Checkmark prefix for toggle items.
+		check := ""
+		if hasToggles {
+			if it.Toggle && it.Checked != nil && it.Checked() {
+				check = "√ "
+			} else {
+				check = "  "
+			}
+		}
+
 		clean, _ := stripAmpersand(it.Label)
 		hk := ""
 		if it.Hotkey != "" {
 			hk = "  " + hotkeyDisplay(it.Hotkey)
 		}
-		pad := strings.Repeat(" ", innerW-2-len(clean)-len(hk))
+		pad := strings.Repeat(" ", max(0, innerW-2-checkW-len(clean)-len(hk)))
 		var inner string
 		switch {
 		case it.Disabled:
-			inner = disabledStyle.Width(innerW).Render(" " + clean + pad + hk + " ")
+			inner = disabledStyle.Width(innerW).Render(" " + check + clean + pad + hk + " ")
 		case i == o.dropCursor:
-			inner = activeStyle.Render(" ") + renderLabel(it.Label, activeStyle, activeAccent) + activeStyle.Render(pad+hk+" ")
+			inner = activeStyle.Render(" "+check) + renderLabel(it.Label, activeStyle, activeAccent) + activeStyle.Render(pad+hk+" ")
 		default:
-			inner = menuStyle.Render(" ") + renderLabel(it.Label, menuStyle, menuAccent) + menuStyle.Render(pad+hk+" ")
+			inner = menuStyle.Render(" "+check) + renderLabel(it.Label, menuStyle, menuAccent) + menuStyle.Render(pad+hk+" ")
 		}
 		lines = append(lines, menuStyle.Render(t.OV())+inner+menuStyle.Render(t.OV()))
 	}
