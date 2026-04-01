@@ -383,7 +383,7 @@ func (m *consoleModel) View() tea.View {
 	menus := m.consoleMenus()
 	if m.overlay.openMenu >= 0 {
 		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 0, t); ddStr != "" {
-			content = PlaceOverlay(ddCol, ddRow+1, ddStr, content)
+			content = PlaceOverlay(ddCol, ddRow, ddStr, content)
 		}
 	}
 	if m.overlay.hasDialog() {
