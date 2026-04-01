@@ -363,7 +363,7 @@ func (m *consoleModel) View() tea.View {
 }
 
 func (m *consoleModel) resize() {
-	// Width is managed by NCPanel.Render via NCTextInput.SetWidth.
+	// Width is managed by NCWindow.Render via the grid layout.
 }
 
 func (m *consoleModel) appendLog(line string) {

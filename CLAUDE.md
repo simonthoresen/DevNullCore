@@ -146,7 +146,8 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `server/console.go` | Local server management terminal (not for playing) |
 | `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
 | `server/plugin.go` | Per-player JS plugin runtime: loads `dist/plugins/*.js`, calls `onMessage` hook |
-| `server/ncpanel.go` | NC control system: `NCPanel` (window with double outer borders, inner panels separated by single-line dividers), `NCTextView`, `NCTextInput`, `NCSeparator` — auto layout, focus, cursor |
+| `server/ncwidget.go` | NC widget core: `NCWindow` (grid bag layout, border/title/shadow), `NCControl` interface, focus/cursor/click management |
+| `server/nccontrols.go` | NC controls: `NCLabel`, `NCTextInput`, `NCTextArea`, `NCTextView`, `NCButton`, `NCCheckbox`, `NCHDivider`, `NCVDivider`, `NCPanel` (bordered sub-container) |
 | `server/theme.go` | Theme system: loads JSON color palettes from `dist/themes/`, applies to NC chrome |
 | `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |

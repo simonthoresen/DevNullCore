@@ -16,7 +16,8 @@ import (
 	"null-space/common"
 )
 
-// Default framework chrome colors.
+// Lobby chrome colors — hardcoded for now; should migrate to theme palettes.
+// These define the player lobby layout colors (chat panel + team panel).
 var (
 	defaultMenuBg = lipgloss.Color("#D8C7A0")
 	defaultMenuFg = lipgloss.Color("#4A2D18")
@@ -27,10 +28,7 @@ var (
 	menuBg = defaultMenuBg
 	menuFg = defaultMenuFg
 	cmdBg  = defaultCmdBg
-)
 
-// Lobby panel colors — chat (warm/white variant).
-var (
 	lobbyChatBarActiveBg   = lipgloss.Color("#D8C7A0")
 	lobbyChatBarActiveFg   = lipgloss.Color("#4A2D18")
 	lobbyChatBarInactiveBg = lipgloss.Color("#C4B898")
@@ -38,10 +36,7 @@ var (
 	lobbyChatActiveBg      = lipgloss.Color("#EADFC7")
 	lobbyChatInactiveBg    = lipgloss.Color("#E0D6BE")
 	lobbyChatFg            = lipgloss.Color("#2C1810")
-)
 
-// Lobby panel colors — teams (blue variant).
-var (
 	lobbyTeamBarActiveBg   = lipgloss.Color("#5B7BA5")
 	lobbyTeamBarActiveFg   = lipgloss.Color("#FFFFFF")
 	lobbyTeamBarInactiveBg = lipgloss.Color("#8898B0")
