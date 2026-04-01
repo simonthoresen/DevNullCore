@@ -95,7 +95,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				fromName = p.Name
 			}
 			if fromName == "" {
-				fromName = "admin"
+				fromName = "console"
 			}
 			toName := chatMsg.ToID
 			if p := m.app.state.GetPlayer(toName); p != nil {
@@ -272,9 +272,14 @@ func (m *consoleModel) submitInput() {
 			m.inputHistory = m.inputHistory[1:]
 		}
 	}
+	if !strings.HasPrefix(text, "/") {
+		m.appendLog("Type /help for available commands.")
+		return
+	}
 	ctx := common.CommandContext{
-		PlayerID: "", // console = admin
-		IsAdmin:  true,
+		PlayerID:  "",
+		IsConsole: true,
+		IsAdmin:   true,
 		Reply: func(s string) {
 			m.appendLog(s)
 		},
@@ -285,12 +290,7 @@ func (m *consoleModel) submitInput() {
 			m.appendLog(s)
 		},
 	}
-	if strings.HasPrefix(text, "/") {
-		m.app.registry.Dispatch(text, ctx)
-		return
-	}
-	// Plain text = chat as [admin]
-	m.app.broadcastChat(common.Message{Author: "[admin]", Text: text})
+	m.app.registry.Dispatch(text, ctx)
 }
 
 // tea.Msg types for channel-based updates

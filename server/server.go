@@ -844,7 +844,7 @@ func (a *Server) registerBuiltins() {
 	})
 
 	exitHandler := func(ctx common.CommandContext, args []string) {
-		if ctx.PlayerID == "" {
+		if ctx.IsConsole {
 			// Server console: shut down the server
 			if a.shutdownFn != nil {
 				a.shutdownFn()
@@ -910,7 +910,7 @@ func (a *Server) registerBuiltins() {
 				ctx.Reply("Invalid password.")
 				return
 			}
-			if ctx.PlayerID != "" {
+			if !ctx.IsConsole {
 				a.state.SetPlayerAdmin(ctx.PlayerID, true)
 			}
 			ctx.Reply("Admin privileges granted.")
@@ -1182,8 +1182,8 @@ func (a *Server) registerBuiltins() {
 				return
 			}
 			text := strings.Join(args[1:], " ")
-			fromName := "admin"
-			if ctx.PlayerID != "" {
+			fromName := "console"
+			if !ctx.IsConsole {
 				if p := a.state.GetPlayer(ctx.PlayerID); p != nil {
 					fromName = p.Name
 				}

@@ -15,7 +15,8 @@ type Command struct {
 
 // CommandContext is passed to command handlers.
 type CommandContext struct {
-	PlayerID  string // empty = server console
+	PlayerID  string // empty string when invoked from the server console
+	IsConsole bool   // true when invoked from the server console (not a player)
 	IsAdmin   bool
 	Reply     func(string) // send message to caller only (private)
 	Broadcast func(string) // send system message to all chat
