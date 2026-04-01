@@ -6,6 +6,7 @@ param(
 $Password = ""
 $Force = $false
 $Local = $false
+$Lan = $false
 $NoUpdate = $false
 $Port = "23234"
 
@@ -16,6 +17,7 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
         '^--?force$'         { $Force = $true; continue }
         '^--?local$'         { $Local = $true; continue }
         '^--?(no-?network|offline|singleplayer|single-player)$' { $Local = $true; continue }
+        '^--?lan$'           { $Lan = $true; continue }
         '^--?(no-?update|skip-?update)$' { $NoUpdate = $true; continue }
         '^--?port$'          { $i++; if ($i -lt $CliArgs.Count) { $Port = $CliArgs[$i] }; continue }
         '^--?port=(.+)$'     { $Port = $Matches[1]; continue }
@@ -344,48 +346,59 @@ if ($existingListener) {
 Write-BootStepStart "Setting up network"
 Write-BootStepEnd "DONE"
 
-$script:tunnelStatus = Join-Path ([System.IO.Path]::GetTempPath()) ("null-space-pinggy-{0}.status.log" -f ([guid]::NewGuid().ToString("N")))
+$serverArgs = @("--password", $Password, "--port", $Port)
 
-Write-BootStepStart "Pinggy helper"
-Write-RunLogLine "starting pinggy helper"
-$script:tunnelShell = Start-Process `
-    -FilePath (Join-Path $root "pinggy-helper.exe") `
-    -ArgumentList @("--listen", "127.0.0.1:$Port", "--status-file", $script:tunnelStatus) `
-    -WorkingDirectory $root `
-    -RedirectStandardOutput (Join-Path $logsDir "pinggy-stdout.log") `
-    -RedirectStandardError  (Join-Path $logsDir "pinggy-stderr.log") `
-    -NoNewWindow -PassThru
+if ($Lan) {
+    Write-BootStepStart "Pinggy helper"
+    Write-BootStepEnd "SKIP"
+    $serverArgs += "--lan"
+} else {
+    $script:tunnelStatus = Join-Path ([System.IO.Path]::GetTempPath()) ("null-space-pinggy-{0}.status.log" -f ([guid]::NewGuid().ToString("N")))
 
-Start-TunnelWatcher -TunnelShellPid $script:tunnelShell.Id -ConsoleShellPid $PID
+    Write-BootStepStart "Pinggy helper"
+    Write-RunLogLine "starting pinggy helper"
+    $script:tunnelShell = Start-Process `
+        -FilePath (Join-Path $root "pinggy-helper.exe") `
+        -ArgumentList @("--listen", "127.0.0.1:$Port", "--status-file", $script:tunnelStatus) `
+        -WorkingDirectory $root `
+        -RedirectStandardOutput (Join-Path $logsDir "pinggy-stdout.log") `
+        -RedirectStandardError  (Join-Path $logsDir "pinggy-stderr.log") `
+        -NoNewWindow -PassThru
 
-try {
-    $tunnelInfo = Wait-ForTunnelReady -TimeoutSeconds 45
-    Write-RunLogLine "pinggy tunnel ready: $($tunnelInfo.TcpAddress)"
-    Write-BootStepEnd "DONE"
-} catch {
-    Write-RunLogLine ("pinggy helper failed: {0}" -f $_)
-    Write-BootStepEnd "FAIL"
-    Stop-TunnelWatcher; Stop-Tunnel; Remove-TunnelState
-    Write-Error $_
-    exit 1
+    Start-TunnelWatcher -TunnelShellPid $script:tunnelShell.Id -ConsoleShellPid $PID
+
+    try {
+        $tunnelInfo = Wait-ForTunnelReady -TimeoutSeconds 45
+        Write-RunLogLine "pinggy tunnel ready: $($tunnelInfo.TcpAddress)"
+        Write-BootStepEnd "DONE"
+    } catch {
+        Write-RunLogLine ("pinggy helper failed: {0}" -f $_)
+        Write-BootStepEnd "FAIL"
+        Stop-TunnelWatcher; Stop-Tunnel; Remove-TunnelState
+        Write-Error $_
+        exit 1
+    }
+
+    $previousPinggyStatusFile       = $env:NULL_SPACE_PINGGY_STATUS_FILE
+    $env:NULL_SPACE_PINGGY_STATUS_FILE = $script:tunnelStatus
 }
 
 # ── start server ─────────────────────────────────────────────────────────────
 
 $serverExitCode = 0
-$previousPinggyStatusFile       = $env:NULL_SPACE_PINGGY_STATUS_FILE
-$env:NULL_SPACE_PINGGY_STATUS_FILE = $script:tunnelStatus
 
 Push-Location $root
 try {
     Write-RunLogLine "starting null-space server"
-    & (Join-Path $root "null-space.exe") --password $Password --port $Port
+    & (Join-Path $root "null-space.exe") @serverArgs
     if ($LASTEXITCODE) { $serverExitCode = $LASTEXITCODE }
 } finally {
     Pop-Location
     Write-RunLogLine "server process finished"
-    if ($null -eq $previousPinggyStatusFile) { Remove-Item Env:NULL_SPACE_PINGGY_STATUS_FILE -ErrorAction SilentlyContinue }
-    else { $env:NULL_SPACE_PINGGY_STATUS_FILE = $previousPinggyStatusFile }
+    if (-not $Lan) {
+        if ($null -eq $previousPinggyStatusFile) { Remove-Item Env:NULL_SPACE_PINGGY_STATUS_FILE -ErrorAction SilentlyContinue }
+        else { $env:NULL_SPACE_PINGGY_STATUS_FILE = $previousPinggyStatusFile }
+    }
     if ($null -eq $previousLogFile)    { Remove-Item Env:NULL_SPACE_LOG_FILE    -ErrorAction SilentlyContinue }
     else { $env:NULL_SPACE_LOG_FILE = $previousLogFile }
     if ($null -eq $previousLogLevel)  { Remove-Item Env:NULL_SPACE_LOG_LEVEL  -ErrorAction SilentlyContinue }
@@ -395,9 +408,11 @@ try {
 
     Write-BootStepStart "Shutting down network"
     Write-BootStepEnd "DONE"
-    Write-BootStepStart "Stopping Pinggy helper"
-    Stop-TunnelWatcher; Stop-Tunnel; Remove-TunnelState
-    Write-BootStepEnd "DONE"
+    if (-not $Lan) {
+        Write-BootStepStart "Stopping Pinggy helper"
+        Stop-TunnelWatcher; Stop-Tunnel; Remove-TunnelState
+        Write-BootStepEnd "DONE"
+    }
 
     Write-RunLogLine "cleanup completed"
 }

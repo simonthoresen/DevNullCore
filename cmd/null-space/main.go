@@ -36,11 +36,13 @@ func main() {
 	var localMode bool
 	var localGame string
 	var localPlayer string
+	var lanMode bool
 	flag.StringVar(&password, "password", "", "admin password (required)")
 	flag.StringVar(&address, "address", ":23234", "listen address")
 	flag.StringVar(&portOverride, "port", "", "SSH listen port (overrides --address port, default 23234)")
 	flag.StringVar(&dataDir, "data-dir", defaultDataDir(), "directory containing games/, logs/")
 	flag.BoolVar(&localMode, "local", false, "run locally without SSH (single-player / render test)")
+	flag.BoolVar(&lanMode, "lan", false, "LAN-only server (no UPnP, no public IP, no Pinggy)")
 	flag.StringVar(&localGame, "game", "", "game to preload (local mode)")
 	flag.StringVar(&localPlayer, "player", "player", "player name (local mode)")
 	flag.Parse()
@@ -90,18 +92,25 @@ func main() {
 	app.SetPort(port)
 	finishBootStep("DONE")
 
-	startBootStep("UPnP port mapping")
-	if app.SetupUPnP(port) {
-		finishBootStep("DONE")
-	} else {
+	if lanMode {
+		startBootStep("UPnP port mapping")
 		finishBootStep("SKIP")
-	}
+		startBootStep("Public IP detection")
+		finishBootStep("SKIP")
+	} else {
+		startBootStep("UPnP port mapping")
+		if app.SetupUPnP(port) {
+			finishBootStep("DONE")
+		} else {
+			finishBootStep("SKIP")
+		}
 
-	startBootStep("Public IP detection")
-	if app.SetupPublicIP() != "" {
-		finishBootStep("DONE")
-	} else {
-		finishBootStep("SKIP")
+		startBootStep("Public IP detection")
+		if app.SetupPublicIP() != "" {
+			finishBootStep("DONE")
+		} else {
+			finishBootStep("SKIP")
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
@@ -113,13 +122,12 @@ func main() {
 
 	startBootStep("Pinggy tunnel")
 	pinggyStatusFile := os.Getenv("NULL_SPACE_PINGGY_STATUS_FILE")
-	if pinggyStatusFile != "" {
+	if lanMode || pinggyStatusFile == "" {
+		finishBootStep("SKIP")
+		go app.LogInviteCommand()
+	} else {
 		app.EnablePinggyLogBridge(ctx, pinggyStatusFile)
 		finishBootStep("DONE")
-	} else {
-		finishBootStep("SKIP")
-		// No Pinggy — log invite now with whatever endpoints are available.
-		go app.LogInviteCommand()
 	}
 
 	startBootStep("Starting console")
