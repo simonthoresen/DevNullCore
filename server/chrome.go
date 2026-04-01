@@ -916,7 +916,7 @@ func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg 
 			teamCmdStyle.Width(teamW).Render("[Tab] Teams")
 	}
 
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, middle, inputRow, statusBar)
 }
@@ -951,7 +951,7 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chSt
 		cmdBar = ciStyle.Width(m.width).Render("Waiting for host to start...")
 	}
 
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
 }
@@ -983,7 +983,7 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, ch
 	}
 	cmdBar := ciStyle.Width(m.width).Render(fmt.Sprintf("[Enter] Continue to lobby (%ds remaining)", remaining))
 
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
 }
@@ -1019,7 +1019,7 @@ func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chS
 		cmdBar = ciStyle.Width(m.width).Render(idleText)
 	}
 
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
 
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, gameStatusBar, gameView, chatView, cmdBar, statusBar)
 }

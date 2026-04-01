@@ -293,7 +293,7 @@ func (m *consoleModel) View() tea.View {
 	cmdBar := cmdStyle.Width(m.width).Render(truncateStyled(m.input.View(), m.width))
 
 	// Bottom status bar
-	bottomBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04"))
+	bottomBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
 
 	content := lipgloss.JoinVertical(lipgloss.Left, ncBar, statusBar, logView, cmdBar, bottomBar)
 
