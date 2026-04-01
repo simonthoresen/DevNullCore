@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -309,10 +310,26 @@ func overlayAt(row string, rx int, overlay string, baseStyle lipgloss.Style) str
 // ─── Focus management ─────────────────────────────────────────────────────────
 
 // HandleUpdate routes a tea.Msg to the focused child control.
+// If the control signals WantTab (tab not consumed), cycles focus.
 func (w *NCWindow) HandleUpdate(msg tea.Msg) {
-	if w.FocusIdx >= 0 && w.FocusIdx < len(w.Children) {
-		if w.Children[w.FocusIdx].Control.Focusable() {
-			w.Children[w.FocusIdx].Control.Update(msg)
+	if w.FocusIdx < 0 || w.FocusIdx >= len(w.Children) {
+		return
+	}
+	c := w.Children[w.FocusIdx].Control
+	if !c.Focusable() {
+		return
+	}
+	c.Update(msg)
+
+	// Check if the control wants to pass tab to the window for focus cycling.
+	switch ti := c.(type) {
+	case *NCTextInput:
+		if ti.WantTab {
+			w.CycleFocus()
+		}
+	case *NCCommandInput:
+		if ti.WantTab {
+			w.CycleFocus()
 		}
 	}
 }
@@ -349,19 +366,26 @@ func (w *NCWindow) CursorPosition() (cx, cy int, visible bool) {
 		return 0, 0, false
 	}
 	c := w.Children[w.FocusIdx].Control
-	// Check for NCTextInput.
-	if ti, ok := c.(*NCTextInput); ok && ti.Model != nil {
-		cursor := ti.Model.Cursor()
-		if cursor == nil {
-			return 0, 0, false
-		}
-		rx, ry, _, _ := w.childRect(w.FocusIdx)
-		// +1 for the "[" bracket
-		cx = rx + 1 + cursor.Position.X
-		cy = ry
-		return cx, cy, true
+
+	// Extract the textinput.Model from either NCTextInput or NCCommandInput.
+	var model *textinput.Model
+	switch ti := c.(type) {
+	case *NCTextInput:
+		model = ti.Model
+	case *NCCommandInput:
+		model = ti.Model
 	}
-	return 0, 0, false
+	if model == nil {
+		return 0, 0, false
+	}
+	cursor := model.Cursor()
+	if cursor == nil {
+		return 0, 0, false
+	}
+	rx, ry, _, _ := w.childRect(w.FocusIdx)
+	cx = rx + 1 + cursor.Position.X // +1 for "[" bracket
+	cy = ry
+	return cx, cy, true
 }
 
 // HandleClick routes a mouse click to the correct child.

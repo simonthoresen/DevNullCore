@@ -38,7 +38,7 @@ type consoleModel struct {
 	width  int
 	height int
 
-	inputCtrl *NCTextInput
+	inputCtrl *NCCommandInput
 	logView   *NCTextView
 	window    *NCWindow
 
@@ -72,7 +72,7 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	input.Focus()
 
 	logView := &NCTextView{BottomAlign: true, Scrollable: true}
-	inputCtrl := &NCTextInput{Model: input}
+	inputCtrl := &NCCommandInput{NCTextInput: NCTextInput{Model: input}}
 
 	window := &NCWindow{
 		Children: []GridChild{
@@ -103,7 +103,6 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 
 	// Wire callbacks — the NCTextInput handles Enter/Esc/Up/Down/Tab internally.
 	inputCtrl.OnSubmit = m.submitInput
-	inputCtrl.OnEsc = func() {} // just clear (handled internally)
 	inputCtrl.OnTab = m.tabComplete
 
 	return m

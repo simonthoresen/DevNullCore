@@ -27,101 +27,138 @@ func (l *NCLabel) Render(w, h int, pal *Palette, t *Theme) string {
 
 // ─── NCTextInput ──────────────────────────────────────────────────────────────
 
-// NCTextInput is a single-line editable text field with NC-style [·····] brackets.
+// NCTextInput is a basic single-line editable text field with NC-style [·····] brackets.
+// It handles basic text editing only. Tab cycles focus. Enter calls OnSubmit if set.
+// For command-line behavior (history, tab completion), use NCCommandInput instead.
 type NCTextInput struct {
-	Model *textinput.Model
-	bg    color.Color
-	fg    color.Color
+	Model    *textinput.Model
+	bg       color.Color
+	fg       color.Color
+	OnSubmit func(text string) // called on Enter (nil = do nothing)
 
-	OnSubmit func(text string)
-	OnTab    func(current string) (string, bool)
-	OnEsc    func()
-
-	History    []string
-	MaxHistory int
-	historyIdx   int
-	historyDraft string
+	// WantTab is set to true by Update when tab should cycle focus (not consumed).
+	WantTab bool
 }
 
-func (ti *NCTextInput) Focusable() bool    { return true }
-func (ti *NCTextInput) MinSize() (int, int) { return 4, 1 } // "[" + min 2 chars + "]"
-
+func (ti *NCTextInput) Focusable() bool     { return true }
+func (ti *NCTextInput) MinSize() (int, int) { return 4, 1 }
 func (ti *NCTextInput) Value() string       { return ti.Model.Value() }
 func (ti *NCTextInput) SetValue(s string)   { ti.Model.SetValue(s) }
 
-func (ti *NCTextInput) AddHistory(text string) {
-	maxH := ti.MaxHistory
-	if maxH <= 0 {
-		maxH = 50
-	}
-	if len(ti.History) == 0 || ti.History[len(ti.History)-1] != text {
-		ti.History = append(ti.History, text)
-		if len(ti.History) > maxH {
-			ti.History = ti.History[1:]
-		}
-	}
-}
-
 func (ti *NCTextInput) Update(msg tea.Msg) {
+	ti.WantTab = false
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
-			text := strings.TrimSpace(ti.Model.Value())
-			ti.Model.SetValue("")
-			ti.historyIdx = -1
-			ti.historyDraft = ""
-			if text != "" && ti.OnSubmit != nil {
-				ti.AddHistory(text)
-				ti.OnSubmit(text)
-			}
-			return
-		case "esc":
-			ti.Model.SetValue("")
-			ti.historyIdx = -1
-			ti.historyDraft = ""
-			if ti.OnEsc != nil {
-				ti.OnEsc()
-			}
-			return
-		case "up":
-			if len(ti.History) == 0 {
-				return
-			}
-			if ti.historyIdx == -1 {
-				ti.historyDraft = ti.Model.Value()
-				ti.historyIdx = len(ti.History) - 1
-			} else if ti.historyIdx > 0 {
-				ti.historyIdx--
-			}
-			ti.Model.SetValue(ti.History[ti.historyIdx])
-			ti.Model.CursorEnd()
-			return
-		case "down":
-			if ti.historyIdx == -1 {
-				return
-			}
-			if ti.historyIdx < len(ti.History)-1 {
-				ti.historyIdx++
-				ti.Model.SetValue(ti.History[ti.historyIdx])
-			} else {
-				ti.historyIdx = -1
-				ti.Model.SetValue(ti.historyDraft)
-			}
-			ti.Model.CursorEnd()
-			return
-		case "tab":
-			if ti.OnTab != nil {
-				if result, ok := ti.OnTab(ti.Model.Value()); ok {
-					ti.Model.SetValue(result)
-					ti.Model.CursorEnd()
+			if ti.OnSubmit != nil {
+				text := strings.TrimSpace(ti.Model.Value())
+				ti.Model.SetValue("")
+				if text != "" {
+					ti.OnSubmit(text)
 				}
 			}
+			return
+		case "tab":
+			ti.WantTab = true // signal parent to cycle focus
 			return
 		}
 	}
 	updated, _ := ti.Model.Update(msg)
 	*ti.Model = updated
+}
+
+// ─── NCCommandInput ───────────────────────────────────────────────────────────
+
+// NCCommandInput is a single-line command input with history (Up/Down),
+// tab completion (Tab when text is non-empty), and Enter-to-submit.
+// Tab on empty input cycles focus to the next control.
+type NCCommandInput struct {
+	NCTextInput // embeds the basic text input and rendering
+
+	OnTab func(current string) (string, bool) // tab completion callback
+
+	History      []string
+	MaxHistory   int
+	historyIdx   int
+	historyDraft string
+}
+
+func (ci *NCCommandInput) AddHistory(text string) {
+	maxH := ci.MaxHistory
+	if maxH <= 0 {
+		maxH = 50
+	}
+	if len(ci.History) == 0 || ci.History[len(ci.History)-1] != text {
+		ci.History = append(ci.History, text)
+		if len(ci.History) > maxH {
+			ci.History = ci.History[1:]
+		}
+	}
+}
+
+func (ci *NCCommandInput) Update(msg tea.Msg) {
+	ci.WantTab = false
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "enter":
+			text := strings.TrimSpace(ci.Model.Value())
+			ci.Model.SetValue("")
+			ci.historyIdx = -1
+			ci.historyDraft = ""
+			if text != "" && ci.OnSubmit != nil {
+				ci.AddHistory(text)
+				ci.OnSubmit(text)
+			}
+			return
+		case "esc":
+			ci.Model.SetValue("")
+			ci.historyIdx = -1
+			ci.historyDraft = ""
+			return
+		case "up":
+			if len(ci.History) == 0 {
+				return
+			}
+			if ci.historyIdx == -1 {
+				ci.historyDraft = ci.Model.Value()
+				ci.historyIdx = len(ci.History) - 1
+			} else if ci.historyIdx > 0 {
+				ci.historyIdx--
+			}
+			ci.Model.SetValue(ci.History[ci.historyIdx])
+			ci.Model.CursorEnd()
+			return
+		case "down":
+			if ci.historyIdx == -1 {
+				return
+			}
+			if ci.historyIdx < len(ci.History)-1 {
+				ci.historyIdx++
+				ci.Model.SetValue(ci.History[ci.historyIdx])
+			} else {
+				ci.historyIdx = -1
+				ci.Model.SetValue(ci.historyDraft)
+			}
+			ci.Model.CursorEnd()
+			return
+		case "tab":
+			// Tab on non-empty input = tab completion.
+			// Tab on empty input = cycle focus.
+			if ci.Model.Value() != "" && ci.OnTab != nil {
+				if result, ok := ci.OnTab(ci.Model.Value()); ok {
+					ci.Model.SetValue(result)
+					ci.Model.CursorEnd()
+				}
+				return
+			}
+			ci.WantTab = true // empty = cycle focus
+			return
+		}
+	}
+	updated, _ := ci.Model.Update(msg)
+	*ci.Model = updated
 }
 
 func (ti *NCTextInput) Render(width, height int, pal *Palette, t *Theme) string {
