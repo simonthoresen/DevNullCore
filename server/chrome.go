@@ -950,13 +950,25 @@ func (m chromeModel) defaultSplashScreen(name string, width, height int) string 
 func (m chromeModel) defaultGameOverScreen(results []common.GameResult, width, height int) string {
 	var lines []string
 
-	title := "G A M E   O V E R"
-	titlePad := (width - len(title)) / 2
-	if titlePad < 0 {
-		titlePad = 0
-	}
 	lines = append(lines, "")
-	lines = append(lines, strings.Repeat(" ", titlePad)+title)
+	figletTitle := strings.TrimRight(Figlet("GAME OVER", "slant"), "\n")
+	figletLines := strings.Split(figletTitle, "\n")
+	maxW := 0
+	for _, l := range figletLines {
+		if len(l) > maxW {
+			maxW = len(l)
+		}
+	}
+	if figletTitle != "" && maxW <= width {
+		pad := strings.Repeat(" ", max(0, (width-maxW)/2))
+		for _, l := range figletLines {
+			lines = append(lines, pad+l)
+		}
+	} else {
+		title := "G A M E   O V E R"
+		pad := strings.Repeat(" ", max(0, (width-len(title))/2))
+		lines = append(lines, pad+title)
+	}
 	lines = append(lines, "")
 
 	if len(results) > 0 {
