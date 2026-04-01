@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,6 +40,10 @@ type consoleModel struct {
 	tabPrefix     string
 	tabCandidates []string
 	tabIndex      int
+
+	// Per-console plugins
+	plugins     []*jsPlugin
+	pluginNames []string
 }
 
 func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
@@ -81,6 +86,11 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case logLineMsg:
 		m.appendLog(string(msg))
+		for _, pl := range m.plugins {
+			if reply := pl.OnMessage("", string(msg), true); reply != "" {
+				m.dispatchPluginReply(reply)
+			}
+		}
 		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh())
 
 	case chatLineMsg:
@@ -111,6 +121,14 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line = fmt.Sprintf("<%s> %s", chatMsg.Author, chatMsg.Text)
 		}
 		m.appendLog(line)
+		if !chatMsg.IsReply {
+			isSystem := chatMsg.Author == ""
+			for _, pl := range m.plugins {
+				if reply := pl.OnMessage(chatMsg.Author, chatMsg.Text, isSystem); reply != "" {
+					m.dispatchPluginReply(reply)
+				}
+			}
+		}
 		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh())
 
 	case common.GamePhaseMsg, common.GameLoadedMsg, common.GameUnloadedMsg, common.TeamUpdatedMsg, common.PlayerJoinedMsg, common.PlayerLeftMsg:
@@ -276,6 +294,10 @@ func (m *consoleModel) submitInput() {
 		m.appendLog("Type /help for available commands.")
 		return
 	}
+	if strings.HasPrefix(text, "/plugin") {
+		m.handlePluginCommand(text)
+		return
+	}
 	ctx := common.CommandContext{
 		PlayerID:  "",
 		IsConsole: true,
@@ -291,6 +313,115 @@ func (m *consoleModel) submitInput() {
 		},
 	}
 	m.app.registry.Dispatch(text, ctx)
+}
+
+func (m *consoleModel) handlePluginCommand(input string) {
+	parts := strings.Fields(input)
+	if len(parts) <= 1 {
+		available := listDir(filepath.Join(m.app.dataDir, "plugins"), ".js")
+		loadedSet := make(map[string]bool)
+		for _, n := range m.pluginNames {
+			loadedSet[n] = true
+		}
+		if len(available) == 0 && len(m.pluginNames) == 0 {
+			m.appendLog("No plugins found in plugins/")
+			return
+		}
+		var lines []string
+		for _, name := range available {
+			line := "  " + name
+			if loadedSet[name] {
+				line += "  [loaded]"
+			}
+			lines = append(lines, line)
+		}
+		m.appendLog("Available plugins:\n" + strings.Join(lines, "\n"))
+		return
+	}
+	switch parts[1] {
+	case "load":
+		if len(parts) < 3 {
+			m.appendLog("Usage: /plugin load <name|url>")
+			return
+		}
+		name, path, err := resolvePluginPath(parts[2], m.app.dataDir)
+		if err != nil {
+			m.appendLog(fmt.Sprintf("Failed: %v", err))
+			return
+		}
+		for _, n := range m.pluginNames {
+			if strings.EqualFold(n, name) {
+				m.appendLog(fmt.Sprintf("Plugin '%s' is already loaded.", name))
+				return
+			}
+		}
+		pl, err := LoadPlugin(path)
+		if err != nil {
+			m.appendLog(fmt.Sprintf("Failed to load plugin: %v", err))
+			return
+		}
+		m.plugins = append(m.plugins, pl)
+		m.pluginNames = append(m.pluginNames, name)
+		m.appendLog(fmt.Sprintf("Plugin loaded: %s", name))
+	case "unload":
+		if len(parts) < 3 {
+			m.appendLog("Usage: /plugin unload <name>")
+			return
+		}
+		target := parts[2]
+		found := false
+		for i, n := range m.pluginNames {
+			if strings.EqualFold(n, target) {
+				m.plugins[i].Unload()
+				m.plugins = append(m.plugins[:i], m.plugins[i+1:]...)
+				m.pluginNames = append(m.pluginNames[:i], m.pluginNames[i+1:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.appendLog(fmt.Sprintf("Plugin '%s' is not loaded.", target))
+			return
+		}
+		m.appendLog(fmt.Sprintf("Plugin unloaded: %s", target))
+	case "list":
+		if len(m.pluginNames) == 0 {
+			m.appendLog("No plugins currently loaded.")
+			return
+		}
+		m.appendLog("Loaded plugins: " + strings.Join(m.pluginNames, ", "))
+	default:
+		m.appendLog(fmt.Sprintf("Unknown subcommand '%s'. Use: load, unload, list", parts[1]))
+	}
+}
+
+// dispatchPluginReply handles a string returned by a console plugin's onMessage hook.
+// If it starts with "/" it's treated as a command, otherwise logged as info.
+func (m *consoleModel) dispatchPluginReply(text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	if strings.HasPrefix(text, "/") {
+		ctx := common.CommandContext{
+			PlayerID:  "",
+			IsConsole: true,
+			IsAdmin:   true,
+			Reply: func(s string) {
+				m.appendLog(s)
+			},
+			Broadcast: func(s string) {
+				m.app.broadcastChat(common.Message{Text: s})
+			},
+			ServerLog: func(s string) {
+				m.appendLog(s)
+			},
+		}
+		m.app.registry.Dispatch(text, ctx)
+		return
+	}
+	// Plain text from console plugin → broadcast as admin chat.
+	m.app.broadcastChat(common.Message{Author: "admin", Text: text})
 }
 
 // tea.Msg types for channel-based updates

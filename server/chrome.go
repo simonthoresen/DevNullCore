@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"image/color"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -120,6 +121,10 @@ type chromeModel struct {
 	// Game-over countdown tracking
 	gameOverStart time.Time
 
+	// Per-player plugins
+	plugins     []*jsPlugin
+	pluginNames []string // parallel to plugins; display names
+
 	overlay overlayState
 }
 
@@ -210,6 +215,17 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.chat.SetContent(strings.Join(m.chatLines, "\n"))
 		m.chat.GotoBottom()
+
+		// Run per-player plugins on this message.
+		// Skip messages from this player (avoid echo loops) and command replies.
+		if chatMsg.FromID != m.playerID && !chatMsg.IsReply {
+			isSystem := chatMsg.Author == ""
+			for _, pl := range m.plugins {
+				if reply := pl.OnMessage(chatMsg.Author, chatMsg.Text, isSystem); reply != "" {
+					m.dispatchPluginReply(reply)
+				}
+			}
+		}
 		return m, nil
 
 	case common.PlayerJoinedMsg, common.PlayerLeftMsg:
@@ -1274,6 +1290,11 @@ func (m *chromeModel) submitInput() {
 	if text == "" {
 		return
 	}
+	// Handle /plugin locally (per-player plugin list).
+	if strings.HasPrefix(text, "/plugin") {
+		m.handlePluginCommand(text)
+		return
+	}
 	if strings.HasPrefix(text, "/") {
 		player := m.app.state.GetPlayer(m.playerID)
 		isAdmin := player != nil && player.IsAdmin
@@ -1295,6 +1316,127 @@ func (m *chromeModel) submitInput() {
 		return
 	}
 	// Regular chat
+	playerName := "unknown"
+	if p := m.app.state.GetPlayer(m.playerID); p != nil {
+		playerName = p.Name
+	}
+	m.app.broadcastChat(common.Message{Author: playerName, Text: text})
+}
+
+func (m *chromeModel) pluginReply(text string) {
+	msg := common.Message{IsReply: true, IsPrivate: true, ToID: m.playerID, Text: text}
+	m.app.sendToPlayer(m.playerID, common.ChatMsg{Msg: msg})
+}
+
+func (m *chromeModel) handlePluginCommand(input string) {
+	parts := strings.Fields(input)
+	// /plugin with no args → list
+	if len(parts) <= 1 {
+		available := listDir(filepath.Join(m.app.dataDir, "plugins"), ".js")
+		loadedSet := make(map[string]bool)
+		for _, n := range m.pluginNames {
+			loadedSet[n] = true
+		}
+		if len(available) == 0 && len(m.pluginNames) == 0 {
+			m.pluginReply("No plugins found in plugins/")
+			return
+		}
+		var lines []string
+		for _, name := range available {
+			line := "  " + name
+			if loadedSet[name] {
+				line += "  [loaded]"
+			}
+			lines = append(lines, line)
+		}
+		m.pluginReply("Available plugins:\n" + strings.Join(lines, "\n"))
+		return
+	}
+	switch parts[1] {
+	case "load":
+		if len(parts) < 3 {
+			m.pluginReply("Usage: /plugin load <name|url>")
+			return
+		}
+		nameOrURL := parts[2]
+		name, path, err := resolvePluginPath(nameOrURL, m.app.dataDir)
+		if err != nil {
+			m.pluginReply(fmt.Sprintf("Failed: %v", err))
+			return
+		}
+		for _, n := range m.pluginNames {
+			if strings.EqualFold(n, name) {
+				m.pluginReply(fmt.Sprintf("Plugin '%s' is already loaded.", name))
+				return
+			}
+		}
+		pl, err := LoadPlugin(path)
+		if err != nil {
+			m.pluginReply(fmt.Sprintf("Failed to load plugin: %v", err))
+			return
+		}
+		m.plugins = append(m.plugins, pl)
+		m.pluginNames = append(m.pluginNames, name)
+		m.pluginReply(fmt.Sprintf("Plugin loaded: %s", name))
+	case "unload":
+		if len(parts) < 3 {
+			m.pluginReply("Usage: /plugin unload <name>")
+			return
+		}
+		target := parts[2]
+		found := false
+		for i, n := range m.pluginNames {
+			if strings.EqualFold(n, target) {
+				m.plugins[i].Unload()
+				m.plugins = append(m.plugins[:i], m.plugins[i+1:]...)
+				m.pluginNames = append(m.pluginNames[:i], m.pluginNames[i+1:]...)
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.pluginReply(fmt.Sprintf("Plugin '%s' is not loaded.", target))
+			return
+		}
+		m.pluginReply(fmt.Sprintf("Plugin unloaded: %s", target))
+	case "list":
+		if len(m.pluginNames) == 0 {
+			m.pluginReply("No plugins currently loaded.")
+			return
+		}
+		m.pluginReply("Loaded plugins: " + strings.Join(m.pluginNames, ", "))
+	default:
+		m.pluginReply(fmt.Sprintf("Unknown subcommand '%s'. Use: load, unload, list", parts[1]))
+	}
+}
+
+// dispatchPluginReply handles a string returned by a plugin's onMessage hook.
+// If it starts with "/" it's treated as a command, otherwise as chat.
+func (m *chromeModel) dispatchPluginReply(text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	if strings.HasPrefix(text, "/") {
+		player := m.app.state.GetPlayer(m.playerID)
+		isAdmin := player != nil && player.IsAdmin
+		ctx := common.CommandContext{
+			PlayerID: m.playerID,
+			IsAdmin:  isAdmin,
+			Reply: func(s string) {
+				msg := common.Message{IsReply: true, IsPrivate: true, ToID: m.playerID, Text: s}
+				m.app.sendToPlayer(m.playerID, common.ChatMsg{Msg: msg})
+			},
+			Broadcast: func(s string) {
+				m.app.broadcastChat(common.Message{Text: s})
+			},
+			ServerLog: func(s string) {
+				m.app.serverLog(s)
+			},
+		}
+		m.app.registry.Dispatch(text, ctx)
+		return
+	}
 	playerName := "unknown"
 	if p := m.app.state.GetPlayer(m.playerID); p != nil {
 		playerName = p.Name

@@ -145,6 +145,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `server/commands.go` | `/` command registry, tab completion, permission checks |
 | `server/console.go` | Local server management terminal (not for playing) |
 | `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
+| `server/plugin.go` | Per-player JS plugin runtime: loads `dist/plugins/*.js`, calls `onMessage` hook |
 | `server/theme.go` | Theme system: loads JSON color palettes from `dist/themes/`, applies to NC chrome |
 | `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
@@ -219,6 +220,18 @@ Single `.js` files in `dist/games/`. Loaded at runtime via `/game load <name>`. 
 **Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `teams()`, `registerCommand()`, `gameOver(results, state)`, `figlet(text, font?)` (ASCII art via figlet4go; built-in fonts: `"standard"`, `"larry3d"`; extra fonts loaded from `dist/fonts/*.flf` at startup).
 
 **Full developer documentation:** see `API-REFERENCE.md` at the repo root.
+
+### Plugins (JS)
+
+Per-player (or per-console) JavaScript extensions in `dist/plugins/`. Loaded with `/plugin load <name|url>`. Each player/console maintains their own plugin list — plugins are not shared.
+
+A plugin exports a `Plugin` object with an `onMessage(author, text, isSystem)` hook. The hook is called for every chat message (or log line, for console plugins). If it returns a non-empty string, that string is dispatched as if the player typed it — starting with `/` means a command, otherwise it's sent as chat. Return `null` to do nothing.
+
+**Use cases:** auto-greeting bots, chat responders, server management scripts, auto-moderation.
+
+**Global JS:** `log()` only (for debug output).
+
+**Bundled plugins:** `greeter` (welcomes new players), `echo` (echoes `!echo` messages).
 
 ### Themes
 

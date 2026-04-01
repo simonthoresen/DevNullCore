@@ -30,6 +30,7 @@ jobs:
             start.ps1 \
             fonts/ \
             games/ \
+            plugins/ \
             themes/
 
       - name: Get short SHA
