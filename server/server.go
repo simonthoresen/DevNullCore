@@ -1048,48 +1048,6 @@ func (a *Server) registerBuiltins() {
 		},
 	})
 
-	a.registry.Register(common.Command{
-		Name:        "theme",
-		Description: "Switch NC chrome theme. No args = list available. /theme <name>",
-		Complete: func(before []string) []string {
-			if len(before) == 0 {
-				return ListThemes(a.dataDir)
-			}
-			return nil
-		},
-		Handler: func(ctx common.CommandContext, args []string) {
-			if len(args) == 0 {
-				available := ListThemes(a.dataDir)
-				current := a.state.Theme.Name
-				if len(available) == 0 {
-					ctx.Reply("No themes found in themes/")
-					return
-				}
-				var lines []string
-				for _, name := range available {
-					line := "  " + name
-					if strings.EqualFold(name, current) {
-						line += "  [active]"
-					}
-					lines = append(lines, line)
-				}
-				ctx.Reply("Available themes:\n" + strings.Join(lines, "\n"))
-				return
-			}
-			name := args[0]
-			path := filepath.Join(a.dataDir, "themes", name+".json")
-			t, err := LoadTheme(path)
-			if err != nil {
-				ctx.Reply(fmt.Sprintf("Failed to load theme: %v", err))
-				return
-			}
-			a.state.mu.Lock()
-			a.state.Theme = t
-			a.state.mu.Unlock()
-			ctx.Broadcast(fmt.Sprintf("Theme changed to: %s", t.Name))
-		},
-	})
-
 }
 
 // probeGameTeamRange reads a game JS file and extracts the Game.teamRange property

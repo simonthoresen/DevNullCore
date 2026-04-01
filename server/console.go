@@ -41,6 +41,9 @@ type consoleModel struct {
 	tabCandidates []string
 	tabIndex      int
 
+	// Per-console theme
+	theme *Theme
+
 	// Per-console plugins
 	plugins     []*jsPlugin
 	pluginNames []string
@@ -63,6 +66,7 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 		cancel:     cancel,
 		log:        log,
 		input:      input,
+		theme:      DefaultTheme(),
 		historyIdx: -1,
 	}
 }
@@ -298,6 +302,10 @@ func (m *consoleModel) submitInput() {
 		m.handlePluginCommand(text)
 		return
 	}
+	if strings.HasPrefix(text, "/theme") {
+		m.handleThemeCommand(text)
+		return
+	}
 	ctx := common.CommandContext{
 		PlayerID:  "",
 		IsConsole: true,
@@ -313,6 +321,36 @@ func (m *consoleModel) submitInput() {
 		},
 	}
 	m.app.registry.Dispatch(text, ctx)
+}
+
+func (m *consoleModel) handleThemeCommand(input string) {
+	parts := strings.Fields(input)
+	if len(parts) <= 1 {
+		available := ListThemes(m.app.dataDir)
+		if len(available) == 0 {
+			m.appendLog("No themes found in themes/")
+			return
+		}
+		var lines []string
+		for _, name := range available {
+			line := "  " + name
+			if strings.EqualFold(name, m.theme.Name) {
+				line += "  [active]"
+			}
+			lines = append(lines, line)
+		}
+		m.appendLog("Available themes:\n" + strings.Join(lines, "\n"))
+		return
+	}
+	name := parts[1]
+	path := filepath.Join(m.app.dataDir, "themes", name+".json")
+	t, err := LoadTheme(path)
+	if err != nil {
+		m.appendLog(fmt.Sprintf("Failed to load theme: %v", err))
+		return
+	}
+	m.theme = t
+	m.appendLog(fmt.Sprintf("Theme changed to: %s", t.Name))
 }
 
 func (m *consoleModel) handlePluginCommand(input string) {

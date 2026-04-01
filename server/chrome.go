@@ -121,6 +121,9 @@ type chromeModel struct {
 	// Game-over countdown tracking
 	gameOverStart time.Time
 
+	// Per-player theme
+	theme *Theme
+
 	// Per-player plugins
 	plugins     []*jsPlugin
 	pluginNames []string // parallel to plugins; display names
@@ -152,6 +155,7 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 		input:         input,
 		teamEditInput: teamInput,
 		historyIdx:    -1,
+		theme:         DefaultTheme(),
 		overlay:       overlayState{openMenu: -1},
 	}
 	m.syncChat()
@@ -754,12 +758,12 @@ func (m chromeModel) View() tea.View {
 	// Apply overlay layers on top of the base content.
 	menus := m.allMenus()
 	if m.overlay.openMenu >= 0 {
-		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 1, m.app.state.Theme); ddStr != "" {
+		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 1, m.theme); ddStr != "" {
 			content = PlaceOverlay(ddCol, ddRow, ddStr, content)
 		}
 	}
 	if m.overlay.hasDialog() {
-		if dlgStr, dlgCol, dlgRow := m.overlay.renderDialog(m.width, m.height, m.app.state.Theme); dlgStr != "" {
+		if dlgStr, dlgCol, dlgRow := m.overlay.renderDialog(m.width, m.height, m.theme); dlgStr != "" {
 			content = PlaceOverlay(dlgCol, dlgRow, dlgStr, content)
 		}
 	}
@@ -797,7 +801,7 @@ func (m chromeModel) View() tea.View {
 }
 
 func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme)
 	contentH := m.height - 4 // server info + NC bar + input row + status bar
 	if contentH < 1 {
 		contentH = 1
@@ -894,7 +898,7 @@ func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg 
 }
 
 func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme)
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
@@ -929,7 +933,7 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chSt
 }
 
 func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme)
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
@@ -961,7 +965,7 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, ch
 }
 
 func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.theme)
 	menuBar := mbStyle.Width(m.width).Render(truncateStyled(gameName, m.width))
 	gameStatusBar := mbStyle.Bold(false).Width(m.width).Render(game.StatusBar(m.playerID))
 
@@ -1290,9 +1294,13 @@ func (m *chromeModel) submitInput() {
 	if text == "" {
 		return
 	}
-	// Handle /plugin locally (per-player plugin list).
+	// Handle /plugin and /theme locally (per-player).
 	if strings.HasPrefix(text, "/plugin") {
 		m.handlePluginCommand(text)
+		return
+	}
+	if strings.HasPrefix(text, "/theme") {
+		m.handleThemeCommand(text)
 		return
 	}
 	if strings.HasPrefix(text, "/") {
@@ -1321,6 +1329,36 @@ func (m *chromeModel) submitInput() {
 		playerName = p.Name
 	}
 	m.app.broadcastChat(common.Message{Author: playerName, Text: text})
+}
+
+func (m *chromeModel) handleThemeCommand(input string) {
+	parts := strings.Fields(input)
+	if len(parts) <= 1 {
+		available := ListThemes(m.app.dataDir)
+		if len(available) == 0 {
+			m.pluginReply("No themes found in themes/")
+			return
+		}
+		var lines []string
+		for _, name := range available {
+			line := "  " + name
+			if strings.EqualFold(name, m.theme.Name) {
+				line += "  [active]"
+			}
+			lines = append(lines, line)
+		}
+		m.pluginReply("Available themes:\n" + strings.Join(lines, "\n"))
+		return
+	}
+	name := parts[1]
+	path := filepath.Join(m.app.dataDir, "themes", name+".json")
+	t, err := LoadTheme(path)
+	if err != nil {
+		m.pluginReply(fmt.Sprintf("Failed to load theme: %v", err))
+		return
+	}
+	m.theme = t
+	m.pluginReply(fmt.Sprintf("Theme changed to: %s", t.Name))
 }
 
 func (m *chromeModel) pluginReply(text string) {
