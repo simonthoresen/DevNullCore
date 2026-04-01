@@ -29,7 +29,8 @@ jobs:
             pinggy-helper.exe \
             start.ps1 \
             fonts/ \
-            games/
+            games/ \
+            themes/
 
       - name: Get short SHA
         id: sha

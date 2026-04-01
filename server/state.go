@@ -49,6 +49,8 @@ type CentralState struct {
 	Players     map[string]*common.Player
 	ChatHistory []common.Message
 
+	Theme *Theme
+
 	Net networkInfo
 }
 
@@ -57,6 +59,7 @@ func newState(password string) *CentralState {
 		AdminPassword: password,
 		StartTime:     time.Now(),
 		Players:       make(map[string]*common.Player),
+		Theme:         DefaultTheme(),
 	}
 }
 

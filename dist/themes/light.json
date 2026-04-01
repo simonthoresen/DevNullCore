@@ -1,0 +1,15 @@
+{
+    "name": "light",
+    "barBg":       "#E0E0E0",
+    "barFg":       "#333333",
+    "barActiveBg": "#4A90D9",
+    "barActiveFg": "#FFFFFF",
+    "boxBg":       "#F5F5F5",
+    "boxFg":       "#333333",
+    "boxTitleBg":  "#4A90D9",
+    "boxTitleFg":  "#FFFFFF",
+    "btnActiveBg": "#4A90D9",
+    "btnActiveFg": "#FFFFFF",
+    "disabledFg":  "#999999",
+    "shadowBg":    "#AAAAAA"
+}

@@ -145,6 +145,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `server/commands.go` | `/` command registry, tab completion, permission checks |
 | `server/console.go` | Local server management terminal (not for playing) |
 | `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
+| `server/theme.go` | Theme system: loads JSON color palettes from `dist/themes/`, applies to NC chrome |
 | `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
 | `server/pinggy.go` | Polls Pinggy status file, updates `state.Net.PinggyURL` |
@@ -218,6 +219,10 @@ Single `.js` files in `dist/games/`. Loaded at runtime via `/game load <name>`. 
 **Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `teams()`, `registerCommand()`, `gameOver(results, state)`, `figlet(text, font?)` (ASCII art via figlet4go; built-in fonts: `"standard"`, `"larry3d"`; extra fonts loaded from `dist/fonts/*.flf` at startup).
 
 **Full developer documentation:** see `API-REFERENCE.md` at the repo root.
+
+### Themes
+
+JSON files in `dist/themes/` that control the NC-style chrome colors (action bar, dropdown menus, dialog boxes, shadows). Switch at runtime with `/theme <name>`. Bundled themes: `norton` (default), `dark`, `light`. Theme fields: `barBg`, `barFg`, `barActiveBg`, `barActiveFg`, `boxBg`, `boxFg`, `boxTitleBg`, `boxTitleFg`, `btnActiveBg`, `btnActiveFg`, `disabledFg`, `shadowBg`. Any omitted field falls back to the norton defaults.
 
 ---
 

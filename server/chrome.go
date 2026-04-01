@@ -23,7 +23,6 @@ var (
 	defaultChatBg = lipgloss.Color("#EADFC7")
 	defaultChatFg = lipgloss.Color("#2C1810")
 
-	// Used by setInputStyle call sites that run before View() (newChromeModel).
 	menuBg = defaultMenuBg
 	menuFg = defaultMenuFg
 	cmdBg  = defaultCmdBg
@@ -711,15 +710,15 @@ func (m chromeModel) View() tea.View {
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		if m.mode == modeInput {
-			setInputStyle(&m.input, defaultMenuBg, defaultMenuFg)
+			setInputStyle(&m.input, menuBg, menuFg)
 		}
 		if m.teamEditing {
 			setInputStyle(&m.teamEditInput, lobbyTeamActiveBg, lobbyTeamFg)
 		}
 	} else if m.mode == modeInput {
-		setInputStyle(&m.input, defaultMenuBg, defaultMenuFg)
+		setInputStyle(&m.input, menuBg, menuFg)
 	} else {
-		setInputStyle(&m.input, defaultCmdBg, defaultMenuFg)
+		setInputStyle(&m.input, cmdBg, menuFg)
 	}
 
 	var content string
@@ -739,12 +738,12 @@ func (m chromeModel) View() tea.View {
 	// Apply overlay layers on top of the base content.
 	menus := m.allMenus()
 	if m.overlay.openMenu >= 0 {
-		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 1); ddStr != "" {
+		if ddStr, ddCol, ddRow := m.overlay.renderDropdown(menus, 1, m.app.state.Theme); ddStr != "" {
 			content = PlaceOverlay(ddCol, ddRow, ddStr, content)
 		}
 	}
 	if m.overlay.hasDialog() {
-		if dlgStr, dlgCol, dlgRow := m.overlay.renderDialog(m.width, m.height); dlgStr != "" {
+		if dlgStr, dlgCol, dlgRow := m.overlay.renderDialog(m.width, m.height, m.app.state.Theme); dlgStr != "" {
 			content = PlaceOverlay(dlgCol, dlgRow, dlgStr, content)
 		}
 	}
@@ -782,7 +781,7 @@ func (m chromeModel) View() tea.View {
 }
 
 func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus())
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
 	contentH := m.height - 4 // server info + NC bar + input row + status bar
 	if contentH < 1 {
 		contentH = 1
@@ -879,7 +878,7 @@ func (m chromeModel) viewLobby(mbStyle, chStyle, ciStyle lipgloss.Style, chatBg 
 }
 
 func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus())
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
@@ -914,7 +913,7 @@ func (m chromeModel) viewSplash(game common.Game, gameName string, mbStyle, chSt
 }
 
 func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus())
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
 		displayName = gn
@@ -946,7 +945,7 @@ func (m chromeModel) viewGameOver(game common.Game, gameName string, mbStyle, ch
 }
 
 func (m chromeModel) viewPlaying(game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, m.allMenus())
+	ncBar := m.overlay.renderNCBar(m.width, m.allMenus(), m.app.state.Theme)
 	menuBar := mbStyle.Width(m.width).Render(truncateStyled(gameName, m.width))
 	gameStatusBar := mbStyle.Bold(false).Width(m.width).Render(game.StatusBar(m.playerID))
 

@@ -1,0 +1,15 @@
+{
+    "name": "norton",
+    "barBg":       "#000080",
+    "barFg":       "#AAAAAA",
+    "barActiveBg": "#AAAAAA",
+    "barActiveFg": "#000080",
+    "boxBg":       "#AAAAAA",
+    "boxFg":       "#000000",
+    "boxTitleBg":  "#000080",
+    "boxTitleFg":  "#FFFFFF",
+    "btnActiveBg": "#000080",
+    "btnActiveFg": "#FFFFFF",
+    "disabledFg":  "#888888",
+    "shadowBg":    "#333333"
+}

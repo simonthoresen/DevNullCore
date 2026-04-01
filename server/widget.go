@@ -8,24 +8,6 @@ import (
 	"null-space/common"
 )
 
-// ─── NC chrome colors ──────────────────────────────────────────────────────────
-
-var (
-	ncBarBg       = lipgloss.Color("#000080")
-	ncBarFg       = lipgloss.Color("#AAAAAA")
-	ncBarActiveBg = lipgloss.Color("#AAAAAA")
-	ncBarActiveFg = lipgloss.Color("#000080")
-
-	ncBoxBg      = lipgloss.Color("#AAAAAA")
-	ncBoxFg      = lipgloss.Color("#000000")
-	ncBoxTitleBg = lipgloss.Color("#000080")
-	ncBoxTitleFg = lipgloss.Color("#FFFFFF")
-
-	ncBtnActiveBg = lipgloss.Color("#000080")
-	ncBtnActiveFg = lipgloss.Color("#FFFFFF")
-
-	ncShadowBg = lipgloss.Color("#333333")
-)
 
 // ─── Overlay state ─────────────────────────────────────────────────────────────
 
@@ -232,9 +214,9 @@ func prevSelectable(items []common.MenuItemDef, cur int) int {
 // ─── Menu bar rendering ────────────────────────────────────────────────────────
 
 // renderNCBar renders the NC-style action bar row (full terminal width).
-func (o *overlayState) renderNCBar(width int, menus []common.MenuDef) string {
-	barStyle    := lipgloss.NewStyle().Background(ncBarBg).Foreground(ncBarFg)
-	activeStyle := lipgloss.NewStyle().Background(ncBarActiveBg).Foreground(ncBarActiveFg).Bold(true)
+func (o *overlayState) renderNCBar(width int, menus []common.MenuDef, t *Theme) string {
+	barStyle    := lipgloss.NewStyle().Background(t.BarBgC()).Foreground(t.BarFgC())
+	activeStyle := lipgloss.NewStyle().Background(t.BarActiveBgC()).Foreground(t.BarActiveFgC()).Bold(true)
 
 	var sb strings.Builder
 	for i, m := range menus {
@@ -274,7 +256,7 @@ func ncBarMenuPositions(menus []common.MenuDef) []int {
 
 // renderDropdown returns (overlayString, col, row) for PlaceOverlay.
 // ncBarRow is the screen row (0-based) of the NC action bar.
-func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int) (string, int, int) {
+func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int, t *Theme) (string, int, int) {
 	if o.openMenu < 0 || o.openMenu >= len(menus) {
 		return "", 0, 0
 	}
@@ -294,10 +276,10 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int) (str
 		innerW = 14
 	}
 
-	boxStyle      := lipgloss.NewStyle().Background(ncBoxBg).Foreground(ncBoxFg)
-	activeStyle   := lipgloss.NewStyle().Background(ncBtnActiveBg).Foreground(ncBtnActiveFg).Bold(true)
-	disabledStyle := lipgloss.NewStyle().Background(ncBoxBg).Foreground(lipgloss.Color("#888888"))
-	shadowStyle   := lipgloss.NewStyle().Background(ncShadowBg)
+	boxStyle      := lipgloss.NewStyle().Background(t.BoxBgC()).Foreground(t.BoxFgC())
+	activeStyle   := lipgloss.NewStyle().Background(t.BtnActiveBgC()).Foreground(t.BtnActiveFgC()).Bold(true)
+	disabledStyle := lipgloss.NewStyle().Background(t.BoxBgC()).Foreground(t.DisabledFgC())
+	shadowStyle   := lipgloss.NewStyle().Background(t.ShadowBgC())
 
 	top    := boxStyle.Render("┌" + strings.Repeat("─", innerW) + "┐")
 	bottom := boxStyle.Render("└" + strings.Repeat("─", innerW) + "┘")
@@ -351,7 +333,7 @@ func (o *overlayState) renderDropdown(menus []common.MenuDef, ncBarRow int) (str
 
 // renderDialog returns (overlayString, col, row) for PlaceOverlay, centered in
 // the screen.
-func (o *overlayState) renderDialog(screenW, screenH int) (string, int, int) {
+func (o *overlayState) renderDialog(screenW, screenH int, t *Theme) (string, int, int) {
 	d := o.topDialog()
 	if d == nil {
 		return "", 0, 0
@@ -386,9 +368,9 @@ func (o *overlayState) renderDialog(screenW, screenH int) (string, int, int) {
 		innerW = 22
 	}
 
-	boxStyle    := lipgloss.NewStyle().Background(ncBoxBg).Foreground(ncBoxFg)
-	titleStyle  := lipgloss.NewStyle().Background(ncBoxTitleBg).Foreground(ncBoxTitleFg).Bold(true)
-	shadowStyle := lipgloss.NewStyle().Background(ncShadowBg)
+	boxStyle    := lipgloss.NewStyle().Background(t.BoxBgC()).Foreground(t.BoxFgC())
+	titleStyle  := lipgloss.NewStyle().Background(t.BoxTitleBgC()).Foreground(t.BoxTitleFgC()).Bold(true)
+	shadowStyle := lipgloss.NewStyle().Background(t.ShadowBgC())
 
 	hbar := func(l, f, r string) string {
 		return boxStyle.Render(l + strings.Repeat(f, innerW) + r)
@@ -417,7 +399,7 @@ func (o *overlayState) renderDialog(screenW, screenH int) (string, int, int) {
 	lines = append(lines, hbar("├", "─", "┤"))
 
 	// Button row.
-	btnActiveSt := lipgloss.NewStyle().Background(ncBtnActiveBg).Foreground(ncBtnActiveFg).Bold(true)
+	btnActiveSt := lipgloss.NewStyle().Background(t.BtnActiveBgC()).Foreground(t.BtnActiveFgC()).Bold(true)
 	var btnParts []string
 	for i, b := range btns {
 		label := "[ " + b + " ]"
