@@ -238,14 +238,107 @@ func (m *consoleModel) consoleMenus() []common.MenuDef {
 		{
 			Label: "&Server",
 			Items: []common.MenuItemDef{
-				{Label: "&Shutdown", Handler: func(_ string) {
-					if m.cancel != nil {
-						m.cancel()
-					}
+				{Label: "&Themes...", Handler: func(_ string) { m.showListDialog("Themes", "themes", ".json") }},
+				{Label: "&Plugins...", Handler: func(_ string) { m.showListDialog("Plugins", "plugins", ".js") }},
+				{Label: "&Games...", Handler: func(_ string) { m.showListDialog("Games", "games", ".js") }},
+				{Label: "---"},
+				{Label: "S&hutdown", Handler: func(_ string) {
+					m.overlay.pushDialog(common.DialogRequest{
+						Title:   "Shutdown",
+						Body:    "Are you sure you want to shut down the server?",
+						Buttons: []string{"Yes", "No"},
+						OnClose: func(btn string) {
+							if btn == "Yes" && m.cancel != nil {
+								m.cancel()
+							}
+						},
+					})
+				}},
+			},
+		},
+		{
+			Label: "&Help",
+			Items: []common.MenuItemDef{
+				{Label: "&About...", Handler: func(_ string) {
+					logo := strings.TrimRight(Figlet("null-space", "slant"), "\n")
+					m.overlay.pushDialog(common.DialogRequest{
+						Title:   "About",
+						Body:    logo,
+						Buttons: []string{"OK"},
+					})
 				}},
 			},
 		},
 	}
+}
+
+// showListDialog opens a dialog listing available items from a dist/ subdirectory.
+func (m *consoleModel) showListDialog(title, subdir, ext string) {
+	dir := filepath.Join(m.app.dataDir, subdir)
+	items := listDir(dir, ext)
+	body := "(empty)"
+	if len(items) > 0 {
+		var lines []string
+		for _, name := range items {
+			lines = append(lines, "  "+name)
+		}
+		body = strings.Join(lines, "\n")
+	}
+	m.overlay.pushDialog(common.DialogRequest{
+		Title:   title,
+		Body:    body,
+		Buttons: []string{"Add", "Remove", "Close"},
+		OnClose: func(btn string) {
+			switch btn {
+			case "Add":
+				m.showAddDialog(title, subdir, ext)
+			case "Remove":
+				m.showRemoveDialog(title, subdir, ext, items)
+			}
+		},
+	})
+}
+
+// showAddDialog asks for a URL or filename to add.
+func (m *consoleModel) showAddDialog(title, subdir, ext string) {
+	// Use the command input to get user input — chain back via a command.
+	m.overlay.pushDialog(common.DialogRequest{
+		Title:   "Add " + title[:len(title)-1], // "Themes" → "Theme"
+		Body:    "Type a /command to add:\n\n  For games:   /game load <name or url>\n  For plugins: /plugin load <name or url>\n  For themes:  /theme <name>",
+		Buttons: []string{"OK"},
+		OnClose: func(_ string) {
+			m.showListDialog(title, subdir, ext)
+		},
+	})
+}
+
+// showRemoveDialog asks which item to remove and confirms.
+func (m *consoleModel) showRemoveDialog(title, subdir, ext string, items []string) {
+	if len(items) == 0 {
+		m.overlay.pushDialog(common.DialogRequest{
+			Title:   "Remove",
+			Body:    "No items to remove.",
+			Buttons: []string{"OK"},
+			OnClose: func(_ string) {
+				m.showListDialog(title, subdir, ext)
+			},
+		})
+		return
+	}
+	body := "Select item to remove:\n"
+	for i, name := range items {
+		body += fmt.Sprintf("\n  %d. %s", i+1, name)
+	}
+	body += "\n\nType the number in the command bar, or press Close."
+
+	m.overlay.pushDialog(common.DialogRequest{
+		Title:   "Remove " + title[:len(title)-1],
+		Body:    body,
+		Buttons: []string{"Close"},
+		OnClose: func(_ string) {
+			m.showListDialog(title, subdir, ext)
+		},
+	})
 }
 
 func (m *consoleModel) View() tea.View {

@@ -1271,21 +1271,25 @@ func (m *chromeModel) resizeViewports() {
 // allMenus returns the full ordered list of menus for the NC action bar:
 // the framework "File" menu followed by any game-registered menus.
 func (m *chromeModel) allMenus() []common.MenuDef {
-	var fileItems []common.MenuItemDef
+	fileItems := []common.MenuItemDef{
+		{Label: "&Themes...", Handler: func(_ string) { m.showPlayerListDialog("Themes", "themes", ".json") }},
+		{Label: "&Plugins...", Handler: func(_ string) { m.showPlayerListDialog("Plugins", "plugins", ".js") }},
+		{Label: "---"},
+	}
 	if m.isLocal {
-		fileItems = []common.MenuItemDef{{
+		fileItems = append(fileItems, common.MenuItemDef{
 			Label: "&Quit",
 			Handler: func(_ string) {
 				// Ctrl+C is the reliable quit path in local mode.
 			},
-		}}
+		})
 	} else {
-		fileItems = []common.MenuItemDef{{
+		fileItems = append(fileItems, common.MenuItemDef{
 			Label: "&Disconnect",
 			Handler: func(playerID string) {
 				go m.app.kickPlayer(playerID)
 			},
-		}}
+		})
 	}
 	menus := []common.MenuDef{{Label: "&File", Items: fileItems}}
 	m.app.state.mu.RLock()
@@ -1294,7 +1298,38 @@ func (m *chromeModel) allMenus() []common.MenuDef {
 	if game != nil {
 		menus = append(menus, game.Menus()...)
 	}
+	menus = append(menus, common.MenuDef{
+		Label: "&Help",
+		Items: []common.MenuItemDef{
+			{Label: "&About...", Handler: func(_ string) {
+				logo := strings.TrimRight(Figlet("null-space", "slant"), "\n")
+				m.overlay.pushDialog(common.DialogRequest{
+					Title:   "About",
+					Body:    logo,
+					Buttons: []string{"OK"},
+				})
+			}},
+		},
+	})
 	return menus
+}
+
+func (m *chromeModel) showPlayerListDialog(title, subdir, ext string) {
+	dir := filepath.Join(m.app.dataDir, subdir)
+	items := listDir(dir, ext)
+	body := "(empty)"
+	if len(items) > 0 {
+		var lines []string
+		for _, name := range items {
+			lines = append(lines, "  "+name)
+		}
+		body = strings.Join(lines, "\n")
+	}
+	m.overlay.pushDialog(common.DialogRequest{
+		Title:   title,
+		Body:    body,
+		Buttons: []string{"Close"},
+	})
 }
 
 func (m *chromeModel) submitInput() {
