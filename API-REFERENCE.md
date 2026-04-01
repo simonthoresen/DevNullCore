@@ -20,15 +20,46 @@ This document explains how to write games for null-space. Games are plain JavaSc
 # From a local file in dist/games/
 /game load example
 
+# From a folder-based game in dist/games/nethack/main.js
+/game load nethack
+
 # From a URL (GitHub blob or any HTTPS .js URL)
 /game load https://github.com/you/repo/blob/main/mygame.js
+
+# From a zip URL (downloaded, extracted to dist/games/<name>/)
+/game load https://example.com/mygame.zip
 
 # Local mode (no SSH server)
 null-space --local --game example
 null-space --local --game https://github.com/you/repo/blob/main/mygame.js
 ```
 
-URL-loaded files are cached in `dist/games/.cache/`. Re-loading the same URL always fetches the latest version.
+URL-loaded `.js` files are cached in `dist/games/.cache/`. Re-loading the same URL always fetches the latest version. Zip files are extracted to `dist/games/<name>/` and must contain a `main.js` at the root.
+
+---
+
+## Multi-file games
+
+For larger games, use a folder structure with `include()`:
+
+```
+dist/games/mygame/
+  main.js        <- entry point (must define the Game object)
+  monsters.js    <- included via include("monsters")
+  dungeon.js     <- included via include("dungeon")
+```
+
+Load with `/game load mygame`. The framework detects `games/mygame/main.js` automatically.
+
+`include("filename")` evaluates a JS file from the same directory. The `.js` extension is added if omitted. Each file is included at most once (idempotent — safe to call multiple times). All included files share the same global scope, so functions and variables defined in one file are accessible in others.
+
+To distribute a multi-file game as a URL, package it as a `.zip` file with `main.js` at the root:
+
+```
+/game load https://example.com/mygame.zip
+```
+
+The zip is extracted to `dist/games/mygame/` and then loaded normally.
 
 ---
 
@@ -192,6 +223,7 @@ These are available in games.
 | `gameOver()` | Signals that the game has ended. Transitions to the game-over screen. |
 | `gameOver(results)` | Same as above, with ranked results displayed on the game-over screen. `results` is an array of `{ name, result }` in ranked order. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). |
 | `gameOver(results, state)` | Same as above, plus persists `state` to `dist/state/<gamename>.json` for the next run. Received via `config.savedState` in `init()`. |
+| `include(name)` | Evaluates another `.js` file from the same directory as the game file. Used for multi-file games in `games/<name>/` folders. The `.js` extension is added automatically if omitted. Each file is only included once (idempotent). Path traversal (`..`) is rejected. |
 
 ### `registerCommand(spec)`
 

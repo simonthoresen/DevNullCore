@@ -215,11 +215,11 @@ type Message struct {
 
 ### Games (JS)
 
-Single `.js` files in `dist/games/`. Loaded at runtime via `/game load <name>`. A HTTPS URL can be given instead of a name — the file is downloaded and cached in `dist/games/.cache/`. GitHub blob URLs are converted to raw automatically.
+Games live in `dist/games/` as either single `.js` files or folders containing `main.js` (for multi-file games using `include()`). Loaded at runtime via `/game load <name>`. A HTTPS URL can be given instead of a name — `.js` files are cached in `dist/games/.cache/`, `.zip` files are extracted to `dist/games/<name>/`. GitHub blob URLs are converted to raw automatically.
 
 **Game** — exports a global `Game` object with hooks `onPlayerJoin`, `onPlayerLeave`, `onInput`, `view`, `statusBar`, `commandBar`. Optional properties: `gameName`, `teamRange`, `splashScreen`. Mandatory `init(savedState)` called on load. Loaded one at a time; owns the viewport.
 
-**Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `teams()`, `registerCommand()`, `gameOver(results, state)`, `figlet(text, font?)` (ASCII art via figlet4go; built-in fonts: `"standard"`, `"larry3d"`; extra fonts loaded from `dist/fonts/*.flf` at startup).
+**Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `teams()`, `registerCommand()`, `gameOver(results, state)`, `figlet(text, font?)` (ASCII art via figlet4go; built-in fonts: `"standard"`, `"larry3d"`; extra fonts loaded from `dist/fonts/*.flf` at startup), `include(name)` (evaluate another `.js` file from the same directory — for multi-file games).
 
 **Full developer documentation:** see `API-REFERENCE.md` at the repo root.
 

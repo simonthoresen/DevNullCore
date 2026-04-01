@@ -311,7 +311,7 @@ func (a *Server) LogInviteCommand() {
 // LogGameList broadcasts the available game list to chat.
 func (a *Server) LogGameList() {
 	gamesDir := filepath.Join(a.dataDir, "games")
-	available := listDir(gamesDir, ".js")
+	available := listGames(gamesDir)
 	if len(available) == 0 {
 		a.broadcastChat(common.Message{Text: "No games found in games/"})
 		return
@@ -676,18 +676,32 @@ func (a *Server) uniqueName(raw string) string {
 
 func (a *Server) loadGame(path string) error {
 	if isURL(path) {
-		cacheDir := filepath.Join(a.dataDir, "games", ".cache")
-		local, err := downloadToCache(path, cacheDir)
-		if err != nil {
-			return fmt.Errorf("download game: %w", err)
+		if isZipURL(path) {
+			gamesDir := filepath.Join(a.dataDir, "games")
+			local, err := downloadAndExtractZip(path, gamesDir)
+			if err != nil {
+				return fmt.Errorf("download game zip: %w", err)
+			}
+			path = local
+		} else {
+			cacheDir := filepath.Join(a.dataDir, "games", ".cache")
+			local, err := downloadToCache(path, cacheDir)
+			if err != nil {
+				return fmt.Errorf("download game: %w", err)
+			}
+			path = local
 		}
-		path = local
 	}
 	if a.state.ActiveGame != nil {
 		a.unloadGame()
 	}
 
+	// Derive game name: for folder games (games/nethack/main.js) use the folder name,
+	// for flat games (games/example.js) use the filename stem.
 	name := strings.TrimSuffix(filepath.Base(path), ".js")
+	if name == "main" {
+		name = filepath.Base(filepath.Dir(path))
+	}
 
 	// Create a buffered channel for JS→server chat; drained by a goroutine below.
 	gameChatCh := make(chan common.Message, 64)
@@ -1030,7 +1044,7 @@ func (a *Server) registerBuiltins() {
 			case 1:
 				switch before[0] {
 				case "load":
-					return listDir(filepath.Join(a.dataDir, "games"), ".js")
+					return listGames(filepath.Join(a.dataDir, "games"))
 				case "unload":
 					a.state.mu.RLock()
 					name := a.state.GameName
@@ -1045,7 +1059,7 @@ func (a *Server) registerBuiltins() {
 		Handler: func(ctx common.CommandContext, args []string) {
 			gamesDir := filepath.Join(a.dataDir, "games")
 			if len(args) == 0 {
-				available := listDir(gamesDir, ".js")
+				available := listGames(gamesDir)
 				if len(available) == 0 {
 					ctx.Reply("No games found in games/")
 					return
@@ -1055,7 +1069,7 @@ func (a *Server) registerBuiltins() {
 			}
 			switch args[0] {
 			case "list":
-				available := listDir(gamesDir, ".js")
+				available := listGames(gamesDir)
 				if len(available) == 0 {
 					ctx.Reply("No games found in games/")
 					return
@@ -1074,7 +1088,7 @@ func (a *Server) registerBuiltins() {
 				if isURL(args[1]) {
 					path = args[1]
 				} else {
-					path = filepath.Join(a.dataDir, "games", args[1]+".js")
+					path = resolveGamePath(filepath.Join(a.dataDir, "games"), args[1])
 				}
 				if err := a.loadGame(path); err != nil {
 					ctx.Reply(fmt.Sprintf("Failed to load game: %v", err))
@@ -1113,7 +1127,7 @@ func (a *Server) registerBuiltins() {
 		AdminOnly:   true,
 		Complete: func(before []string) []string {
 			if len(before) == 0 {
-				return listDir(filepath.Join(a.dataDir, "games"), ".js")
+				return listGames(filepath.Join(a.dataDir, "games"))
 			}
 			return nil
 		},
@@ -1236,7 +1250,7 @@ func (a *Server) formatGameList(gamesDir string, available []string) string {
 
 	var lines []string
 	for _, name := range available {
-		path := filepath.Join(gamesDir, name+".js")
+		path := resolveGamePath(gamesDir, name)
 		tr := probeGameTeamRange(path)
 
 		// Compatibility check.
@@ -1282,6 +1296,47 @@ func (a *Server) formatGameList(gamesDir string, available []string) string {
 
 	header := fmt.Sprintf("Available games (%d teams configured):", teamCount)
 	return header + "\n" + strings.Join(lines, "\n")
+}
+
+// resolveGamePath resolves a game name to a file path. It checks for:
+// 1. gamesDir/<name>.js  (flat single-file game)
+// 2. gamesDir/<name>/main.js  (folder-based multi-file game)
+func resolveGamePath(gamesDir, name string) string {
+	flat := filepath.Join(gamesDir, name+".js")
+	if _, err := os.Stat(flat); err == nil {
+		return flat
+	}
+	folder := filepath.Join(gamesDir, name, "main.js")
+	if _, err := os.Stat(folder); err == nil {
+		return folder
+	}
+	return flat // return the flat path so the error message makes sense
+}
+
+// listGames returns the names of all available games in dir: both flat .js files
+// and subdirectories containing a main.js, sorted alphabetically.
+func listGames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, e := range entries {
+		if e.Name() == ".cache" {
+			continue
+		}
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".js") {
+			names = append(names, strings.TrimSuffix(e.Name(), ".js"))
+		} else if e.IsDir() {
+			// Check for main.js inside the directory.
+			mainJS := filepath.Join(dir, e.Name(), "main.js")
+			if _, err := os.Stat(mainJS); err == nil {
+				names = append(names, e.Name())
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // listDir returns the name (without extension) of every file in dir that ends
