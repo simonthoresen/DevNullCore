@@ -1,8 +1,11 @@
 package server
 
 import (
+	"context"
+	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -743,4 +746,56 @@ func TestNCWindowIntegration(t *testing.T) {
 		t.Errorf("expected '/help' submitted, got %q", submitted)
 	}
 }
+
+// ─── Regression: slog feedback loop ───────────────────────────────────────────
+
+// TestSlogRenderLogsNotRoutedToConsole verifies that render-path debug messages
+// (e.g. "NCWindow render child") are not routed to the console channel, which
+// would cause a feedback loop: render → debug log → console → re-render → ...
+func TestSlogRenderLogsNotRoutedToConsole(t *testing.T) {
+	ch := make(chan slogLine, 10)
+	wrapped := &discardHandler{}
+	handler := NewConsoleSlogHandler(ch, wrapped)
+
+	ctx := t.Context()
+
+	// Render-path debug message should NOT appear in channel.
+	rec := slog.NewRecord(time.Now(), slog.LevelDebug, "NCWindow render child", 0)
+	_ = handler.Handle(ctx, rec)
+
+	rec2 := slog.NewRecord(time.Now(), slog.LevelDebug, "NCTextInput.Render", 0)
+	_ = handler.Handle(ctx, rec2)
+
+	// Non-render debug message SHOULD appear in channel.
+	rec3 := slog.NewRecord(time.Now(), slog.LevelDebug, "plugin loaded: greeter", 0)
+	_ = handler.Handle(ctx, rec3)
+
+	// INFO message SHOULD appear in channel.
+	rec4 := slog.NewRecord(time.Now(), slog.LevelInfo, "server started", 0)
+	_ = handler.Handle(ctx, rec4)
+
+	// Drain channel and check.
+	close(ch)
+	var messages []string
+	for sl := range ch {
+		messages = append(messages, sl.text)
+	}
+
+	if len(messages) != 2 {
+		t.Errorf("expected 2 messages in console channel, got %d: %v", len(messages), messages)
+	}
+	for _, m := range messages {
+		if strings.Contains(m, "NCWindow render child") || strings.Contains(m, "NCTextInput.Render") {
+			t.Errorf("render-path debug message leaked to console: %q", m)
+		}
+	}
+}
+
+// discardHandler is a slog.Handler that discards all records (for testing).
+type discardHandler struct{}
+
+func (h *discardHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *discardHandler) Handle(_ context.Context, _ slog.Record) error { return nil }
+func (h *discardHandler) WithAttrs(_ []slog.Attr) slog.Handler         { return h }
+func (h *discardHandler) WithGroup(_ string) slog.Handler               { return h }
 
