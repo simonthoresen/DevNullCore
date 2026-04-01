@@ -160,8 +160,8 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		// Hard exit on Ctrl+D — always works, even if overlay is stuck.
-		if msg.String() == "ctrl+d" {
+		// Hard exit on Ctrl+C / Ctrl+D — always works, bypasses everything.
+		if msg.String() == "ctrl+c" || msg.String() == "ctrl+d" {
 			if m.cancel != nil {
 				m.cancel()
 			}
@@ -195,7 +195,7 @@ func (m *consoleModel) consoleMenus() []common.MenuDef {
 				{Label: "&Plugins...", Handler: func(_ string) { m.showListDialog("Plugins", "plugins", ".js") }},
 				{Label: "&Games...", Handler: func(_ string) { m.showListDialog("Games", "games", ".js") }},
 				{Label: "---"},
-				{Label: "E&xit", Hotkey: "ctrl+c", Handler: func(_ string) {
+				{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(_ string) {
 					m.overlay.pushDialog(common.DialogRequest{
 						Title:   "Exit",
 						Body:    "Are you sure you want to shut down the server?",
