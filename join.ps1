@@ -70,8 +70,8 @@ $env:TERM = "xterm-256color"
 $env:LANG = "en_US.UTF-8"
 $env:COLORTERM = "truecolor"
 
-# Read init commands from ~/.null-space.txt if it exists.
-$initFile = Join-Path $HOME ".null-space.txt"
+# Read init commands from ~/.null-space/client.txt if it exists.
+$initFile = Join-Path $HOME ".null-space" "client.txt"
 if (Test-Path $initFile) {
     $initContent = Get-Content $initFile -Raw -ErrorAction SilentlyContinue
     if ($initContent) {

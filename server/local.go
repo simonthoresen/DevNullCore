@@ -60,9 +60,9 @@ func (a *Server) RunLocal(ctx context.Context, playerName, gameName string) erro
 	model := newChromeModel(a, playerID)
 	model.isLocal = true
 
-	// Load init commands from ~/.null-space.txt if it exists.
+	// Load init commands from ~/.null-space/client.txt if it exists.
 	if home, err := os.UserHomeDir(); err == nil {
-		if data, err := os.ReadFile(filepath.Join(home, ".null-space.txt")); err == nil {
+		if data, err := os.ReadFile(filepath.Join(home, ".null-space", "client.txt")); err == nil {
 			for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
 				line = strings.TrimSpace(line)
 				if line != "" && !strings.HasPrefix(line, "#") {

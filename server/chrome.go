@@ -116,7 +116,7 @@ type chromeModel struct {
 	// Game-over countdown tracking
 	gameOverStart time.Time
 
-	// Init commands from ~/.null-space.txt (dispatched on first tick)
+	// Init commands from ~/.null-space/client.txt (dispatched on first tick)
 	initCommands []string
 
 	// Per-player theme
@@ -182,7 +182,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.TickMsg:
-		// Dispatch init commands from ~/.null-space.txt on the first tick
+		// Dispatch init commands from ~/.null-space/client.txt on the first tick
 		// (after the TUI is fully running and the player is registered).
 		if len(m.initCommands) > 0 {
 			for _, cmd := range m.initCommands {

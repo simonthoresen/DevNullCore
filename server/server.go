@@ -333,7 +333,7 @@ func (a *Server) programHandler(sess ssh.Session) *tea.Program {
 	playerID := sess.Context().SessionID()
 	model := newChromeModel(a, playerID)
 
-	// Check for init commands from ~/.null-space.txt (base64-encoded in env var).
+	// Check for init commands from ~/.null-space/client.txt (base64-encoded in env var).
 	for _, e := range sess.Environ() {
 		if strings.HasPrefix(e, "NULL_SPACE_INIT=") {
 			encoded := strings.TrimPrefix(e, "NULL_SPACE_INIT=")

@@ -58,7 +58,7 @@ type consoleModel struct {
 	// NC overlay (menus, dialogs)
 	overlay overlayState
 
-	// Init commands from ~/.null-space-server.txt (dispatched on first tick)
+	// Init commands from ~/.null-space/server.txt (dispatched on first tick)
 	initCommands []string
 
 	// Per-console plugins
@@ -109,9 +109,9 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 	inputCtrl.OnSubmit = m.submitInput
 	inputCtrl.OnTab = m.tabComplete
 
-	// Load init commands from ~/.null-space-server.txt if it exists.
+	// Load init commands from ~/.null-space/server.txt if it exists.
 	if home, err := os.UserHomeDir(); err == nil {
-		if data, err := os.ReadFile(filepath.Join(home, ".null-space-server.txt")); err == nil {
+		if data, err := os.ReadFile(filepath.Join(home, ".null-space", "server.txt")); err == nil {
 			for _, line := range strings.Split(string(data), "\n") {
 				line = strings.TrimSpace(line)
 				if line != "" && !strings.HasPrefix(line, "#") {
@@ -138,7 +138,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case common.TickMsg:
-		// Dispatch init commands from ~/.null-space-server.txt on the first tick
+		// Dispatch init commands from ~/.null-space/server.txt on the first tick
 		// (after the console UI is fully running).
 		if len(m.initCommands) > 0 {
 			for _, cmd := range m.initCommands {

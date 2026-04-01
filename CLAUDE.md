@@ -235,22 +235,22 @@ A plugin exports a `Plugin` object with an `onMessage(author, text, isSystem)` h
 
 **Bundled plugins:** `greeter` (welcomes new players), `echo` (echoes `!echo` messages).
 
-### Init Files
+### Init Files (`~/.null-space/`)
 
-**Server:** `~/.null-space-server.txt` — commands run automatically when the server console starts. Dispatched on the first tick after the console UI is running. Useful for loading a default game, setting a theme, or loading server-side plugins.
+Both files: one command per line; lines starting with `#` are comments. Dispatched on the first tick after the UI is running. Lives in the home directory so they survive reinstalls.
 
-**Client:** `~/.null-space.txt` — commands run automatically when a player joins a server. The join script reads this file, base64-encodes it, and sends it via the `NULL_SPACE_INIT` SSH environment variable. The server dispatches each line on the first tick after connection.
+**`~/.null-space/server.txt`** — commands run automatically when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
 
-Both files: one command per line; lines starting with `#` are comments.
+**`~/.null-space/client.txt`** — commands run automatically when a player joins a server (or starts in `--local` mode). The join script reads this file, base64-encodes it, and sends it via the `NULL_SPACE_INIT` SSH environment variable.
 
-Example `~/.null-space-server.txt`:
+Example `~/.null-space/server.txt`:
 ```
 # Server auto-setup
 /theme dark
 /game load invaders
 ```
 
-Example `~/.null-space.txt`:
+Example `~/.null-space/client.txt`:
 ```
 # Client auto-setup
 /theme dark

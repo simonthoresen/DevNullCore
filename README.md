@@ -32,9 +32,11 @@ Once the server is running, type into the server console:
 
 ## Auto-run commands on startup
 
-### Server: `~/.null-space-server.txt`
+Create files in `~/.null-space/` to run commands automatically. One command per line; lines starting with `#` are comments.
 
-Create this file to run commands automatically when the server console starts. One command per line; lines starting with `#` are comments.
+### `~/.null-space/server.txt`
+
+Runs when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
 
 ```
 # My server setup
@@ -43,9 +45,9 @@ Create this file to run commands automatically when the server console starts. O
 /game load invaders
 ```
 
-### Client: `~/.null-space.txt`
+### `~/.null-space/client.txt`
 
-Create this file to run commands automatically when you join a server. Same format as above.
+Runs when you join a server (or start in `--local` mode). The join script reads this file and sends it to the server via SSH.
 
 ```
 # My client setup
@@ -53,7 +55,7 @@ Create this file to run commands automatically when you join a server. Same form
 /plugin load greeter
 ```
 
-The join script reads this file and sends it to the server via the `NULL_SPACE_INIT` SSH environment variable.
+These files live in your home directory, so they survive reinstalls.
 
 ## Write your own game
 
