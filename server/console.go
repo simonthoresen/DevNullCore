@@ -429,11 +429,14 @@ func (m *consoleModel) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 
-	if cx, cy, visible := m.window.CursorPosition(); visible {
-		if cursor := m.inputCtrl.Model.Cursor(); cursor != nil {
-			cursor.Position.X = cx
-			cursor.Position.Y = cy
-			view.Cursor = cursor
+	// Hide cursor when overlay (menu/dialog) is active.
+	if !m.overlay.isActive() {
+		if cx, cy, visible := m.window.CursorPosition(); visible {
+			if cursor := m.inputCtrl.Model.Cursor(); cursor != nil {
+				cursor.Position.X = cx
+				cursor.Position.Y = cy
+				view.Cursor = cursor
+			}
 		}
 	}
 
