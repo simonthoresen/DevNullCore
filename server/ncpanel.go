@@ -296,39 +296,69 @@ func (ti *NCTextInput) Update(msg tea.Msg) {
 	*ti.Model = updated
 }
 
-func (ti *NCTextInput) Render(width int, focused bool, _ lipgloss.Style) string {
+func (ti *NCTextInput) Render(width int, focused bool, base lipgloss.Style) string {
 	bg := ti.bg
 	fg := ti.fg
 
-	inputStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
-	s := ti.Model.Styles()
-	s.Focused.Prompt = inputStyle
-	s.Focused.Text = inputStyle
-	s.Focused.Placeholder = inputStyle.Faint(true)
-	s.Blurred.Prompt = inputStyle
-	s.Blurred.Text = inputStyle
-	s.Blurred.Placeholder = inputStyle.Faint(true)
-	s.Cursor.Color = fg
-	s.Cursor.Blink = true
-	ti.Model.SetStyles(s)
-	ti.Model.SetVirtualCursor(false)
-	// SetWidth sets the text area width; subtract prompt width so total fits.
-	promptW := ansi.StringWidth(ti.Model.Prompt)
-	ti.Model.SetWidth(max(1, width-promptW))
+	// Layout: prompt [field_area]
+	// The prompt is rendered by us, the field area by the textinput.
+	promptText := ti.Model.Prompt
+	promptW := ansi.StringWidth(promptText)
+	fieldW := max(1, width-promptW-2) // -2 for "[" and "]"
+
+	promptStyle := base
+	bracketStyle := base
+	fieldBg := bg
+	fieldFg := fg
 
 	if focused {
+		// Focused: input bg, bright text, cursor visible.
+		inputStyle := lipgloss.NewStyle().Background(fieldBg).Foreground(fieldFg)
+		s := ti.Model.Styles()
+		s.Focused.Prompt = lipgloss.NewStyle() // we render prompt ourselves
+		s.Focused.Text = inputStyle
+		s.Focused.Placeholder = inputStyle.Faint(true)
+		s.Cursor.Color = fieldFg
+		s.Cursor.Blink = true
+		ti.Model.SetStyles(s)
+		ti.Model.SetVirtualCursor(false)
+		ti.Model.Placeholder = strings.Repeat("·", fieldW)
+		ti.Model.Prompt = "" // suppress built-in prompt
+		ti.Model.SetWidth(fieldW)
 		ti.Model.Focus()
-	} else {
-		ti.Model.Blur()
+
+		view := ti.Model.View()
+		ti.Model.Prompt = promptText // restore for next render
+
+		// Pad field to exact width.
+		viewW := ansi.StringWidth(view)
+		pad := ""
+		if viewW < fieldW {
+			pad = lipgloss.NewStyle().Background(fieldBg).Render(strings.Repeat(" ", fieldW-viewW))
+		}
+
+		return promptStyle.Render(promptText) +
+			bracketStyle.Render("[") +
+			view + pad +
+			bracketStyle.Render("]")
 	}
 
-	view := ti.Model.View()
-	viewW := ansi.StringWidth(view)
-	if viewW < width {
-		pad := lipgloss.NewStyle().Background(bg).Width(width - viewW).Render("")
-		return view + pad
+	// Unfocused: panel bg, dots showing field extent, no cursor.
+	ti.Model.Blur()
+	val := ti.Model.Value()
+	dotStyle := base.Faint(true)
+	if val == "" {
+		dots := strings.Repeat("·", fieldW)
+		return promptStyle.Render(promptText) + dotStyle.Render("["+dots+"]")
 	}
-	return view
+	text := truncateStyled(val, fieldW)
+	textW := ansi.StringWidth(text)
+	dots := ""
+	if textW < fieldW {
+		dots = strings.Repeat("·", fieldW-textW)
+	}
+	return promptStyle.Render(promptText) +
+		dotStyle.Render("[") + base.Render(text) + dotStyle.Render(dots+"]")
 }
 
 // ─── NCSeparator ──────────────────────────────────────────────────────────────
