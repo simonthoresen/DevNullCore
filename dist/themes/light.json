@@ -12,9 +12,8 @@
     "highlightFg": "#FFFFFF",
     "disabledFg":  "#999999",
     "shadowBg":    "#AAAAAA",
-    "outerTL": "╔", "outerTR": "╗", "outerBL": "╚", "outerBR": "╝",
-    "outerH":  "═", "outerV":  "║",
-    "innerH":  "─", "innerV":  "│",
-    "crossL":  "╟", "crossR":  "╢", "crossT": "╤", "crossB": "╧",
-    "barSep":  "║"
+    "outerTL": "┌", "outerTR": "┐", "outerBL": "└", "outerBR": "┘",
+    "outerH":  "─", "outerV":  "│",
+    "crossL":  "├", "crossR":  "┤", "crossT": "┬", "crossB": "┴",
+    "barSep":  "│"
 }

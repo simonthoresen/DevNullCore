@@ -114,23 +114,23 @@ func ts(s, fallback string) string {
 	return s
 }
 
-// Outer border accessors.
-func (t *Theme) OTL() string { return ts(t.OuterTL, "┌") }
-func (t *Theme) OTR() string { return ts(t.OuterTR, "┐") }
-func (t *Theme) OBL() string { return ts(t.OuterBL, "└") }
-func (t *Theme) OBR() string { return ts(t.OuterBR, "┘") }
-func (t *Theme) OH() string  { return ts(t.OuterH, "─") }
-func (t *Theme) OV() string  { return ts(t.OuterV, "│") }
+// Outer border accessors (default: double-line, matching NC windows).
+func (t *Theme) OTL() string { return ts(t.OuterTL, "╔") }
+func (t *Theme) OTR() string { return ts(t.OuterTR, "╗") }
+func (t *Theme) OBL() string { return ts(t.OuterBL, "╚") }
+func (t *Theme) OBR() string { return ts(t.OuterBR, "╝") }
+func (t *Theme) OH() string  { return ts(t.OuterH, "═") }
+func (t *Theme) OV() string  { return ts(t.OuterV, "║") }
 
-// Inner divider accessors.
+// Inner divider accessors (default: single-line).
 func (t *Theme) IH() string { return ts(t.InnerH, "─") }
 func (t *Theme) IV() string { return ts(t.InnerV, "│") }
 
-// Intersection accessors (inner meets outer).
-func (t *Theme) XL() string { return ts(t.CrossL, "├") }
-func (t *Theme) XR() string { return ts(t.CrossR, "┤") }
-func (t *Theme) XT() string { return ts(t.CrossT, "┬") }
-func (t *Theme) XB() string { return ts(t.CrossB, "┴") }
+// Intersection accessors (inner single meets outer double).
+func (t *Theme) XL() string { return ts(t.CrossL, "╟") }
+func (t *Theme) XR() string { return ts(t.CrossR, "╢") }
+func (t *Theme) XT() string { return ts(t.CrossT, "╤") }
+func (t *Theme) XB() string { return ts(t.CrossB, "╧") }
 func (t *Theme) XX() string { return ts(t.CrossX, "┼") }
 
 // Action bar separator.

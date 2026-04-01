@@ -146,7 +146,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `server/console.go` | Local server management terminal (not for playing) |
 | `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
 | `server/plugin.go` | Per-player JS plugin runtime: loads `dist/plugins/*.js`, calls `onMessage` hook |
-| `server/ncpanel.go` | NC control system: `NCPanel`, `NCTextView`, `NCTextInput`, `NCSeparator` — auto layout, focus, cursor |
+| `server/ncpanel.go` | NC control system: `NCPanel` (window with double outer borders, inner panels separated by single-line dividers), `NCTextView`, `NCTextInput`, `NCSeparator` — auto layout, focus, cursor |
 | `server/theme.go` | Theme system: loads JSON color palettes from `dist/themes/`, applies to NC chrome |
 | `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
 | `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
@@ -258,7 +258,7 @@ Themes use a 4-layer depth model matching the original Norton Commander:
 | 2 — Dialog | `dialogBg/Fg` | Modal dialog boxes |
 | 3 — Popup | `popupBg/Fg` | Nested popups inside dialogs |
 
-Plus: `highlightBg/Fg` (focused items, title bars, active buttons), `disabledFg`, `shadowBg`. Border characters are also themeable with outer/inner/intersection sets matching the NC model: outer frame (`outerTL/TR/BL/BR/H/V`), inner dividers (`innerH/V`), intersections where inner meets outer (`crossL/R/T/B`), and `barSep`. Defaults to single-line box drawing (`┌┐└┘─│├┤┬┴`). Themes can mix e.g. double-line outer (`╔═╗║╚╝`) with single-line inner and proper intersection chars (`╟╢╤╧`). Any omitted field falls back to the norton defaults. Theme authors can deliberately share colors between layers.
+Plus: `highlightBg/Fg` (focused items, title bars, active buttons), `disabledFg`, `shadowBg`. Border characters are also themeable with outer/inner/intersection sets matching the NC model: outer frame (`outerTL/TR/BL/BR/H/V`), inner dividers (`innerH/V`), intersections where inner meets outer (`crossL/R/T/B`), and `barSep`. Defaults to double-line outer (`╔═╗║╚╝`) with single-line inner (`─│`) and proper intersection chars (`╟╢╤╧`), matching the original NC window style. A **window** is a top-level container (double outer border); **panels** are subdivisions inside a window (separated by inner single-line dividers). Any omitted field falls back to the norton defaults. Theme authors can deliberately share colors between layers.
 
 ---
 
