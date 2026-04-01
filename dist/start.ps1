@@ -6,6 +6,7 @@ param(
 $Password = ""
 $Force = $false
 $Local = $false
+$NoUpdate = $false
 $Port = "23234"
 
 $positionals = @()
@@ -15,6 +16,7 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
         '^--?force$'         { $Force = $true; continue }
         '^--?local$'         { $Local = $true; continue }
         '^--?(no-?network|offline|singleplayer|single-player)$' { $Local = $true; continue }
+        '^--?(no-?update|skip-?update)$' { $NoUpdate = $true; continue }
         '^--?port$'          { $i++; if ($i -lt $CliArgs.Count) { $Port = $CliArgs[$i] }; continue }
         '^--?port=(.+)$'     { $Port = $Matches[1]; continue }
         default              { $positionals += $arg }
@@ -217,6 +219,11 @@ function Wait-ForTunnelReady {
 # ── auto-update binaries ────────────────────────────────────────────────────
 
 function Update-FromRelease {
+    if ($NoUpdate) {
+        Write-BootStepStart "Checking for updates"
+        Write-BootStepEnd "SKIP"
+        return
+    }
     Write-BootStepStart "Checking for updates"
     try {
         $headers = @{ Accept = "application/vnd.github+json" }
@@ -231,6 +238,21 @@ function Update-FromRelease {
         if ($localVersion -eq $remoteVersion -and $localVersion -ne "") {
             Write-BootStepEnd "DONE"
             return
+        }
+
+        # If no .version file, check whether the local exe is newer than the release.
+        # This avoids overwriting a locally-built binary with an older release.
+        if ($localVersion -eq "") {
+            $localExe = Join-Path $root "null-space.exe"
+            if (Test-Path $localExe) {
+                $localTime = (Get-Item $localExe).LastWriteTimeUtc
+                $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
+                if ($localTime -ge $releaseTime) {
+                    Write-BootStepEnd "DONE"
+                    Write-RunLogLine "local binary is newer than release, skipping update"
+                    return
+                }
+            }
         }
 
         Write-BootStepEnd "DONE"
