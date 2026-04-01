@@ -109,7 +109,7 @@ func NewConsoleModel(app *Server, cancel context.CancelFunc) *consoleModel {
 }
 
 func (m *consoleModel) Init() tea.Cmd {
-	return listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
+	return listenForEvents(m.app.ChatCh(), m.app.SlogCh())
 }
 
 func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -127,16 +127,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case slogLineMsg:
 		m.appendTagged(msg.cat, msg.text)
-		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
-
-	case logLineMsg:
-		m.appendTagged(catInfo, string(msg))
-		for _, pl := range m.plugins {
-			if reply := pl.OnMessage("", string(msg), true); reply != "" {
-				m.dispatchPluginReply(reply)
-			}
-		}
-		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
+		return m, listenForEvents(m.app.ChatCh(), m.app.SlogCh())
 
 	case chatLineMsg:
 		chatMsg := common.Message(msg)
@@ -174,7 +165,7 @@ func (m *consoleModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		return m, listenForLogs(m.app.LogCh(), m.app.ChatCh(), m.app.SlogCh())
+		return m, listenForEvents(m.app.ChatCh(), m.app.SlogCh())
 
 	case common.GamePhaseMsg, common.GameLoadedMsg, common.GameUnloadedMsg, common.TeamUpdatedMsg, common.PlayerJoinedMsg, common.PlayerLeftMsg:
 		return m, nil
@@ -655,19 +646,13 @@ type slogLine struct {
 	text string
 }
 
-// tea.Msg types for channel-based updates
-type logLineMsg string
+// tea.Msg types for channel-based updates.
 type chatLineMsg common.Message
 type slogLineMsg slogLine
 
-func listenForLogs(logCh <-chan string, chatCh <-chan common.Message, slogCh <-chan slogLine) tea.Cmd {
+func listenForEvents(chatCh <-chan common.Message, slogCh <-chan slogLine) tea.Cmd {
 	return func() tea.Msg {
 		select {
-		case line, ok := <-logCh:
-			if !ok {
-				return nil
-			}
-			return logLineMsg(line)
 		case msg, ok := <-chatCh:
 			if !ok {
 				return nil

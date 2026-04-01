@@ -91,6 +91,8 @@ func main() {
 	}
 	app.SetPort(port)
 	app.InstallConsoleSlogHandler()
+	app.OpenChatLog()
+	defer app.CloseChatLog()
 	finishBootStep("DONE")
 
 	if lanMode {

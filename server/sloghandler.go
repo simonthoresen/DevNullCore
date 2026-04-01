@@ -30,10 +30,9 @@ func (h *consoleSlogHandler) Handle(ctx context.Context, r slog.Record) error {
 	// Always forward to the wrapped handler (file) first.
 	err := h.wrapped.Handle(ctx, r)
 
-	// Only route INFO and above to the console channel to avoid a
-	// feedback loop: debug logs from rendering → console → re-render → more logs.
-	// Debug logs still go to the file via the wrapped handler above.
-	if r.Level < slog.LevelInfo {
+	// Skip render-path debug messages to avoid feedback loop:
+	// render → debug log → console → re-render → more debug logs.
+	if r.Level < slog.LevelInfo && isRenderLog(r.Message) {
 		return err
 	}
 
@@ -105,8 +104,18 @@ func slogLevelPrefix(level slog.Level) string {
 
 // InstallConsoleSlogHandler wraps the current default slog handler to also
 // route records to the server's slogCh. Call this after the server is created.
+// isRenderLog returns true for debug messages from the render path that
+// would cause a feedback loop if routed to the console.
+func isRenderLog(msg string) bool {
+	switch msg {
+	case "NCWindow render child", "NCTextInput.Render":
+		return true
+	}
+	return false
+}
+
 // InstallConsoleSlogHandler wraps the current default slog handler to also
-// route INFO+ records to the server's slogCh. Call after server creation.
+// route records to the server's slogCh. Call after server creation.
 func (a *Server) InstallConsoleSlogHandler() {
 	existing := slog.Default().Handler()
 	handler := NewConsoleSlogHandler(a.slogCh, existing)

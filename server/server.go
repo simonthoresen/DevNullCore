@@ -40,9 +40,11 @@ type Server struct {
 	sessionsMu sync.RWMutex
 
 	// channels for communicating events to the console
-	logCh   chan string         // server log lines
+	logCh   chan string         // server log lines (legacy, used by serverLog)
 	chatCh  chan common.Message // new chat messages
 	slogCh  chan slogLine       // slog records routed to console
+
+	chatLogFile *os.File // persistent chat log (timestamp-chat.log)
 
 	shutdownFn func()
 	sshServer  *ssh.Server
@@ -163,6 +165,29 @@ func (a *Server) SetupPublicIP() string {
 
 // SetPort stores the SSH listen port so invite scripts can reference it.
 func (a *Server) SetPort(port string) { a.port = port }
+
+// OpenChatLog opens a timestamped chat log file in the logs directory.
+func (a *Server) OpenChatLog() {
+	logsDir := filepath.Join(a.dataDir, "logs")
+	_ = os.MkdirAll(logsDir, 0o755)
+	ts := time.Now().Format("20060102-150405")
+	path := filepath.Join(logsDir, ts+"-chat.log")
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		slog.Warn("failed to open chat log", "path", path, "error", err)
+		return
+	}
+	a.chatLogFile = f
+	slog.Info("chat log opened", "path", path)
+}
+
+// CloseChatLog closes the chat log file.
+func (a *Server) CloseChatLog() {
+	if a.chatLogFile != nil {
+		a.chatLogFile.Close()
+		a.chatLogFile = nil
+	}
+}
 
 // InviteToken returns a base64url-encoded binary token containing the server's
 // connection endpoints. The token is variable-length — trailing absent fields
@@ -540,6 +565,21 @@ func (a *Server) broadcastChat(msg common.Message) {
 	start := time.Now()
 	a.state.AddChat(msg)
 
+	// Write to chat log file.
+	if a.chatLogFile != nil {
+		ts := time.Now().Format("2006-01-02 15:04:05")
+		var line string
+		switch {
+		case msg.IsPrivate:
+			line = fmt.Sprintf("%s [PM %s→%s] %s\n", ts, msg.FromID, msg.ToID, msg.Text)
+		case msg.Author == "":
+			line = fmt.Sprintf("%s [system] %s\n", ts, msg.Text)
+		default:
+			line = fmt.Sprintf("%s <%s> %s\n", ts, msg.Author, msg.Text)
+		}
+		_, _ = a.chatLogFile.WriteString(line)
+	}
+
 	select {
 	case a.chatCh <- msg:
 	default:
@@ -582,10 +622,6 @@ func (a *Server) ShowDialog(playerID string, d common.DialogRequest) {
 
 func (a *Server) serverLog(line string) {
 	slog.Info(line)
-	select {
-	case a.logCh <- line:
-	default:
-	}
 }
 
 func (a *Server) uptime() string {
