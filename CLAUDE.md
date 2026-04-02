@@ -253,12 +253,13 @@ type Command struct {
 ### `Message` Type (`common/types.go`)
 ```go
 type Message struct {
-    Author    string
-    Text      string
-    IsPrivate bool
-    ToID      string
-    FromID    string
-    IsReply   bool  // command response — rendered as plain text, no "[system]" or "[PM]" prefix
+    Author       string
+    Text         string
+    IsPrivate    bool
+    ToID         string
+    FromID       string
+    IsReply      bool  // command response — rendered as plain text, no "[system]" or "[PM]" prefix
+    IsFromPlugin bool  // originated from a plugin — plugins skip these to prevent loops
 }
 ```
 
@@ -279,6 +280,8 @@ Games live in `dist/games/` as either single `.js` files or folders containing `
 Per-player (or per-console) JavaScript extensions in `dist/plugins/`. Loaded with `/plugin load <name|url>`. Each player/console maintains their own plugin list — plugins are not shared.
 
 A plugin exports a `Plugin` object with an `onMessage(author, text, isSystem)` hook. The hook is called for every chat message (or log line, for console plugins). If it returns a non-empty string, that string is dispatched as if the player typed it — starting with `/` means a command, otherwise it's sent as chat. Return `null` to do nothing.
+
+**Loop prevention:** Messages originating from plugins are tagged with `IsFromPlugin: true` and are never fed back to plugin hooks. This prevents cross-plugin infinite loops (Plugin A → chat → Plugin B → chat → Plugin A …). Same-player messages are also skipped (SSH only: `FromID` check). Command replies (`IsReply`) are always skipped too.
 
 **Use cases:** auto-greeting bots, chat responders, server management scripts, auto-moderation.
 

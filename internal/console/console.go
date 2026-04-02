@@ -233,7 +233,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			line = fmt.Sprintf("<%s> %s", chatMsg.Author, chatMsg.Text)
 		}
 		m.appendTagged(CatChat, line)
-		if !chatMsg.IsReply {
+		if !chatMsg.IsReply && !chatMsg.IsFromPlugin {
 			isSystem := chatMsg.Author == ""
 			for _, pl := range m.plugins {
 				if reply := pl.OnMessage(chatMsg.Author, chatMsg.Text, isSystem); reply != "" {
@@ -752,7 +752,7 @@ func (m *Model) dispatchPluginReply(text string) {
 				m.appendLog(s)
 			},
 			Broadcast: func(s string) {
-				m.api.BroadcastChat(common.Message{Text: s})
+				m.api.BroadcastChat(common.Message{Text: s, IsFromPlugin: true})
 			},
 			ServerLog: func(s string) {
 				m.appendLog(s)
@@ -762,7 +762,7 @@ func (m *Model) dispatchPluginReply(text string) {
 		return
 	}
 	// Plain text from console plugin -> broadcast as admin chat.
-	m.api.BroadcastChat(common.Message{Author: "admin", Text: text})
+	m.api.BroadcastChat(common.Message{Author: "admin", Text: text, IsFromPlugin: true})
 }
 
 func (m *Model) handleShaderCommand(input string) {

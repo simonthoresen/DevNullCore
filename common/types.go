@@ -17,12 +17,13 @@ type Player struct {
 
 // Message is a chat entry. IsPrivate=true means only sender, recipient, and server console see it.
 type Message struct {
-	Author    string // empty = system message
-	Text      string
-	IsPrivate bool
-	ToID      string // recipient player ID (if private)
-	FromID    string // sender player ID (if private)
-	IsReply   bool   // command response to caller — render as plain text, no prefix
+	Author       string // empty = system message
+	Text         string
+	IsPrivate    bool
+	ToID         string // recipient player ID (if private)
+	FromID       string // sender player ID (if private)
+	IsReply      bool   // command response to caller — render as plain text, no prefix
+	IsFromPlugin bool   // message originated from a plugin — plugins skip these to prevent loops
 }
 
 // GamePhase represents the current phase of the game lifecycle.

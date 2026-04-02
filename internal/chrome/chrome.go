@@ -384,8 +384,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Run per-player plugins on this message.
-		// Skip messages from this player (avoid echo loops) and command replies.
-		if chatMsg.FromID != m.playerID && !chatMsg.IsReply {
+		// Skip messages from this player (avoid echo loops), command replies,
+		// and messages originating from plugins (prevent cross-plugin loops).
+		if chatMsg.FromID != m.playerID && !chatMsg.IsReply && !chatMsg.IsFromPlugin {
 			isSystem := chatMsg.Author == ""
 			for _, pl := range m.plugins {
 				if reply := pl.OnMessage(chatMsg.Author, chatMsg.Text, isSystem); reply != "" {
@@ -1523,7 +1524,7 @@ func (m *Model) dispatchPluginReply(text string) {
 				m.api.SendToPlayer(m.playerID, common.ChatMsg{Msg: msg})
 			},
 			Broadcast: func(s string) {
-				m.api.BroadcastChat(common.Message{Text: s})
+				m.api.BroadcastChat(common.Message{Text: s, IsFromPlugin: true})
 			},
 			ServerLog: func(s string) {
 				m.api.ServerLog(s)
@@ -1536,7 +1537,7 @@ func (m *Model) dispatchPluginReply(text string) {
 	if p := m.api.State().GetPlayer(m.playerID); p != nil {
 		playerName = p.Name
 	}
-	m.api.BroadcastChat(common.Message{Author: playerName, Text: text})
+	m.api.BroadcastChat(common.Message{Author: playerName, Text: text, IsFromPlugin: true})
 }
 
 func (m *Model) handleShaderCommand(input string) {
