@@ -22,9 +22,10 @@ type GameWindow struct {
 
 // CachedControl pairs a control with metadata for reuse decisions.
 type CachedControl struct {
-	NodeType string
-	Control  Control
-	Hash     uint64 // WidgetNode.Hash() at build time; 0 = always rebuild
+	NodeType   string
+	Control    Control
+	Hash       uint64   // WidgetNode.Hash() at build time; 0 = always rebuild
+	ChildPaths []string // paths of all descendants (for efficient subtree reuse)
 }
 
 // HasFocusable returns true if the window contains any focusable controls.
@@ -100,6 +101,9 @@ func ReconcileGameWindow(
 // descendants) and matches the cached hash at the same path, the entire subtree
 // is reused without rebuilding. This means only dynamic subtrees (containing
 // gameview or interactive nodes) are rebuilt each frame.
+// buildControl returns the Control. It populates gw.Controls with entries for
+// this node and all descendants. Each CachedControl stores ChildPaths for
+// efficient subtree reuse on cache hit.
 func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev map[string]CachedControl) Control {
 	if node == nil {
 		return &Label{Text: ""}
@@ -111,18 +115,35 @@ func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev ma
 	if hash != 0 {
 		if cached, ok := prev[path]; ok && cached.Hash == hash {
 			gw.Controls[path] = cached
-			gw.reuseCachedSubtree(path, prev)
+			// Copy descendant entries directly — O(descendants) not O(all controls).
+			for _, cp := range cached.ChildPaths {
+				if v, ok := prev[cp]; ok {
+					gw.Controls[cp] = v
+				}
+			}
 			return cached.Control
 		}
 	}
 
 	var ctrl Control
+	var childPaths []string
+
+	buildChild := func(child *common.WidgetNode, i int) Control {
+		childPath := fmt.Sprintf("%s.%d", path, i)
+		childPaths = append(childPaths, childPath)
+		c := gw.buildControl(child, childPath, prev)
+		// Propagate grandchild paths.
+		if cached, ok := gw.Controls[childPath]; ok {
+			childPaths = append(childPaths, cached.ChildPaths...)
+		}
+		return c
+	}
 
 	switch node.Type {
 	case "label":
 		ctrl = gw.buildLabel(node)
 	case "panel":
-		ctrl = gw.buildPanel(node, path, prev)
+		ctrl = gw.buildPanelWith(node, buildChild)
 	case "divider":
 		ctrl = &HDivider{Connected: false}
 	case "table":
@@ -138,38 +159,26 @@ func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev ma
 	case "gameview":
 		ctrl = gw.buildGameView(node)
 	case "hsplit":
-		ctrl = gw.buildContainer(node, path, true, prev)
+		ctrl = gw.buildContainerWith(node, true, buildChild)
 	case "vsplit":
-		ctrl = gw.buildContainer(node, path, false, prev)
+		ctrl = gw.buildContainerWith(node, false, buildChild)
 	default:
 		ctrl = gw.buildGameView(node)
 	}
 
-	gw.Controls[path] = CachedControl{NodeType: node.Type, Control: ctrl, Hash: hash}
+	gw.Controls[path] = CachedControl{NodeType: node.Type, Control: ctrl, Hash: hash, ChildPaths: childPaths}
 	return ctrl
-}
-
-// reuseCachedSubtree copies all descendants of the given path from prev into
-// the current controls map, so they survive to the next frame's cache check.
-func (gw *GameWindow) reuseCachedSubtree(path string, prev map[string]CachedControl) {
-	prefix := path + "."
-	for k, v := range prev {
-		if len(k) > len(prefix) && k[:len(prefix)] == prefix {
-			gw.Controls[k] = v
-		}
-	}
 }
 
 func (gw *GameWindow) buildLabel(node *common.WidgetNode) *Label {
 	return &Label{Text: node.Text, Align: node.Align}
 }
 
-func (gw *GameWindow) buildPanel(node *common.WidgetNode, path string, prev map[string]CachedControl) *Panel {
+func (gw *GameWindow) buildPanelWith(node *common.WidgetNode, buildChild func(*common.WidgetNode, int) Control) *Panel {
 	panel := &Panel{Title: node.Title}
 
 	for i, child := range node.Children {
-		childPath := fmt.Sprintf("%s.%d", path, i)
-		ctrl := gw.buildControl(child, childPath, prev)
+		ctrl := buildChild(child, i)
 
 		constraint := GridConstraint{
 			Col: 0, Row: i,
@@ -276,12 +285,11 @@ func (gw *GameWindow) buildGameView(node *common.WidgetNode) *GameView {
 	}
 }
 
-func (gw *GameWindow) buildContainer(node *common.WidgetNode, path string, horizontal bool, prev map[string]CachedControl) *Container {
+func (gw *GameWindow) buildContainerWith(node *common.WidgetNode, horizontal bool, buildChild func(*common.WidgetNode, int) Control) *Container {
 	container := &Container{Horizontal: horizontal}
 
 	for i, child := range node.Children {
-		childPath := fmt.Sprintf("%s.%d", path, i)
-		ctrl := gw.buildControl(child, childPath, prev)
+		ctrl := buildChild(child, i)
 
 		container.Children = append(container.Children, ContainerChild{
 			Control: ctrl,
