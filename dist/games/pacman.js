@@ -10,16 +10,14 @@ var DX = [0, 0, -1, 1];
 var DY = [-1, 1, 0, 0];
 var OPPOSITE = [1, 0, 3, 2];
 
-// ANSI colors
-var RST   = "\x1b[0m";
-var CWALL = "\x1b[34m";
-var CDOT  = "\x1b[33m";
-var CPOW  = "\x1b[33;1m";
-var CDOOR = "\x1b[37;2m";
-var CEYES = "\x1b[37;2m";
-var CBOLD = "\x1b[1m";
-var GCOL  = ["\x1b[31m", "\x1b[35m", "\x1b[36m", "\x1b[38;5;208m"];
-var PCOL  = ["\x1b[33m", "\x1b[32m", "\x1b[36m", "\x1b[35m", "\x1b[37m", "\x1b[31m"];
+// Hex colors
+var CWALL = "#0000AA";
+var CDOT  = "#AA5500";
+var CPOW  = "#FFFF55";
+var CDOOR = "#555555";
+var CEYES = "#555555";
+var GCOL  = ["#AA0000", "#AA00AA", "#00AAAA", "#FF8700"];
+var PCOL  = ["#AA5500", "#00AA00", "#00AAAA", "#AA00AA", "#AAAAAA", "#AA0000"];
 
 // Player emoji sets: [invuln, normal, powered, dead]
 var E_SETS = [
@@ -424,7 +422,7 @@ function tick() {
 // ============================================================
 // Rendering — player-centered camera viewport
 // ============================================================
-function render(pid, width, height) {
+function render(buf, pid, width, height) {
     var cw = (width >= 60) ? 2 : 1;
     var viewCols = Math.floor(width / cw);
     var viewRows = height;
@@ -449,7 +447,7 @@ function render(pid, width, height) {
         if (startY + viewRows > MH) startY = MH - viewRows;
     }
 
-    // Entity map
+    // Entity map: {ch, fg, bg, emoji}
     var ents = {};
 
     // Ghosts — always 👻 (or 👀 when returning)
@@ -458,9 +456,17 @@ function render(pid, width, height) {
         if (gh.eaten && !gh.returning) continue;
         var k = gh.x + "," + gh.y;
         if (gh.returning) {
-            ents[k] = cw === 2 ? E_EYES : CEYES + "." + RST;
+            if (cw === 2) {
+                ents[k] = {ch: E_EYES, fg: CEYES, bg: null, emoji: true};
+            } else {
+                ents[k] = {ch: ".", fg: CEYES, bg: null};
+            }
         } else {
-            ents[k] = cw === 2 ? E_GHOST : GCOL[g] + "M" + RST;
+            if (cw === 2) {
+                ents[k] = {ch: E_GHOST, fg: GCOL[g], bg: null, emoji: true};
+            } else {
+                ents[k] = {ch: "M", fg: GCOL[g], bg: null};
+            }
         }
     }
 
@@ -471,83 +477,81 @@ function render(pid, width, height) {
         var k = p.x + "," + p.y;
         var set = E_SETS[p.ci % E_SETS.length];
         if (cw === 2) {
+            var emoji;
             if (p.dead) {
-                ents[k] = set[E_DEAD];
+                emoji = set[E_DEAD];
             } else if (frame < p.invuln) {
-                ents[k] = set[E_INVULN];
+                emoji = set[E_INVULN];
             } else if (p.powerT > 0) {
-                ents[k] = set[E_POWERED];
+                emoji = set[E_POWERED];
             } else {
-                ents[k] = set[E_NORMAL];
+                emoji = set[E_NORMAL];
             }
+            ents[k] = {ch: emoji, fg: null, bg: null, emoji: true};
         } else {
             if (p.dead) {
-                ents[k] = "\x1b[37;2mX" + RST;
+                ents[k] = {ch: "X", fg: "#555555", bg: null};
             } else {
                 var col = PCOL[p.ci % PCOL.length];
                 var poN = ["^", "v", "<", ">"];
                 var ch = (frame % 6 < 3) ? poN[p.dir] : "o";
-                ents[k] = (plOrder[i] === pid ? CBOLD : "") + col + ch + RST;
+                ents[k] = {ch: ch, fg: col, bg: null, bold: (plOrder[i] === pid)};
             }
         }
     }
 
-    // Build lines
-    var lines = [];
-    var emptyW = rep(" ", cw);
-    var dotW1 = "\u2022";
-    var powW1 = "\u25cf";
-
+    // Render viewport
     for (var row = 0; row < viewRows; row++) {
         var my = startY + row;
-        if (my < 0 || my >= MH) {
-            lines.push(rep(" ", width));
-            continue;
-        }
-
-        var parts = [];
-        var visW = 0;
+        if (my < 0 || my >= MH) continue;
 
         for (var col = 0; col < viewCols; col++) {
             var mx = startX + col;
-            if (mx < 0 || mx >= MW) {
-                parts.push(emptyW); visW += cw;
-                continue;
-            }
+            var screenCol = col * cw;
+            if (mx < 0 || mx >= MW) continue;
+
             var k = mx + "," + my;
-            if (ents[k]) {
-                parts.push(ents[k]); visW += cw;
+            var e = ents[k];
+            if (e) {
+                if (e.emoji) {
+                    buf.writeString(screenCol, row, e.ch, e.fg, e.bg || null);
+                } else if (e.bold) {
+                    buf.setChar(screenCol, row, e.ch, e.fg, e.bg || null, ATTR_BOLD);
+                    if (cw === 2) buf.setChar(screenCol + 1, row, " ", e.fg, e.bg || null);
+                } else {
+                    buf.setChar(screenCol, row, e.ch, e.fg, e.bg || null);
+                    if (cw === 2) buf.setChar(screenCol + 1, row, " ", e.fg, e.bg || null);
+                }
                 continue;
             }
+
             var c = maze[my][mx];
             if (cw === 2) {
-                if (c === WALL)       parts.push(CWALL + "\u2588\u2588" + RST);
-                else if (c === DOT)   parts.push(CDOT + "\u2810\u2802" + RST);
-                else if (c === POWER) parts.push(E_CHERRY);
-                else if (c === DOOR)  parts.push(CDOOR + "\u2500\u2500" + RST);
-                else                  parts.push("  ");
+                if (c === WALL) {
+                    buf.setChar(screenCol, row, "\u2588", CWALL, null);
+                    buf.setChar(screenCol + 1, row, "\u2588", CWALL, null);
+                } else if (c === DOT) {
+                    buf.setChar(screenCol, row, "\u2810", CDOT, null);
+                    buf.setChar(screenCol + 1, row, "\u2802", CDOT, null);
+                } else if (c === POWER) {
+                    buf.writeString(screenCol, row, E_CHERRY, null, null);
+                } else if (c === DOOR) {
+                    buf.setChar(screenCol, row, "\u2500", CDOOR, null);
+                    buf.setChar(screenCol + 1, row, "\u2500", CDOOR, null);
+                }
             } else {
                 if (c === WALL) {
-                    parts.push(CWALL + BOX[wallMask[my][mx]] + RST);
+                    buf.setChar(screenCol, row, BOX[wallMask[my][mx]], CWALL, null);
                 } else if (c === DOT) {
-                    parts.push(CDOT + dotW1 + RST);
+                    buf.setChar(screenCol, row, "\u2022", CDOT, null);
                 } else if (c === POWER) {
-                    parts.push(CPOW + powW1 + RST);
+                    buf.setChar(screenCol, row, "\u25cf", CPOW, null);
                 } else if (c === DOOR) {
-                    parts.push(CDOOR + "\u2500" + RST);
-                } else {
-                    parts.push(" ");
+                    buf.setChar(screenCol, row, "\u2500", CDOOR, null);
                 }
             }
-            visW += cw;
         }
-
-        var rpad = width - visW;
-        if (rpad > 0) parts.push(rep(" ", rpad));
-        lines.push(parts.join(""));
     }
-
-    return lines.join("\n");
 }
 
 // ============================================================
@@ -624,7 +628,7 @@ var Game = {
     },
 
     render: function(buf, playerID, ox, oy, width, height) {
-        buf.paintANSI(0, 0, width, height, render(playerID, width, height), null, null);
+        render(buf, playerID, width, height);
     },
 
     statusBar: function(playerID) {
