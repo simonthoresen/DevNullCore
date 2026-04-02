@@ -1,4 +1,4 @@
-package server
+package widget
 
 import (
 	"strings"
@@ -6,12 +6,11 @@ import (
 
 	"null-space/common"
 	"null-space/internal/theme"
-	"null-space/internal/widget"
 )
 
 func TestReconcileLabel(t *testing.T) {
 	tree := &common.WidgetNode{Type: "label", Text: "Hello"}
-	gw := widget.ReconcileGameWindow(nil, tree, nil, nil)
+	gw := ReconcileGameWindow(nil, tree, nil, nil)
 	if gw == nil || gw.Window == nil {
 		t.Fatal("expected non-nil GameWindow")
 	}
@@ -38,10 +37,10 @@ func TestReconcilePanel(t *testing.T) {
 			{Type: "label", Text: "Line 1"},
 		},
 	}
-	gw := widget.ReconcileGameWindow(nil, tree, nil, nil)
+	gw := ReconcileGameWindow(nil, tree, nil, nil)
 	output := gw.Window.Render(0, 0, 20, 5, theme.Default().LayerAt(0))
 	s := newScreen(output)
-	// Panel is inside the NCWindow wrapper, so look for title anywhere.
+	// Panel is inside the Window wrapper, so look for title anywhere.
 	if !strings.Contains(s.String(), "Info") {
 		t.Errorf("panel title 'Info' not found:\n%s", s.String())
 	}
@@ -58,7 +57,7 @@ func TestReconcileHSplit(t *testing.T) {
 			{Type: "label", Text: "RIGHT", Weight: 1},
 		},
 	}
-	gw := widget.ReconcileGameWindow(nil, tree, nil, nil)
+	gw := ReconcileGameWindow(nil, tree, nil, nil)
 	output := gw.Window.Render(0, 0, 20, 3, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	// Both labels should appear on the same row.
@@ -82,10 +81,9 @@ func TestReconcileVSplit(t *testing.T) {
 			{Type: "label", Text: "BOTTOM", Weight: 1},
 		},
 	}
-	gw := widget.ReconcileGameWindow(nil, tree, nil, nil)
+	gw := ReconcileGameWindow(nil, tree, nil, nil)
 	output := gw.Window.Render(0, 0, 20, 4, theme.Default().LayerAt(0))
 	s := newScreen(output)
-	// TOP should appear in the inner area (row 1, since row 0 is the window border).
 	if !strings.Contains(s.String(), "TOP") {
 		t.Errorf("TOP not found:\n%s", s.String())
 	}
@@ -97,7 +95,7 @@ func TestReconcileVSplit(t *testing.T) {
 func TestReconcileGameView(t *testing.T) {
 	tree := &common.WidgetNode{Type: "gameview"}
 	called := false
-	gw := widget.ReconcileGameWindow(nil, tree,
+	gw := ReconcileGameWindow(nil, tree,
 		func(buf *common.ImageBuffer, x, y, w, h int) {
 			called = true
 			buf.WriteString(x, y, "GAME OUTPUT", nil, nil, common.AttrNone)
@@ -119,7 +117,7 @@ func TestReconcileButton(t *testing.T) {
 		Action: "fold",
 	}
 	var received string
-	gw := widget.ReconcileGameWindow(nil, tree, nil, func(action string) {
+	gw := ReconcileGameWindow(nil, tree, nil, func(action string) {
 		received = action
 	})
 	output := gw.Window.Render(0, 0, 20, 3, theme.Default().LayerAt(0))
@@ -155,7 +153,7 @@ func TestReconcilePreservesState(t *testing.T) {
 	}
 
 	// First reconcile — creates fresh controls.
-	gw1 := widget.ReconcileGameWindow(nil, tree, nil, nil)
+	gw1 := ReconcileGameWindow(nil, tree, nil, nil)
 
 	// Find the textview and change its scroll offset.
 	if tv, ok := findTextView(gw1.Window.Children[0].Control); ok {
@@ -170,7 +168,7 @@ func TestReconcilePreservesState(t *testing.T) {
 			{Type: "label", Text: "footer", Height: 1},
 		},
 	}
-	gw2 := widget.ReconcileGameWindow(gw1, tree2, nil, nil)
+	gw2 := ReconcileGameWindow(gw1, tree2, nil, nil)
 
 	if tv, ok := findTextView(gw2.Window.Children[0].Control); ok {
 		if tv.ScrollOffset != 2 {
@@ -190,7 +188,7 @@ func TestReconcileTable(t *testing.T) {
 			{"Bob", "200"},
 		},
 	}
-	gw := widget.ReconcileGameWindow(nil, tree, nil, nil)
+	gw := ReconcileGameWindow(nil, tree, nil, nil)
 	output := gw.Window.Render(0, 0, 30, 5, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	if !strings.Contains(s.String(), "Alice") || !strings.Contains(s.String(), "Score") {
@@ -199,8 +197,6 @@ func TestReconcileTable(t *testing.T) {
 }
 
 func TestReconcileCacheSkipsStaticSubtree(t *testing.T) {
-	// An hsplit with a static panel and a gameview. The static panel should
-	// be reused from cache on the second reconcile (same hash, same path).
 	tree := &common.WidgetNode{
 		Type: "hsplit",
 		Children: []*common.WidgetNode{
@@ -217,7 +213,7 @@ func TestReconcileCacheSkipsStaticSubtree(t *testing.T) {
 		buf.WriteString(x, y, "frame", nil, nil, common.AttrNone)
 	}
 
-	gw1 := widget.ReconcileGameWindow(nil, tree, viewFn, nil)
+	gw1 := ReconcileGameWindow(nil, tree, viewFn, nil)
 	_ = gw1.Window.Render(0, 0, 30, 5, theme.Default().LayerAt(0))
 	if viewCallCount != 1 {
 		t.Fatalf("expected 1 viewFn call, got %d", viewCallCount)
@@ -240,7 +236,7 @@ func TestReconcileCacheSkipsStaticSubtree(t *testing.T) {
 		},
 	}
 
-	gw2 := widget.ReconcileGameWindow(gw1, tree2, viewFn, nil)
+	gw2 := ReconcileGameWindow(gw1, tree2, viewFn, nil)
 	_ = gw2.Window.Render(0, 0, 30, 5, theme.Default().LayerAt(0))
 
 	// viewFn should be called again (gameview always rebuilds).
@@ -268,7 +264,7 @@ func TestReconcileCacheInvalidatesOnChange(t *testing.T) {
 		},
 	}
 
-	gw1 := widget.ReconcileGameWindow(nil, tree1, func(buf *common.ImageBuffer, x, y, w, h int) {}, nil)
+	gw1 := ReconcileGameWindow(nil, tree1, func(buf *common.ImageBuffer, x, y, w, h int) {}, nil)
 
 	// Change the label text — hash should differ, so it gets rebuilt.
 	tree2 := &common.WidgetNode{
@@ -279,7 +275,7 @@ func TestReconcileCacheInvalidatesOnChange(t *testing.T) {
 		},
 	}
 
-	gw2 := widget.ReconcileGameWindow(gw1, tree2, func(buf *common.ImageBuffer, x, y, w, h int) {}, nil)
+	gw2 := ReconcileGameWindow(gw1, tree2, func(buf *common.ImageBuffer, x, y, w, h int) {}, nil)
 
 	cached1 := gw1.Controls["0.0"]
 	cached2 := gw2.Controls["0.0"]
@@ -288,30 +284,30 @@ func TestReconcileCacheInvalidatesOnChange(t *testing.T) {
 	}
 
 	// Verify the new label has the updated text.
-	if label, ok := cached2.Control.(*widget.Label); ok {
+	if label, ok := cached2.Control.(*Label); ok {
 		if label.Text != "v2" {
 			t.Errorf("expected label text 'v2', got %q", label.Text)
 		}
 	} else {
-		t.Error("expected *widget.Label at path 0.0")
+		t.Error("expected *Label at path 0.0")
 	}
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-// findButton searches a control tree for the first widget.Button.
-func findButton(ctrl widget.Control) (*widget.Button, bool) {
-	if btn, ok := ctrl.(*widget.Button); ok {
+// findButton searches a control tree for the first Button.
+func findButton(ctrl Control) (*Button, bool) {
+	if btn, ok := ctrl.(*Button); ok {
 		return btn, true
 	}
-	if c, ok := ctrl.(*widget.Container); ok {
+	if c, ok := ctrl.(*Container); ok {
 		for _, child := range c.Children {
 			if btn, ok := findButton(child.Control); ok {
 				return btn, true
 			}
 		}
 	}
-	if p, ok := ctrl.(*widget.Panel); ok {
+	if p, ok := ctrl.(*Panel); ok {
 		for _, child := range p.Children {
 			if btn, ok := findButton(child.Control); ok {
 				return btn, true
@@ -321,19 +317,19 @@ func findButton(ctrl widget.Control) (*widget.Button, bool) {
 	return nil, false
 }
 
-// findTextView searches a control tree for the first widget.TextView.
-func findTextView(ctrl widget.Control) (*widget.TextView, bool) {
-	if tv, ok := ctrl.(*widget.TextView); ok {
+// findTextView searches a control tree for the first TextView.
+func findTextView(ctrl Control) (*TextView, bool) {
+	if tv, ok := ctrl.(*TextView); ok {
 		return tv, true
 	}
-	if c, ok := ctrl.(*widget.Container); ok {
+	if c, ok := ctrl.(*Container); ok {
 		for _, child := range c.Children {
 			if tv, ok := findTextView(child.Control); ok {
 				return tv, true
 			}
 		}
 	}
-	if p, ok := ctrl.(*widget.Panel); ok {
+	if p, ok := ctrl.(*Panel); ok {
 		for _, child := range p.Children {
 			if tv, ok := findTextView(child.Control); ok {
 				return tv, true

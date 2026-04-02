@@ -1,4 +1,4 @@
-.PHONY: build run run-lan run-local clean
+.PHONY: build run run-lan run-local test clean
 
 # Build the server binary into dist/ (strip debug info for smaller binaries)
 build:
@@ -16,6 +16,10 @@ run-lan:
 # Run in local mode (no SSH, single-player TUI)
 run-local:
 	go run ./cmd/null-space --data-dir dist --local
+
+# Run all tests
+test:
+	go test -v ./...
 
 # Remove build outputs from dist/ (keeps games/, fonts/, logs/)
 clean:

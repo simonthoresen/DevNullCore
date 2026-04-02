@@ -1,4 +1,4 @@
-package server
+package widget
 
 import (
 	"strings"
@@ -7,13 +7,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"null-space/common"
-	"null-space/internal/widget"
 )
 
 // ─── Menu bar render tests ───────────────────────────────────────────────────
 
 func TestRenderNCBarSingleMenu(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 	}
@@ -38,7 +37,7 @@ func TestRenderNCBarSingleMenu(t *testing.T) {
 }
 
 func TestRenderNCBarMultipleMenus(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 		{Label: "&Edit", Items: []common.MenuItemDef{{Label: "&Copy"}}},
@@ -61,7 +60,7 @@ func TestRenderNCBarMultipleMenus(t *testing.T) {
 }
 
 func TestRenderNCBarFocusedMenu(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 1, OpenMenu: -1}
+	o := OverlayState{MenuFocused: true, MenuCursor: 1, OpenMenu: -1}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 		{Label: "&Edit", Items: []common.MenuItemDef{{Label: "&Copy"}}},
@@ -82,7 +81,7 @@ func TestRenderNCBarFocusedMenu(t *testing.T) {
 // ─── Dropdown render tests ───────────────────────────────────────────────────
 
 func TestRenderDropdownBasic(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{
 			{Label: "&New"},
@@ -135,7 +134,7 @@ func TestRenderDropdownBasic(t *testing.T) {
 }
 
 func TestRenderDropdownWithSeparator(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{
 			{Label: "&New"},
@@ -166,7 +165,7 @@ func TestRenderDropdownWithSeparator(t *testing.T) {
 }
 
 func TestRenderDropdownWithHotkey(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{
 			{Label: "&Quit", Hotkey: "ctrl+q"},
@@ -183,7 +182,7 @@ func TestRenderDropdownWithHotkey(t *testing.T) {
 }
 
 func TestRenderDropdownWithToggles(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&View", Items: []common.MenuItemDef{
 			{Label: "&Sidebar", Toggle: true, Checked: func() bool { return true }},
@@ -213,7 +212,7 @@ func TestRenderDropdownWithToggles(t *testing.T) {
 }
 
 func TestRenderDropdownSecondMenu(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 1, OpenMenu: 1, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 1, OpenMenu: 1, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 		{Label: "&Edit", Items: []common.MenuItemDef{{Label: "&Copy"}, {Label: "&Paste"}}},
@@ -224,7 +223,7 @@ func TestRenderDropdownSecondMenu(t *testing.T) {
 	s := newScreen(dd)
 
 	// Column should be offset to Edit's position.
-	positions := widget.MenuBarPositions(menus)
+	positions := MenuBarPositions(menus)
 	if col != positions[1] {
 		t.Errorf("expected col %d, got %d", positions[1], col)
 	}
@@ -248,7 +247,7 @@ func TestRenderDropdownSecondMenu(t *testing.T) {
 // ─── Dropdown composited on bar ──────────────────────────────────────────────
 
 func TestDropdownOnBar(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{
 			{Label: "&New"},
@@ -273,7 +272,7 @@ func TestDropdownOnBar(t *testing.T) {
 	bg := strings.Join(bgLines, "\n")
 
 	// Composite.
-	result := widget.PlaceOverlay(ddCol, ddRow, dd, bg)
+	result := PlaceOverlay(ddCol, ddRow, dd, bg)
 	s := newScreen(result)
 
 	// Bar should still be visible on row 0.
@@ -310,7 +309,7 @@ func TestDropdownOnBar(t *testing.T) {
 // ─── Dialog render tests ─────────────────────────────────────────────────────
 
 func TestRenderDialogBasic(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	o.PushDialog(common.DialogRequest{
 		Title: "Confirm",
 		Body:  "Are you sure?",
@@ -357,7 +356,7 @@ func TestRenderDialogBasic(t *testing.T) {
 }
 
 func TestRenderDialogMultipleButtons(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1, DialogFocus: 1}
+	o := OverlayState{OpenMenu: -1, DialogFocus: 1}
 	o.PushDialog(common.DialogRequest{
 		Title:   "Save?",
 		Body:    "Unsaved changes.",
@@ -391,7 +390,7 @@ func TestRenderDialogMultipleButtons(t *testing.T) {
 }
 
 func TestRenderDialogMultilineBody(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	o.PushDialog(common.DialogRequest{
 		Title: "Info",
 		Body:  "Line one\nLine two\nLine three",
@@ -417,7 +416,7 @@ func TestRenderDialogMultilineBody(t *testing.T) {
 }
 
 func TestRenderDialogCentered(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	o.PushDialog(common.DialogRequest{
 		Title: "Test",
 		Body:  "Hi",
@@ -438,7 +437,7 @@ func TestRenderDialogCentered(t *testing.T) {
 // ─── Dialog composited on background ─────────────────────────────────────────
 
 func TestDialogOnBackground(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	o.PushDialog(common.DialogRequest{
 		Title: "OK?",
 		Body:  "Sure?",
@@ -454,7 +453,7 @@ func TestDialogOnBackground(t *testing.T) {
 	}
 	bg := strings.Join(bgLines, "\n")
 
-	result := widget.PlaceOverlay(dlgCol, dlgRow, dlg, bg)
+	result := PlaceOverlay(dlgCol, dlgRow, dlg, bg)
 	s := newScreen(result)
 
 	// Background should show dots outside dialog.
@@ -483,68 +482,5 @@ func TestDialogOnBackground(t *testing.T) {
 			}
 			break
 		}
-	}
-}
-
-// ─── Full NCWindow render with assertScreen ──────────────────────────────────
-
-func TestNCWindowRenderAssertScreen(t *testing.T) {
-	label := &widget.Label{Text: "Hi"}
-	win := &widget.Window{
-		Title: "Win",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
-		},
-	}
-	output := win.Render(0, 0, 12, 4, testLayer())
-	s := newScreen(output)
-
-	// Verify structure line by line.
-	if !strings.Contains(s.lines[0], "Win") {
-		t.Errorf("top border should contain title, got %q", s.lines[0])
-	}
-	if !strings.HasPrefix(s.lines[0], "╔") {
-		t.Errorf("expected ╔ start, got %q", s.lines[0])
-	}
-	if !strings.HasSuffix(s.lines[0], "╗") {
-		t.Errorf("expected ╗ end, got %q", s.lines[0])
-	}
-
-	// Content row with label.
-	if !strings.HasPrefix(s.lines[1], "║") || !strings.HasSuffix(s.lines[1], "║") {
-		t.Errorf("content row should have side borders, got %q", s.lines[1])
-	}
-	if !strings.Contains(s.lines[1], "Hi") {
-		t.Errorf("content row should contain 'Hi', got %q", s.lines[1])
-	}
-
-	// Bottom border.
-	last := s.lines[s.h-1]
-	if !strings.HasPrefix(last, "╚") || !strings.HasSuffix(last, "╝") {
-		t.Errorf("expected bottom border, got %q", last)
-	}
-}
-
-// ─── Region extraction from composited views ─────────────────────────────────
-
-func TestRegionExtractionFromNCWindow(t *testing.T) {
-	label := &widget.Label{Text: "ABCDE"}
-	win := &widget.Window{
-		Title: "T",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
-		},
-	}
-	output := win.Render(0, 0, 14, 4, testLayer())
-
-	// Extract just the content area (inside borders).
-	// Border is 1 char each side, so content starts at col 1, row 1.
-	// Width is 14-2=12, content rows are rows 1 and 2 (height 4 - top border - bottom border = 2).
-	s := newScreen(output)
-
-	// The label "ABCDE" should appear somewhere in the inner region.
-	inner := s.region(1, 1, 12, 2)
-	if !strings.Contains(inner, "ABCDE") {
-		t.Errorf("inner region should contain label 'ABCDE', got:\n%s", inner)
 	}
 }

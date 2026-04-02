@@ -135,24 +135,27 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 
 | Package | Role |
 |---------|------|
-| `server/server.go` | Wish SSH server setup, session lifecycle, tick broadcast, `Server` orchestrator, game lifecycle (splash/gameOver) |
-| `server/chrome.go` | Per-user `chromeModel`: renders lobby (with teams panel), splash, game, game-over screens |
-| `server/state.go` | `CentralState`: players, chat, active game, teams, game phase, game-over readiness |
-| `server/state_persist.go` | Load/save game state JSON files in `dist/state/` |
-| `server/commands.go` | `/` command registry, tab completion, permission checks |
-| `server/console.go` | Local server management terminal (not for playing) |
-| `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
-| `server/plugin.go` | Per-player JS plugin runtime: loads `dist/plugins/*.js`, calls `onMessage` hook |
-| `server/shader.go` | Per-player JS shader runtime: loads `dist/shaders/*.js`, post-processes ImageBuffer before ToString() |
-| `common/cellbuf.go` | `ImageBuffer`: 2D grid of styled `Pixel` cells. All rendering writes chars+colors into the buffer; `ToString()` serializes with RLE escape codes. `PaintANSI()` parses ANSI strings into cells. `Blit()` composites overlays. `BlitShadow()` renders drop shadows. Lives in `common` so `Game.Render` can reference it. |
-| `server/ncwidget.go` | NC widget core: `NCWindow` (grid bag layout, border/title), `NCControl` interface (`Render` writes to `*ImageBuffer`), focus/cursor/click management |
-| `server/nccontrols.go` | NC controls: `NCLabel`, `NCTextInput`, `NCTextArea`, `NCTextView`, `NCButton`, `NCCheckbox`, `NCHDivider`, `NCVDivider`, `NCPanel` (bordered sub-container). All `Render` methods write directly to `ImageBuffer`. |
-| `server/theme.go` | Theme system: loads JSON color palettes from `dist/themes/`, applies to NC chrome |
-| `server/local.go` | Local (non-SSH) mode: single-player / render test-bed |
-| `server/upnp.go` | Auto UPnP port mapping on start, cleanup on shutdown |
-| `server/pinggy.go` | Polls Pinggy status file, updates `state.Net.PinggyURL` |
-| `common/interfaces.go` | `Game` interface contract, `Command` struct |
-| `common/types.go` | Shared types: `Message`, `Player`, `TickMsg`, `ChatMsg`, etc. |
+| `server/server.go` | SSH server setup, session lifecycle, tick broadcast, game lifecycle |
+| `server/commands.go` | Slash command registry and dispatch |
+| `server/local.go` | Local (non-SSH) single-player mode |
+| `server/pinggy.go` | Pinggy tunnel status polling bridge |
+| `internal/chrome/chrome.go` | Per-player TUI model: lobby, game, splash, game-over |
+| `internal/console/console.go` | Server console TUI with log filtering |
+| `internal/console/sloghandler.go` | Console slog handler with render-path guard |
+| `internal/state/state.go` | `CentralState`: players, chat, game phase |
+| `internal/state/teams.go` | Team management helpers |
+| `internal/state/persist.go` | Game state JSON save/load |
+| `internal/widget/` | NC widget toolkit: Window, Label, TextInput, Button, etc. |
+| `internal/widget/menu.go` | Menu bar, dropdown, dialog overlay system |
+| `internal/widget/reconcile.go` | Widget tree reconciler for game viewports |
+| `internal/theme/theme.go` | Theme system: palettes, borders, depth layers |
+| `internal/engine/runtime.go` | JS game runtime (goja): loads games, implements Game |
+| `internal/engine/shader.go` | Per-player JS shader post-processing |
+| `internal/engine/plugin.go` | Per-player JS plugin system |
+| `internal/engine/figlet.go` | Figlet ASCII art rendering |
+| `internal/engine/game_list.go` | Game discovery, path resolution, team range probing |
+| `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
+| `common/` | Game interface, types, ImageBuffer, Clock |
 | `cmd/null-space/` | Entry point: boot sequence, console setup, signal handling |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
 | `dist/start.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then null-space.exe |
@@ -263,7 +266,7 @@ Optional hooks: `init()` (called once on load), `unload()` (called on removal).
 
 | Package | Role |
 |---------|------|
-| `server/shader.go` | JS shader runtime: `jsShader`, `LoadShader()`, `applyShaders()`, JS buffer wrapper with `getPixel`/`setChar`/`recolor` |
+| `internal/engine/shader.go` | JS shader runtime: `jsShader`, `LoadShader()`, `applyShaders()`, JS buffer wrapper with `getPixel`/`setChar`/`recolor` |
 
 ### Init Files (`~/.null-space/`)
 
@@ -304,9 +307,9 @@ Themes use a 4-layer depth model matching the original Norton Commander. Each la
 
 **Color fields** (per layer): `bg/fg`, `accent`, `highlightBg/Fg`, `activeBg/Fg`, `inputBg/Fg`, `disabledFg`. **Border fields** (per layer): outer frame (`outerTL/TR/BL/BR/H/V`), inner dividers (`innerH/V`), intersections (`crossL/R/T/B/X`), bar separator (`barSep`). Defaults: double-line outer (`╔═╗║╚╝`), single-line inner (`─│`), intersections (`╟╢╤╧`). Any omitted field falls back to hardcoded defaults. Different layers can use different border styles (e.g., double-line for desktop, single-line for menus).
 
-**Render signatures:** `NCControl.Render(buf, x, y, w, h, focused, layer)` writes directly into a `*ImageBuffer`. `NCWindow.Render(x, y, w, h, layer) string` creates a buffer internally and returns `ToString()`. `NCWindow.RenderToBuf(buf, x, y, w, h, layer)` writes into a caller-provided buffer. Menu/dialog renderers (`renderNCBar`, `renderDropdown`, `renderDialog`) still return strings — their output is painted into the buffer via `PaintANSI` + `Blit`.
+**Render signatures:** `Control.Render(buf, x, y, w, h, focused, layer)` writes directly into a `*ImageBuffer`. `Window.Render(x, y, w, h, layer) string` creates a buffer internally and returns `ToString()`. `Window.RenderToBuf(buf, x, y, w, h, layer)` writes into a caller-provided buffer. Menu/dialog renderers (`RenderMenuBar`, `RenderDropdown`, `RenderDialog`) still return strings — their output is painted into the buffer via `PaintANSI` + `Blit`.
 
-**Widget tree reconciler** (`server/ncreconcile.go`): `ReconcileGameWindow()` builds real `NCControl` instances from a `WidgetNode` tree, reusing controls by tree path to preserve state (focus, cursor, scroll) across frames. Supports interactive nodes: `button` (action via OnInput), `textinput` (submit via OnInput), `checkbox` (toggle via OnInput), `textview` (scrollable), `gameview` (optionally focusable). NC framework owns focus — Tab cycles controls, Esc blurs all, unfocused keys fall through to `game.OnInput()`.
+**Widget tree reconciler** (`internal/widget/reconcile.go`): `ReconcileGameWindow()` builds real `Control` instances from a `WidgetNode` tree, reusing controls by tree path to preserve state (focus, cursor, scroll) across frames. Supports interactive nodes: `button` (action via OnInput), `textinput` (submit via OnInput), `checkbox` (toggle via OnInput), `textview` (scrollable), `gameview` (optionally focusable). NC framework owns focus — Tab cycles controls, Esc blurs all, unfocused keys fall through to `game.OnInput()`.
 
 **JSON backwards compat**: Global border fields at the theme root are copied into any layer that has empty borders via `resolveDefaults()`. New themes should define borders per-layer.
 
@@ -314,7 +317,7 @@ Themes use a 4-layer depth model matching the original Norton Commander. Each la
 
 ## Server Console
 
-`server/console.go` is its own Bubble Tea program on the local terminal. Two phases:
+`internal/console/console.go` is its own Bubble Tea program on the local terminal. Two phases:
 
 ### Phase 1 — Boot sequence
 
@@ -409,14 +412,14 @@ Two primary mutexes protect shared state:
 
 | Mutex | Type | Location | Protects |
 |-------|------|----------|----------|
-| `CentralState.mu` | RWMutex | `state.go` | Players, teams, game phase, chat history, network info |
-| `jsRuntime.mu` | Mutex | `runtime.go` | Goja JS VM and all JS callback execution |
+| `CentralState.mu` | RWMutex | `internal/state/state.go` | Players, teams, game phase, chat history, network info |
+| `jsRuntime.mu` | Mutex | `internal/engine/runtime.go` | Goja JS VM and all JS callback execution |
 
 **Invariant:** `jsRuntime` must **never** acquire `CentralState.mu`. This is enforced structurally — `jsRuntime` has no reference to `CentralState`. Data flows through:
 - **Teams:** Server builds a cache (`buildTeamsCache`) and pushes it via `SetTeamsCache()`. JS `teams()` reads the local cache.
 - **Chat:** JS `chat()`/`chatPlayer()` send on a buffered channel; a server goroutine drains it and calls `broadcastChat()`.
 
-**Callers** (server.go, chrome.go) must release `state.mu` **before** calling any `jsRuntime` Game method (`Init`, `Start`, `Update`, `Render`, `OnInput`, etc.). All existing call sites follow this pattern — verify any new ones do too.
+**Callers** (`server/server.go`, `internal/chrome/chrome.go`) must release `state.mu` **before** calling any `jsRuntime` Game method (`Init`, `Start`, `Update`, `Render`, `OnInput`, etc.). All existing call sites follow this pattern — verify any new ones do too.
 
 Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.mu`) are leaf locks — they don't call into JS or acquire `state.mu`.
 

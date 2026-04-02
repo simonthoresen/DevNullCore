@@ -1,212 +1,12 @@
-package server
+package widget
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
-
 	"null-space/common"
 	"null-space/internal/theme"
-	"null-space/internal/widget"
 )
-
-// ─── Screen test harness ─────────────────────────────────────────────────────
-//
-// Provides helpers for comparing rendered NC output (after stripping ANSI)
-// against expected multi-line strings. Supports full-screen and region matching.
-
-// screen wraps a rendered string (ANSI-stripped) split into lines.
-type screen struct {
-	lines []string
-	w, h  int
-}
-
-// newScreen strips ANSI codes and splits the rendered output into lines.
-func newScreen(rendered string) screen {
-	stripped := ansi.Strip(rendered)
-	lines := strings.Split(stripped, "\n")
-	w := 0
-	for _, l := range lines {
-		if lw := len([]rune(l)); lw > w {
-			w = lw
-		}
-	}
-	return screen{lines: lines, w: w, h: len(lines)}
-}
-
-// String returns the screen content as a single string (for error messages).
-func (s screen) String() string {
-	return strings.Join(s.lines, "\n")
-}
-
-// region extracts a rectangle at (col, row) with the given width and height.
-// Out-of-bounds areas are filled with spaces.
-func (s screen) region(col, row, w, h int) string {
-	var lines []string
-	for dy := range h {
-		r := row + dy
-		var line string
-		if r >= 0 && r < len(s.lines) {
-			runes := []rune(s.lines[r])
-			for dx := range w {
-				c := col + dx
-				if c >= 0 && c < len(runes) {
-					line += string(runes[c])
-				} else {
-					line += " "
-				}
-			}
-		} else {
-			line = strings.Repeat(" ", w)
-		}
-		lines = append(lines, line)
-	}
-	return strings.Join(lines, "\n")
-}
-
-// assertScreen compares the full rendered output against an expected multi-line
-// string. Both are ANSI-stripped. Leading/trailing blank lines in expected are
-// trimmed so you can write:
-//
-//	assertScreen(t, rendered, `
-//	    ╔══════╗
-//	    ║ Hi   ║
-//	    ╚══════╝
-//	`)
-func assertScreen(t *testing.T, rendered, expected string) {
-	t.Helper()
-	got := newScreen(rendered)
-	exp := trimExpected(expected)
-	if got.String() != exp {
-		t.Errorf("screen mismatch\n--- got ---\n%s\n--- expected ---\n%s", got.String(), exp)
-	}
-}
-
-// assertRegion checks that a rectangle at (col, row) with dimensions w×h
-// in the rendered output matches the expected multi-line string.
-func assertRegion(t *testing.T, rendered string, col, row, w, h int, expected string) {
-	t.Helper()
-	got := newScreen(rendered).region(col, row, w, h)
-	exp := trimExpected(expected)
-	if got != exp {
-		t.Errorf("region (%d,%d %dx%d) mismatch\n--- got ---\n%s\n--- expected ---\n%s",
-			col, row, w, h, got, exp)
-	}
-}
-
-// trimExpected strips the common leading whitespace and leading/trailing blank
-// lines from a raw string literal so tests can be written with indentation:
-//
-//	trimExpected(`
-//	    ╔══╗
-//	    ║Hi║
-//	    ╚══╝
-//	`)
-//
-// becomes "╔══╗\n║Hi║\n╚══╝".
-func trimExpected(s string) string {
-	lines := strings.Split(s, "\n")
-
-	// Drop leading blank lines.
-	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
-		lines = lines[1:]
-	}
-	// Drop trailing blank lines.
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
-	if len(lines) == 0 {
-		return ""
-	}
-
-	// Find minimum indentation (tabs or spaces) across non-empty lines.
-	minIndent := -1
-	for _, l := range lines {
-		if strings.TrimSpace(l) == "" {
-			continue
-		}
-		indent := len(l) - len(strings.TrimLeft(l, " \t"))
-		if minIndent < 0 || indent < minIndent {
-			minIndent = indent
-		}
-	}
-	if minIndent < 0 {
-		minIndent = 0
-	}
-
-	// Strip common indent.
-	for i, l := range lines {
-		if len(l) >= minIndent {
-			lines[i] = l[minIndent:]
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
-// assertHasANSI checks that the raw (non-stripped) rendered output contains the
-// given ANSI color sequence. Useful for verifying palette application.
-func assertHasANSI(t *testing.T, rendered, colorHex, label string) {
-	t.Helper()
-	if len(colorHex) != 7 || colorHex[0] != '#' {
-		t.Fatalf("bad hex color %q", colorHex)
-	}
-	r := hexToDec(colorHex[1:3])
-	g := hexToDec(colorHex[3:5])
-	b := hexToDec(colorHex[5:7])
-	needle := fmt.Sprintf("%d;%d;%d", r, g, b)
-	if !strings.Contains(rendered, needle) {
-		t.Errorf("expected ANSI color %s (%s) in output for %s", colorHex, needle, label)
-	}
-}
-
-func hexToDec(h string) int {
-	v := 0
-	for _, c := range h {
-		v *= 16
-		switch {
-		case c >= '0' && c <= '9':
-			v += int(c - '0')
-		case c >= 'a' && c <= 'f':
-			v += int(c-'a') + 10
-		case c >= 'A' && c <= 'F':
-			v += int(c-'A') + 10
-		}
-	}
-	return v
-}
-
-// ─── Tests for the harness itself ────────────────────────────────────────────
-
-func TestTrimExpected(t *testing.T) {
-	got := trimExpected(`
-		hello
-		world
-	`)
-	if got != "hello\nworld" {
-		t.Errorf("trimExpected failed: %q", got)
-	}
-}
-
-func TestScreenRegion(t *testing.T) {
-	s := newScreen("ABCDE\nFGHIJ\nKLMNO")
-	got := s.region(1, 0, 3, 2)
-	exp := "BCD\nGHI"
-	if got != exp {
-		t.Errorf("region mismatch\ngot: %q\nexp: %q", got, exp)
-	}
-}
-
-func TestScreenRegionOutOfBounds(t *testing.T) {
-	s := newScreen("AB\nCD")
-	got := s.region(1, 1, 3, 3)
-	// (1,1) in a 2x2 grid, requesting 3x3 → pads with spaces
-	exp := "D  \n   \n   "
-	if got != exp {
-		t.Errorf("region oob mismatch\ngot: %q\nexp: %q", got, exp)
-	}
-}
 
 // ─── Theme border tests ─────────────────────────────────────────────────────
 
@@ -249,11 +49,11 @@ func asciiTheme() *theme.Theme {
 }
 
 func TestNCWindowBordersDefaultTheme(t *testing.T) {
-	label := &widget.Label{Text: "X"}
-	win := &widget.Window{
+	label := &Label{Text: "X"}
+	win := &Window{
 		Title: "T",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+		Children: []GridChild{
+			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
 	th := theme.Default()
@@ -275,11 +75,11 @@ func TestNCWindowBordersDefaultTheme(t *testing.T) {
 }
 
 func TestNCWindowBordersSingleLineTheme(t *testing.T) {
-	label := &widget.Label{Text: "X"}
-	win := &widget.Window{
+	label := &Label{Text: "X"}
+	win := &Window{
 		Title: "T",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+		Children: []GridChild{
+			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
 	th := singleLineTheme()
@@ -303,11 +103,11 @@ func TestNCWindowBordersSingleLineTheme(t *testing.T) {
 }
 
 func TestNCWindowBordersASCIITheme(t *testing.T) {
-	label := &widget.Label{Text: "X"}
-	win := &widget.Window{
+	label := &Label{Text: "X"}
+	win := &Window{
 		Title: "T",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+		Children: []GridChild{
+			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
 	th := asciiTheme()
@@ -328,7 +128,7 @@ func TestNCWindowBordersASCIITheme(t *testing.T) {
 }
 
 func TestDropdownBordersSingleLineTheme(t *testing.T) {
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{
 			{Label: "&New"},
@@ -357,7 +157,7 @@ func TestDropdownBordersSingleLineTheme(t *testing.T) {
 }
 
 func TestMenuBarSeparatorFromTheme(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 		{Label: "&Edit", Items: []common.MenuItemDef{{Label: "&Copy"}}},
@@ -381,7 +181,7 @@ func TestMenuBarSeparatorFromTheme(t *testing.T) {
 }
 
 func TestDialogBordersASCIITheme(t *testing.T) {
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	o.PushDialog(common.DialogRequest{
 		Title: "Err",
 		Body:  "Oops",
@@ -416,12 +216,12 @@ func TestDialogBordersASCIITheme(t *testing.T) {
 
 func TestSameLayoutDifferentThemeBorders(t *testing.T) {
 	// Render the same window with three themes — only borders should change.
-	label := &widget.Label{Text: "Hello"}
-	makeWin := func() *widget.Window {
-		return &widget.Window{
+	label := &Label{Text: "Hello"}
+	makeWin := func() *Window {
+		return &Window{
 			Title: "T",
-			Children: []widget.GridChild{
-				{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+			Children: []GridChild{
+				{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 			},
 		}
 	}
@@ -457,9 +257,6 @@ func TestSameLayoutDifferentThemeBorders(t *testing.T) {
 }
 
 // ─── Palette depth cycling tests ─────────────────────────────────────────────
-//
-// Verify the Primary → Secondary → Tertiary → Secondary → Tertiary cycle
-// by rendering layers at each depth and checking ANSI color codes.
 
 // distinctPaletteTheme creates a theme where each palette has a unique,
 // easily-identifiable background color.
@@ -474,11 +271,11 @@ func distinctPaletteTheme() *theme.Theme {
 
 func TestPaletteDepthOnNCWindow(t *testing.T) {
 	th := distinctPaletteTheme()
-	label := &widget.Label{Text: "hello"}
-	win := &widget.Window{
+	label := &Label{Text: "hello"}
+	win := &Window{
 		Title: "Main",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+		Children: []GridChild{
+			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
 
@@ -496,16 +293,14 @@ func TestPaletteDepthOnNCWindow(t *testing.T) {
 }
 
 func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
-	// Build a composited screen layer by layer — window, dropdown, dialog,
-	// nested dialog — verifying the correct palette at each step.
 	th := distinctPaletteTheme()
 
 	// Layer 0: Main window at depth 0 (Primary).
-	label := &widget.Label{Text: "content"}
-	win := &widget.Window{
+	label := &Label{Text: "content"}
+	win := &Window{
 		Title: "Panel",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+		Children: []GridChild{
+			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
 	layer0 := win.Render(0, 0, 40, 12, th.LayerAt(0))
@@ -517,7 +312,7 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	}
 
 	// Layer 1: Dropdown at depth 1 (Secondary) over the window.
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}, {Label: "&Quit"}}},
 	}
@@ -525,7 +320,7 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	dd, ddCol, ddRow := ddBox.Content, ddBox.Col, ddBox.Row
 	assertHasANSI(t, dd, "#002200", "layer 1 dropdown (Secondary)")
 
-	layer1 := widget.PlaceOverlay(ddCol, ddRow, dd, layer0)
+	layer1 := PlaceOverlay(ddCol, ddRow, dd, layer0)
 	assertHasANSI(t, layer1, "#110000", "layer 1: Primary still visible")
 	assertHasANSI(t, layer1, "#002200", "layer 1: Secondary in dropdown")
 
@@ -542,7 +337,7 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	}
 
 	// Layer 2: Dialog at depth 2 (Tertiary) over everything.
-	o2 := widget.OverlayState{OpenMenu: -1}
+	o2 := OverlayState{OpenMenu: -1}
 	o2.PushDialog(common.DialogRequest{
 		Title:   "Confirm",
 		Body:    "Proceed?",
@@ -552,19 +347,19 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	dlg, dlgCol, dlgRow := dlgBox.Content, dlgBox.Col, dlgBox.Row
 	assertHasANSI(t, dlg, "#000033", "layer 2 dialog (Tertiary)")
 
-	layer2 := widget.PlaceOverlay(dlgCol, dlgRow, dlg, layer1)
+	layer2 := PlaceOverlay(dlgCol, dlgRow, dlg, layer1)
 	assertHasANSI(t, layer2, "#110000", "layer 2: Primary")
 	assertHasANSI(t, layer2, "#002200", "layer 2: Secondary")
 	assertHasANSI(t, layer2, "#000033", "layer 2: Tertiary")
 
 	// Layer 3: Nested dialog at depth 3 → Secondary again.
-	o3 := widget.OverlayState{OpenMenu: -1}
+	o3 := OverlayState{OpenMenu: -1}
 	o3.PushDialog(common.DialogRequest{Title: "Nested", Body: "Inner"})
 	dlg3Box := o3.RenderDialog(40, 12, th.LayerAt(3))
 	dlg3, dlg3Col, dlg3Row := dlg3Box.Content, dlg3Box.Col, dlg3Box.Row
 	assertHasANSI(t, dlg3, "#002200", "layer 3 nested dialog (Secondary again)")
 
-	layer3 := widget.PlaceOverlay(dlg3Col, dlg3Row, dlg3, layer2)
+	layer3 := PlaceOverlay(dlg3Col, dlg3Row, dlg3, layer2)
 	s3 := newScreen(layer3)
 	foundNested := false
 	for _, l := range s3.lines {
@@ -578,7 +373,7 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	}
 
 	// Layer 4: Depth 4 → Tertiary again.
-	o4 := widget.OverlayState{OpenMenu: -1}
+	o4 := OverlayState{OpenMenu: -1}
 	o4.PushDialog(common.DialogRequest{Title: "Deep", Body: "Very deep"})
 	dlg4 := o4.RenderDialog(40, 12, th.LayerAt(4)).Content
 	assertHasANSI(t, dlg4, "#000033", "layer 4 (Tertiary again)")
@@ -586,7 +381,7 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 
 func TestPaletteDepthWarningBypassesCycle(t *testing.T) {
 	th := distinctPaletteTheme()
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	o.PushDialog(common.DialogRequest{Title: "Error", Body: "Something broke"})
 
 	dlg := o.RenderDialog(40, 20, th.WarningLayer()).Content
@@ -600,7 +395,7 @@ func TestPaletteDepthWarningBypassesCycle(t *testing.T) {
 
 func TestNCBarPaletteMatchesDepth(t *testing.T) {
 	th := distinctPaletteTheme()
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 	}
@@ -614,8 +409,7 @@ func TestNCBarPaletteMatchesDepth(t *testing.T) {
 
 // ─── Per-layer border depth tests ────────────────────────────────────────────
 
-// layeredBorderTheme creates a theme where each layer has distinct border chars,
-// allowing depth cycling to be verified structurally from stripped text.
+// layeredBorderTheme creates a theme where each layer has distinct border chars.
 func layeredBorderTheme() *theme.Theme {
 	th := theme.Default()
 	// Primary (depth 0): double-line (default)
@@ -656,13 +450,13 @@ func layeredBorderTheme() *theme.Theme {
 
 func TestPerLayerBordersOnNCWindow(t *testing.T) {
 	th := layeredBorderTheme()
-	label := &widget.Label{Text: "X"}
+	label := &Label{Text: "X"}
 
-	makeWin := func() *widget.Window {
-		return &widget.Window{
+	makeWin := func() *Window {
+		return &Window{
 			Title: "T",
-			Children: []widget.GridChild{
-				{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+			Children: []GridChild{
+				{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 			},
 		}
 	}
@@ -707,7 +501,7 @@ func TestPerLayerBordersOnDropdown(t *testing.T) {
 	}
 
 	// Depth 1 → Secondary → single-line.
-	o1 := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o1 := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	dd1 := o1.RenderDropdown(menus, 0, th.LayerAt(1)).Content
 	s1 := newScreen(dd1)
 	if !strings.HasPrefix(s1.lines[0], "┌") || !strings.HasSuffix(s1.lines[0], "┐") {
@@ -718,7 +512,7 @@ func TestPerLayerBordersOnDropdown(t *testing.T) {
 	}
 
 	// Depth 2 → Tertiary → ASCII.
-	o2 := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o2 := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	dd2 := o2.RenderDropdown(menus, 0, th.LayerAt(2)).Content
 	s2 := newScreen(dd2)
 	if !strings.HasPrefix(s2.lines[0], "+") || !strings.HasSuffix(s2.lines[0], "+") {
@@ -733,7 +527,7 @@ func TestPerLayerBordersOnDialog(t *testing.T) {
 	th := layeredBorderTheme()
 
 	// Depth 2 → Tertiary → ASCII.
-	o2 := widget.OverlayState{OpenMenu: -1}
+	o2 := OverlayState{OpenMenu: -1}
 	o2.PushDialog(common.DialogRequest{Title: "Test", Body: "Hello"})
 	dlg2 := o2.RenderDialog(40, 20, th.LayerAt(2)).Content
 	s2 := newScreen(dlg2)
@@ -746,7 +540,7 @@ func TestPerLayerBordersOnDialog(t *testing.T) {
 	}
 
 	// Depth 1 → Secondary → single-line.
-	o1 := widget.OverlayState{OpenMenu: -1}
+	o1 := OverlayState{OpenMenu: -1}
 	o1.PushDialog(common.DialogRequest{Title: "Test", Body: "Hello"})
 	dlg1 := o1.RenderDialog(40, 20, th.LayerAt(1)).Content
 	s1 := newScreen(dlg1)
@@ -757,7 +551,7 @@ func TestPerLayerBordersOnDialog(t *testing.T) {
 
 func TestPerLayerBordersOnMenuBar(t *testing.T) {
 	th := layeredBorderTheme()
-	o := widget.OverlayState{OpenMenu: -1}
+	o := OverlayState{OpenMenu: -1}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 		{Label: "&Edit", Items: []common.MenuItemDef{{Label: "&Copy"}}},
@@ -789,11 +583,11 @@ func TestPerLayerBordersCompositedStack(t *testing.T) {
 	th := layeredBorderTheme()
 
 	// Render a window at depth 0 (double-line).
-	label := &widget.Label{Text: "main"}
-	win := &widget.Window{
+	label := &Label{Text: "main"}
+	win := &Window{
 		Title: "Main",
-		Children: []widget.GridChild{
-			{Control: label, Constraint: widget.GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal}},
+		Children: []GridChild{
+			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
 	layer0 := win.Render(0, 0, 30, 10, th.LayerAt(0))
@@ -803,12 +597,12 @@ func TestPerLayerBordersCompositedStack(t *testing.T) {
 	}
 
 	// Composite a dropdown at depth 1 (single-line).
-	o := widget.OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
+	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, DropCursor: 0}
 	menus := []common.MenuDef{
 		{Label: "&File", Items: []common.MenuItemDef{{Label: "&New"}}},
 	}
 	ddBox := o.RenderDropdown(menus, 0, th.LayerAt(1))
-	composited := widget.PlaceOverlay(ddBox.Col, ddBox.Row, ddBox.Content, layer0)
+	composited := PlaceOverlay(ddBox.Col, ddBox.Row, ddBox.Content, layer0)
 	sc := newScreen(composited)
 
 	// Row 0 should still have the double-line window border.
