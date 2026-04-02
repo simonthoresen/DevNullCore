@@ -473,8 +473,8 @@ func TestNCWindowGridLayout(t *testing.T) {
 	win.Render(0, 0, 20, 10, testLayer())
 
 	// Label gets row 0 (height 1), textview gets the rest.
-	_, _, _, labelH := win.childRect(0)
-	_, _, _, tvH := win.childRect(1)
+	_, _, _, labelH := win.ChildRect(0)
+	_, _, _, tvH := win.ChildRect(1)
 
 	if labelH != 1 {
 		t.Errorf("expected label height 1, got %d", labelH)

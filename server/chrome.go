@@ -29,21 +29,8 @@ var (
 	menuFg = defaultMenuFg
 	cmdBg  = defaultCmdBg
 
-	lobbyChatBarActiveBg   = lipgloss.Color("#D8C7A0")
-	lobbyChatBarActiveFg   = lipgloss.Color("#4A2D18")
-	lobbyChatBarInactiveBg = lipgloss.Color("#C4B898")
-	lobbyChatBarInactiveFg = lipgloss.Color("#8A7A68")
-	lobbyChatActiveBg      = lipgloss.Color("#EADFC7")
-	lobbyChatInactiveBg    = lipgloss.Color("#E0D6BE")
-	lobbyChatFg            = lipgloss.Color("#2C1810")
-
-	lobbyTeamBarActiveBg   = lipgloss.Color("#5B7BA5")
-	lobbyTeamBarActiveFg   = lipgloss.Color("#FFFFFF")
-	lobbyTeamBarInactiveBg = lipgloss.Color("#8898B0")
-	lobbyTeamBarInactiveFg = lipgloss.Color("#C0C8D8")
-	lobbyTeamActiveBg      = lipgloss.Color("#CEDAEA")
-	lobbyTeamInactiveBg    = lipgloss.Color("#C4D0E0")
-	lobbyTeamFg            = lipgloss.Color("#1A2A40")
+	lobbyTeamActiveBg = lipgloss.Color("#CEDAEA")
+	lobbyTeamFg       = lipgloss.Color("#1A2A40")
 )
 
 const lobbyTeamPanelW = 32
@@ -132,6 +119,12 @@ type chromeModel struct {
 
 	overlay overlayState
 
+	// Lobby NC window and child controls.
+	lobbyWindow    *NCWindow
+	lobbyChatView  *NCTextView
+	lobbyTeamPanel *NCTeamPanel
+	lobbyCmdLabel  *NCLabel
+
 	// Cached menu tree — rebuilt only on invalidation.
 	menuCache     []common.MenuDef
 	menuCacheGame common.Game // game pointer when cache was built (nil = no game)
@@ -158,15 +151,48 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 	teamInput.SetWidth(20)
 	teamInput.SetVirtualCursor(false)
 
+	// Lobby NC controls.
+	lobbyChatView := &NCTextView{
+		BottomAlign: true,
+		Scrollable:  true,
+	}
+	lobbyTeamPanel := &NCTeamPanel{}
+	lobbyCmdLabel := &NCLabel{}
+	lobbyWindow := &NCWindow{
+		NoTopBorder: true,
+		FocusIdx:    0, // chat focused by default
+		Children: []GridChild{
+			{Control: lobbyChatView, TabIndex: 0, Constraint: GridConstraint{
+				Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth,
+			}},
+			{Control: &NCVDivider{Connected: true}, Constraint: GridConstraint{
+				Col: 1, Row: 0, MinW: 1, WeightY: 1, Fill: FillVertical,
+			}},
+			{Control: lobbyTeamPanel, TabIndex: 1, Constraint: GridConstraint{
+				Col: 2, Row: 0, MinW: lobbyTeamPanelW, WeightY: 1, Fill: FillVertical,
+			}},
+			{Control: &NCHDivider{Connected: true}, Constraint: GridConstraint{
+				Col: 0, Row: 1, ColSpan: 3, MinH: 1, Fill: FillHorizontal,
+			}},
+			{Control: lobbyCmdLabel, Constraint: GridConstraint{
+				Col: 0, Row: 2, ColSpan: 3, MinH: 1, Fill: FillHorizontal,
+			}},
+		},
+	}
+
 	m := chromeModel{
-		app:           app,
-		playerID:      playerID,
-		chat:          chat,
-		input:         input,
-		teamEditInput: teamInput,
-		historyIdx:    -1,
-		theme:         DefaultTheme(),
-		overlay:       overlayState{openMenu: -1},
+		app:            app,
+		playerID:       playerID,
+		chat:           chat,
+		input:          input,
+		teamEditInput:  teamInput,
+		historyIdx:     -1,
+		theme:          DefaultTheme(),
+		overlay:        overlayState{openMenu: -1},
+		lobbyWindow:    lobbyWindow,
+		lobbyChatView:  lobbyChatView,
+		lobbyTeamPanel: lobbyTeamPanel,
+		lobbyCmdLabel:  lobbyCmdLabel,
 	}
 	m.syncChat()
 	// Always start in lobby/input mode. GameLoadedMsg will transition
@@ -308,53 +334,52 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg:
 		// NC overlay gets first crack at mouse clicks (menus, dialogs).
 		if msg.Button == tea.MouseLeft {
-			ncBarRow := 1 // NC bar is at row 1 (after framework menu bar at row 0)
+			ncBarRow := 0 // NC bar is at row 0 in lobby, row 1 in-game
+			if m.inActiveGame {
+				ncBarRow = 1
+			}
 			if m.overlay.handleClick(msg.X, msg.Y, ncBarRow, m.width, m.height, m.cachedMenus(), m.playerID) {
 				return m, nil
 			}
 		}
 		if !m.inActiveGame && msg.Button == tea.MouseLeft {
-			teamW := lobbyTeamPanelW
-			if teamW > m.width-10 {
-				teamW = m.width - 10
-			}
-			chatW := m.width - teamW
-			if msg.X >= chatW {
-				// Click in team panel — handle team selection or player name insertion.
-				contentY := msg.Y - 1
-				panelX := msg.X - chatW
-				var clickedPlayer string
-				if contentY >= 0 {
-					clickedPlayer = m.handleTeamPanelClick(panelX, contentY)
-				}
-				if clickedPlayer != "" {
-					// Player name clicked — insert into chat input.
-					m.lobbyFocus = lobbyFocusChat
-					m.mode = modeInput
-					m.input.Focus()
-					if m.input.Value() == "" {
-						m.input.SetValue("/msg " + clickedPlayer + " ")
-						m.input.CursorEnd()
-					} else {
-						// Insert at cursor position.
-						val := m.input.Value()
-						pos := m.input.Position()
-						m.input.SetValue(val[:pos] + clickedPlayer + val[pos:])
-						m.input.SetCursor(pos + len(clickedPlayer))
+			// Route click through NCWindow — it sets FocusIdx and identifies the target child.
+			var clickedPlayer string
+			if m.lobbyWindow.HandleClick(msg.X, msg.Y) {
+				if m.lobbyWindow.FocusIdx == 2 {
+					// Clicked in team panel.
+					cx, cy, _, _ := m.lobbyWindow.ChildRect(2)
+					clickedPlayer = m.handleTeamPanelClick(msg.X-cx, msg.Y-cy)
+					if clickedPlayer != "" {
+						// Player name clicked — insert into chat input.
+						m.lobbyFocus = lobbyFocusChat
+						m.mode = modeInput
+						m.input.Focus()
+						if m.input.Value() == "" {
+							m.input.SetValue("/msg " + clickedPlayer + " ")
+							m.input.CursorEnd()
+						} else {
+							val := m.input.Value()
+							pos := m.input.Position()
+							m.input.SetValue(val[:pos] + clickedPlayer + val[pos:])
+							m.input.SetCursor(pos + len(clickedPlayer))
+						}
+						return m, nil
+					}
+					// Non-player row — switch focus to teams.
+					if m.lobbyFocus == lobbyFocusChat {
+						m.lobbyFocus = lobbyFocusTeams
+						m.input.Blur()
 					}
 					return m, nil
 				}
-				// Non-player row clicked — switch focus to teams.
-				if m.lobbyFocus == lobbyFocusChat {
-					m.lobbyFocus = lobbyFocusTeams
-					m.input.Blur()
+				// Clicked chat panel or elsewhere — switch to chat.
+				if m.lobbyFocus == lobbyFocusTeams {
+					m.lobbyFocus = lobbyFocusChat
+					m.mode = modeInput
+					cmd := m.input.Focus()
+					return m, cmd
 				}
-				return m, nil
-			} else if m.lobbyFocus == lobbyFocusTeams {
-				m.lobbyFocus = lobbyFocusChat
-				m.mode = modeInput
-				cmd := m.input.Focus()
-				return m, cmd
 			}
 		}
 		return m, nil
@@ -805,8 +830,7 @@ func (m chromeModel) View() tea.View {
 	buf := common.NewImageBuffer(m.width, m.height)
 
 	if !m.inActiveGame || phase == common.PhaseNone {
-		content := m.viewLobby(menus, mbStyle, chStyle, ciStyle, defaultChatBg)
-		buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
+		m.renderLobby(buf, menus)
 	} else if phase == common.PhaseSplash {
 		content := m.viewSplash(menus, game, gameName, mbStyle, chStyle, ciStyle)
 		buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
@@ -845,19 +869,27 @@ func (m chromeModel) View() tea.View {
 	view.SetContent(buf.ToString())
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
+
+	isLobby := !m.inActiveGame || phase == common.PhaseNone
+
 	if m.mode == modeInput {
 		if cursor := m.input.Cursor(); cursor != nil {
-			cursor.Position.Y = m.height - 2 // row above framework status bar
+			if isLobby {
+				// Command bar is 1 row above NCWindow bottom border, which is 1 row above status bar.
+				// NCWindow occupies rows 1..H-2, so bottom border = H-2, cmd bar = H-3.
+				cursor.Position.Y = m.height - 3
+				cursor.Position.X += 1 // +1 for left window border
+			} else {
+				cursor.Position.Y = m.height - 2 // row above framework status bar
+			}
 			view.Cursor = cursor
 		}
 	}
-	if m.teamEditing {
+	if isLobby && m.teamEditing {
 		if cursor := m.teamEditInput.Cursor(); cursor != nil {
 			// Position cursor on the team name row in the right panel.
-			teamW := lobbyTeamPanelW
-			if teamW > m.width-10 {
-				teamW = m.width - 10
-			}
+			// The team panel is at col 2 in the NCWindow grid. After grid layout,
+			// its X position is computed. We calculate the Y row within the panel.
 			teams := m.app.state.GetTeams()
 			unassigned := m.app.state.UnassignedPlayers()
 			idx := m.app.state.PlayerTeamIndex(m.playerID)
@@ -866,109 +898,102 @@ func (m chromeModel) View() tea.View {
 				row += 1 + 1 + len(teams[i].Players) // blank + team header + members
 			}
 			row += 1 // blank before current team
-			cursor.Position.Y = 2 + row // +1 server info bar, +1 NC action bar
-			cursor.Position.X += (m.width - teamW) + 5 // +1 for border │
+			// NCWindow starts at y=1 (after menu bar), no top border, so content starts at y=1.
+			cursor.Position.Y = 1 + row
+			// Team panel X: window left border (1) + chat width + divider (1) + swatch (3) + space (1)
+			// Use the grid's computed position if available.
+			if len(m.lobbyWindow.Children) > 2 {
+				cx, _, _, _ := m.lobbyWindow.ChildRect(2) // team panel is child index 2
+				cursor.Position.X += cx + 4 // +4 for " XX " (space + swatch + space before name)
+			}
 			view.Cursor = cursor
 		}
 	}
 	return view
 }
 
-func (m chromeModel) viewLobby(menus []common.MenuDef, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) string {
-	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.LayerAt(1))
-	contentH := m.height - 4 // server info + NC bar + input row + status bar
-	if contentH < 1 {
-		contentH = 1
+// renderLobby renders the lobby view using NC controls directly into the buffer.
+// Layout: row 0 = NC menu bar, rows 1..H-2 = NCWindow (chat + teams + cmd bar), row H-1 = status bar.
+func (m chromeModel) renderLobby(buf *common.ImageBuffer, menus []common.MenuDef) {
+	layer := m.theme.LayerAt(0)
+	menuLayer := m.theme.LayerAt(1)
+
+	// Row 0: NC action bar.
+	ncBar := m.overlay.renderNCBar(m.width, menus, menuLayer)
+	buf.PaintANSI(0, 0, m.width, 1, ncBar, menuLayer.FgC(), menuLayer.BgC())
+
+	// Update chat view.
+	m.lobbyChatView.Lines = m.chatLines
+	m.lobbyChatView.ScrollOffset = m.chatScrollOffset
+
+	// Update team panel.
+	teams := m.app.state.GetTeams()
+	m.lobbyTeamPanel.Teams = teams
+	m.lobbyTeamPanel.Unassigned = m.app.state.UnassignedPlayers()
+	m.lobbyTeamPanel.MyTeamIdx = m.app.state.PlayerTeamIndex(m.playerID)
+	m.lobbyTeamPanel.PlayerID = m.playerID
+	m.lobbyTeamPanel.GetPlayer = m.app.state.GetPlayer
+	m.lobbyTeamPanel.Editing = m.teamEditing
+	if m.teamEditing {
+		m.lobbyTeamPanel.EditValue = m.teamEditInput.Value()
 	}
+	m.lobbyTeamPanel.ShowCreate = !m.app.state.IsSoleMemberOfTeam(m.playerID)
 
-	teamW := lobbyTeamPanelW
-	if teamW > m.width-10 {
-		teamW = m.width - 10
-	}
-	chatW := m.width - teamW
-
-	chatActive := m.lobbyFocus == lobbyFocusChat
-
-	// Per-panel styles based on focus.
-	// Chat panel uses default colors; team panel keeps its own blue scheme.
-	var chatBarStyle, teamBarStyle lipgloss.Style
-	var chatBodyStyle, teamBodyStyle lipgloss.Style
-	var chatCmdStyle, teamCmdStyle lipgloss.Style
-
-	var teamPanelBg color.Color
-	if chatActive {
-		chatBarStyle = mbStyle
-		chatBodyStyle = chStyle
-		chatCmdStyle = ciStyle
-		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
-		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamInactiveBg).Foreground(lobbyTeamFg)
-		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarInactiveBg).Foreground(lobbyTeamBarInactiveFg)
-		teamPanelBg = lobbyTeamInactiveBg
+	// Update command bar text.
+	if m.teamEditing {
+		m.lobbyCmdLabel.Text = "[Enter] Save  [Esc] Cancel"
+	} else if m.lobbyFocus == lobbyFocusTeams {
+		m.lobbyCmdLabel.Text = "[Tab] Chat                    [\u2191\u2193] Move [\u2190\u2192] Color [\u23ce] Rename"
+	} else if m.mode == modeInput {
+		m.lobbyCmdLabel.Text = "[Enter] Send  [Esc] Cancel                          [Tab] Teams"
 	} else {
-		chatBarStyle = mbStyle.Bold(false)
-		chatBodyStyle = chStyle
-		chatCmdStyle = ciStyle
-		teamBarStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg).Bold(true)
-		teamBodyStyle = lipgloss.NewStyle().Background(lobbyTeamActiveBg).Foreground(lobbyTeamFg)
-		teamCmdStyle = lipgloss.NewStyle().Background(lobbyTeamBarActiveBg).Foreground(lobbyTeamBarActiveFg)
-		teamPanelBg = lobbyTeamActiveBg
+		m.lobbyCmdLabel.Text = "[Enter] Chat  /help for commands                    [Tab] Teams"
 	}
 
-	// Menu bar (split across panels). Spinner lives in the teams bar (far right).
+	// Set focus to match lobbyFocus.
+	if m.lobbyFocus == lobbyFocusTeams {
+		m.lobbyWindow.FocusIdx = 2 // team panel child index
+	} else {
+		m.lobbyWindow.FocusIdx = 0 // chat view child index
+	}
+
+	// Render NCWindow (rows 1 to H-2).
+	windowH := m.height - 2 // minus menu bar row and status bar row
+	if windowH < 3 {
+		windowH = 3
+	}
+	m.lobbyWindow.RenderToBuf(buf, 0, 1, m.width, windowH, layer)
+
+	// If in input mode, overlay the text input on the command bar row.
+	if m.mode == modeInput && m.lobbyFocus == lobbyFocusChat {
+		cmdRow := 1 + windowH - 2 // window starts at y=1, cmd bar is 1 row above bottom border
+		m.input.SetWidth(max(1, m.width-4)) // -2 borders -2 padding
+		inputView := m.input.View()
+		inputW := m.width - 2 // inside window borders
+		buf.PaintANSI(1, cmdRow, inputW, 1, truncateStyled(inputView, inputW), nil, layer.BgC())
+	}
+
+	// Status bar (last row): server info + time.
+	statusLayer := m.theme.LayerAt(1)
+	statusFg := statusLayer.FgC()
+	statusBg := statusLayer.BgC()
+	buf.Fill(0, m.height-1, m.width, 1, ' ', statusFg, statusBg, common.AttrNone)
+
 	modeLabel := "remote"
 	if m.isLocal {
 		modeLabel = "local"
 	}
-	menuText := fmt.Sprintf("null-space (%s) | %d players | uptime %s", modeLabel, m.app.state.PlayerCount(), m.app.uptime())
-	chatMenu := chatBarStyle.Width(chatW).Render(truncateStyled(menuText, chatW))
-	teamMenu := teamBarStyle.Width(teamW).Render(truncateStyled(" Teams", teamW))
-	menuBar := chatMenu + teamMenu
+	statusLeft := fmt.Sprintf(" null-space (%s) | %d players | uptime %s", modeLabel, m.app.state.PlayerCount(), m.app.uptime())
+	buf.WriteString(0, m.height-1, statusLeft, statusFg, statusBg, common.AttrNone)
 
-	// Content area — each row is: chat content (chatW-1) + border "│" + team content (teamW-1) + border "│"
-	// The border characters are visible foreground chars that force the
-	// bubbletea/ultraviolet renderer to use absolute cursor positioning
-	// (CUP) instead of CR+LF, which mispositions content over SSH.
-	innerChatW := chatW - 1 // reserve 1 col for right border
-	innerTeamW := teamW - 1 // reserve 1 col for right border
-	chatView := renderChatLines(m.chatLines, innerChatW, contentH, m.chatScrollOffset, chatBodyStyle, chatBg)
-	teamView := m.renderTeamPanel(innerTeamW, contentH, teamBodyStyle, teamPanelBg)
-	chatRows := strings.Split(chatView, "\n")
-	teamRows := strings.Split(teamView, "\n")
-	chatBorder := chatBodyStyle.Render("│")
-	teamBorder := teamBodyStyle.Render("│")
-	middleRows := make([]string, contentH)
-	for i := 0; i < contentH; i++ {
-		var c, t string
-		if i < len(chatRows) {
-			c = chatRows[i]
-		}
-		if i < len(teamRows) {
-			t = teamRows[i]
-		}
-		middleRows[i] = c + chatBorder + t + teamBorder
-	}
-	middle := strings.Join(middleRows, "\n")
-
-	// Input row (split across panels).
-	var inputRow string
-	if m.teamEditing {
-		inputRow = chatCmdStyle.Width(chatW).Render("") +
-			teamCmdStyle.Width(teamW).Render(truncateStyled("[Enter] Save  [Esc] Cancel", teamW))
-	} else if m.lobbyFocus == lobbyFocusTeams {
-		inputRow = chatCmdStyle.Width(chatW).Render("[Tab] Chat") +
-			teamCmdStyle.Width(teamW).Render(truncateStyled("[↑↓] Move [←→] Color [⏎] Rename", teamW))
-	} else if m.mode == modeInput {
-		m.input.SetWidth(max(1, chatW-2))
-		inputView := truncateStyled(m.input.View(), chatW)
-		inputRow = inputView + teamCmdStyle.Width(teamW).Render("[Tab] Teams")
-	} else {
-		inputRow = chatCmdStyle.Width(chatW).Render("[Enter] Chat  /help for commands") +
-			teamCmdStyle.Width(teamW).Render("[Tab] Teams")
+	statusRight := time.Now().Format("2006-01-02 15:04:05") + " "
+	rightX := m.width - len(statusRight)
+	if rightX > len(statusLeft) {
+		buf.WriteString(rightX, m.height-1, statusRight, statusFg, statusBg, common.AttrNone)
 	}
 
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, middle, inputRow, statusBar)
+	// Sync chatScrollOffset back from NCTextView (it may have been changed by scroll input).
+	m.chatScrollOffset = m.lobbyChatView.ScrollOffset
 }
 
 func (m chromeModel) viewSplash(menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
@@ -1105,76 +1130,6 @@ func (m chromeModel) renderPlaying(buf *common.ImageBuffer, menus []common.MenuD
 	// Status bar.
 	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
 	buf.PaintANSI(0, row, m.width, 1, statusBar, nil, nil)
-}
-
-// renderTeamPanel draws the team list panel for the lobby.
-func (m chromeModel) renderTeamPanel(width, height int, baseStyle lipgloss.Style, bg color.Color) string {
-	teams := m.app.state.GetTeams()
-	unassigned := m.app.state.UnassignedPlayers()
-	myTeamIdx := m.app.state.PlayerTeamIndex(m.playerID)
-	focused := m.lobbyFocus == lobbyFocusTeams
-
-	var lines []string
-
-	// Unassigned players at the top (always shown).
-	unStyle := baseStyle
-	if focused && myTeamIdx < 0 {
-		unStyle = unStyle.Bold(true)
-	}
-	grayBlock := colorSwatch(lipgloss.Color("#888888"), bg)
-	lines = append(lines, unStyle.Width(width).Render(truncateStyled(fmt.Sprintf(" %s Unassigned", grayBlock), width)))
-	for _, pid := range unassigned {
-		p := m.app.state.GetPlayer(pid)
-		name := pid
-		if p != nil {
-			name = p.Name
-		}
-		lines = append(lines, baseStyle.Width(width).Render(truncateStyled("    "+name, width)))
-	}
-
-	blank := strings.Repeat(" ", width)
-	blankLine := baseStyle.Width(width).Render(blank)
-	for i, team := range teams {
-		lines = append(lines, blankLine)
-		block := colorSwatch(lipgloss.Color(team.Color), bg)
-		nameText := fmt.Sprintf(" %s %s", block, team.Name)
-		if m.teamEditing && i == myTeamIdx {
-			nameText = fmt.Sprintf(" %s %s", block, m.teamEditInput.Value())
-		}
-		teamStyle := baseStyle
-		if focused && i == myTeamIdx {
-			teamStyle = teamStyle.Bold(true)
-		}
-		lines = append(lines, teamStyle.Width(width).Render(truncateStyled(nameText, width)))
-
-		for _, pid := range team.Players {
-			p := m.app.state.GetPlayer(pid)
-			name := pid
-			if p != nil {
-				name = p.Name
-			}
-			lines = append(lines, baseStyle.Width(width).Render(truncateStyled("    "+name, width)))
-		}
-	}
-
-	// [+ Create Team] button — shown unless player is already sole member of a team.
-	if !m.app.state.IsSoleMemberOfTeam(m.playerID) {
-		lines = append(lines, blankLine)
-		btnStyle := baseStyle.Faint(true)
-		lines = append(lines, btnStyle.Width(width).Render(truncateStyled(" [+ Create Team]", width)))
-	}
-
-	// Pad to fill height. Use lipgloss-styled blanks (not raw ANSI) to
-	// ensure the ultraviolet renderer doesn't use CR+LF movement
-	// optimization that mispositions content over SSH.
-	for len(lines) < height {
-		lines = append(lines, blankLine)
-	}
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-
-	return strings.Join(lines, "\n")
 }
 
 // defaultSplashScreen renders a simple splash screen with the game name centered in a box.
@@ -1319,20 +1274,12 @@ func (m *chromeModel) resizeViewports() {
 	phase := m.app.state.GetGamePhase()
 
 	if !m.inActiveGame || phase == common.PhaseNone {
-		// Lobby — server info + NC bar + input row + status bar = 4 overhead rows.
-		teamW := lobbyTeamPanelW
-		if teamW > m.width-10 {
-			teamW = m.width - 10
-		}
-		chatW := m.width - teamW
-		chatH := m.height - 4
-		if chatH < 1 {
-			chatH = 1
-		}
+		// Lobby — NC bar (1) + window bottom border (1) + hdivider (1) + cmd bar (1) + status bar (1) = 5 overhead rows.
+		// But the NCWindow handles its own internal sizing. We just need chatH for scroll math.
+		windowH := m.height - 2 // minus menu bar and status bar
+		chatH := max(1, windowH-4) // -1 bottom border, -1 hdivider, -1 cmd bar, -1 vdivider overhead = approx
 		m.chatH = chatH
-		m.chat.SetWidth(chatW)
-		m.chat.SetHeight(chatH)
-		m.input.SetWidth(max(1, chatW-2))
+		m.input.SetWidth(max(1, m.width-4))
 	} else if phase == common.PhasePlaying {
 		// NC bar + menu bar + game status bar + command bar + status bar = 5 overhead rows.
 		gameH := m.width * 9 / 16
@@ -1815,25 +1762,6 @@ func headerWithSpinner(text string, width int, spinner string) string {
 	return left + strings.Repeat(" ", spaces) + spinner
 }
 
-
-// renderChatLines renders `height` lines from `lines` with the given style, offset
-// from the bottom by `scrollOffset` lines (0 = show newest). Lines above the
-// buffer are rendered as blank rows.
-// colorToANSIBg returns a raw ANSI truecolor background escape sequence for a
-// color.Color value, e.g. "\x1b[48;2;234;223;199m".
-func colorToANSIBg(c color.Color) string {
-	r, g, b, _ := c.RGBA()
-	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", r>>8, g>>8, b>>8)
-}
-
-// colorSwatch returns a 2-char color block ("  ") that temporarily switches
-// to swatchColor and then restores parentBg. Uses raw ANSI so it can be
-// embedded inside a lipgloss.Render() call without producing a \x1b[m reset
-// that would kill the outer style. The visual width is 2 characters.
-func colorSwatch(swatchColor, parentBg color.Color) string {
-	sr, sg, sb, _ := swatchColor.RGBA()
-	return colorToANSIBg(parentBg) + fmt.Sprintf("\x1b[48;2;%d;%d;%dm  ", sr>>8, sg>>8, sb>>8) + colorToANSIBg(parentBg)
-}
 
 func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style, _ color.Color) string {
 	end := len(lines) - scrollOffset

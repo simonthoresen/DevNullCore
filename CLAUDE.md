@@ -89,21 +89,18 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 
 **Lobby (no game loaded):**
 ```
-┌──────────────────────┬──────────────┐
-│ Menu bar (warm)      │ Teams (blue) │  Split menu bar; active panel bold+bright
-├──────────────────────┼──────────────┤
-│ Chat (fills rest)    │ Teams (32ch) │  Two color palettes: warm white + cool blue
-│                      │  Unassigned  │  Active panel = brighter bg + bold title bar
-│                      │   > alice    │
-│                      │  Red Team    │
-│                      │     bob      │
-│                      │  Blue Team   │
-│                      │     charlie  │
-├──────────────────────┼──────────────┤
-│ Chat input row       │ Team cmd bar │  [Tab] toggles chat/teams focus
-├──────────────────────┴──────────────┤
-│ Status bar (always)                 │  server time right-aligned
-└─────────────────────────────────────┘  In teams: [↑↓] move, [←→] color, [Enter] rename
+│ File  Edit  View  Help              │  NC menu bar (overlay, row 0)
+╞════════════════════╤════════════════╡
+│                    │  ██ Unassigned │  NCWindow (NoTopBorder) with grid:
+│  [chat messages]   │    alice       │    Row 0: NCTextView(chat) │ NCVDivider │ NCTeamPanel
+│                    │  ██ Red Team   │    Row 1: NCHDivider (connected)
+│                    │     bob        │    Row 2: NCLabel (command bar)
+│                    │  ██ Blue Team  │
+│                    │     charlie    │  Chat: weight=1, Teams: fixed 32 cols
+╞════════════════════╧════════════════╡  [Tab] toggles chat/teams focus
+│ [Enter] Chat  /help      [Tab] Teams│  In teams: [↑↓] move, [←→] color, [Enter] rename
+╘═════════════════════════════════════╛
+│ null-space (local) | 3 players | .. │  Status bar (outside window, bottom row)
 ```
 
 **In-game:**

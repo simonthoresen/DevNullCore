@@ -69,9 +69,10 @@ func (c GridConstraint) rowSpan() int {
 // (or explicitly for warning dialogs). It renders its border, title, shadow,
 // and lays out children in a grid.
 type NCWindow struct {
-	Title    string
-	Children []GridChild
-	FocusIdx int // index into Children; -1 = none
+	Title      string
+	Children   []GridChild
+	FocusIdx   int  // index into Children; -1 = none
+	NoTopBorder bool // skip top border row (e.g. when menu bar sits above)
 
 	// Computed during Render.
 	screenX, screenY int
@@ -98,7 +99,11 @@ func (w *NCWindow) RenderToBuf(buf *common.ImageBuffer, x, y, width, height int,
 	w.width = width
 	w.height = height
 	w.innerW = max(1, width-2)
-	w.innerH = max(1, height-2) // top border + bottom border
+	topRows := 1
+	if w.NoTopBorder {
+		topRows = 0
+	}
+	w.innerH = max(1, height-1-topRows) // bottom border + optional top border
 
 	fg := layer.FgC()
 	bg := layer.BgC()
@@ -108,19 +113,21 @@ func (w *NCWindow) RenderToBuf(buf *common.ImageBuffer, x, y, width, height int,
 	// Fill inner area with base bg.
 	buf.Fill(x, y, width, height, ' ', fg, bg, common.AttrNone)
 
-	// Top border row.
-	buf.SetChar(x, y, common.RuneOf(layer.OTL()), fg, bg, common.AttrNone)
-	buf.SetChar(x+width-1, y, common.RuneOf(layer.OTR()), fg, bg, common.AttrNone)
-	if w.Title != "" {
-		titleText := " " + w.Title + " "
-		buf.SetChar(x+1, y, common.RuneOf(layer.IH()), fg, bg, common.AttrNone)
-		n := buf.WriteString(x+2, y, titleText, hlFg, hlBg, common.AttrBold)
-		for col := x + 2 + n; col < x+width-1; col++ {
-			buf.SetChar(col, y, common.RuneOf(layer.OH()), fg, bg, common.AttrNone)
-		}
-	} else {
-		for col := x + 1; col < x+width-1; col++ {
-			buf.SetChar(col, y, common.RuneOf(layer.OH()), fg, bg, common.AttrNone)
+	// Top border row (skipped when NoTopBorder).
+	if !w.NoTopBorder {
+		buf.SetChar(x, y, common.RuneOf(layer.OTL()), fg, bg, common.AttrNone)
+		buf.SetChar(x+width-1, y, common.RuneOf(layer.OTR()), fg, bg, common.AttrNone)
+		if w.Title != "" {
+			titleText := " " + w.Title + " "
+			buf.SetChar(x+1, y, common.RuneOf(layer.IH()), fg, bg, common.AttrNone)
+			n := buf.WriteString(x+2, y, titleText, hlFg, hlBg, common.AttrBold)
+			for col := x + 2 + n; col < x+width-1; col++ {
+				buf.SetChar(col, y, common.RuneOf(layer.OH()), fg, bg, common.AttrNone)
+			}
+		} else {
+			for col := x + 1; col < x+width-1; col++ {
+				buf.SetChar(col, y, common.RuneOf(layer.OH()), fg, bg, common.AttrNone)
+			}
 		}
 	}
 
@@ -134,7 +141,8 @@ func (w *NCWindow) RenderToBuf(buf *common.ImageBuffer, x, y, width, height int,
 
 	// Left and right border columns.
 	vr := common.RuneOf(layer.OV())
-	for row := y + 1; row < boty; row++ {
+	startRow := y + topRows
+	for row := startRow; row < boty; row++ {
 		buf.SetChar(x, row, vr, fg, bg, common.AttrNone)
 		buf.SetChar(x+width-1, row, vr, fg, bg, common.AttrNone)
 	}
@@ -144,12 +152,34 @@ func (w *NCWindow) RenderToBuf(buf *common.ImageBuffer, x, y, width, height int,
 
 	// Render each child directly into the buffer.
 	for i, child := range w.Children {
-		cx, cy, cw, ch := w.childRect(i)
+		cx, cy, cw, ch := w.ChildRect(i)
 		if cw <= 0 || ch <= 0 {
 			continue
 		}
 		hasFocus := i == w.FocusIdx
 		child.Control.Render(buf, cx, cy, cw, ch, hasFocus, layer)
+	}
+
+	// Post-process connected dividers — draw junction characters at border intersections.
+	for i, child := range w.Children {
+		cx, cy, cw, ch := w.ChildRect(i)
+		if cw <= 0 || ch <= 0 {
+			continue
+		}
+		switch child.Control.(type) {
+		case *NCHDivider:
+			if child.Control.(*NCHDivider).Connected {
+				buf.SetChar(x, cy, common.RuneOf(layer.XL()), fg, bg, common.AttrNone)
+				buf.SetChar(x+width-1, cy, common.RuneOf(layer.XR()), fg, bg, common.AttrNone)
+			}
+		case *NCVDivider:
+			if child.Control.(*NCVDivider).Connected {
+				if !w.NoTopBorder {
+					buf.SetChar(cx, y, common.RuneOf(layer.XT()), fg, bg, common.AttrNone)
+				}
+				buf.SetChar(cx, boty, common.RuneOf(layer.XB()), fg, bg, common.AttrNone)
+			}
+		}
 	}
 }
 
@@ -216,15 +246,19 @@ func (w *NCWindow) computeGrid() {
 		w.cellX[i] = cx
 		cx += w.cellW[i]
 	}
-	cy := w.screenY + 1 // +1 for top border
+	topRows := 1
+	if w.NoTopBorder {
+		topRows = 0
+	}
+	cy := w.screenY + topRows // +1 for top border (0 if NoTopBorder)
 	for i := range w.cellY {
 		w.cellY[i] = cy
 		cy += w.cellH[i]
 	}
 }
 
-// childRect returns the absolute (x, y, w, h) for child at index i.
-func (w *NCWindow) childRect(i int) (int, int, int, int) {
+// ChildRect returns the absolute (x, y, w, h) for child at index i.
+func (w *NCWindow) ChildRect(i int) (int, int, int, int) {
 	c := w.Children[i].Constraint
 	if c.Col >= w.gridCols || c.Row >= w.gridRows {
 		return 0, 0, 0, 0
@@ -440,13 +474,20 @@ func (w *NCWindow) CursorPosition() (cx, cy int, visible bool) {
 	if cursor == nil {
 		return 0, 0, false
 	}
-	rx, ry, _, _ := w.childRect(w.FocusIdx)
+	rx, ry, _, _ := w.ChildRect(w.FocusIdx)
 	cx = rx + 1 + cursor.Position.X // +1 for "[" bracket
 	cy = ry
 	return cx, cy, true
 }
 
+// Clickable is optionally implemented by NCControls that handle mouse clicks.
+// (rx, ry) are relative to the control's top-left corner.
+type Clickable interface {
+	HandleClick(rx, ry int)
+}
+
 // HandleClick routes a mouse click to the correct child.
+// If the child implements Clickable, it receives the click with relative coords.
 func (w *NCWindow) HandleClick(mx, my int) bool {
 	if mx < w.screenX || mx >= w.screenX+w.width {
 		return false
@@ -458,9 +499,12 @@ func (w *NCWindow) HandleClick(mx, my int) bool {
 		if !child.Control.Focusable() {
 			continue
 		}
-		cx, cy, cw, ch := w.childRect(i)
+		cx, cy, cw, ch := w.ChildRect(i)
 		if mx >= cx && mx < cx+cw && my >= cy && my < cy+ch {
 			w.FocusIdx = i
+			if cl, ok := child.Control.(Clickable); ok {
+				cl.HandleClick(mx-cx, my-cy)
+			}
 			return true
 		}
 	}
