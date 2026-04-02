@@ -137,7 +137,10 @@ type Model struct {
 	lobbyWindow    *widget.Window
 	lobbyChatView  *widget.TextView
 	lobbyTeamPanel *widget.TeamPanel
-	lobbyCmdLabel  *widget.Label
+	lobbyInput     *widget.CommandInput
+	lobbyScreen    *widget.Screen
+	lobbyMenuBar   *widget.MenuBar
+	lobbyStatusBar *widget.StatusBar
 
 	// Cached menu tree — rebuilt only on invalidation.
 	menuCache     []common.MenuDef
@@ -171,27 +174,41 @@ func NewModel(api ServerAPI, playerID string) Model {
 		Scrollable:  true,
 	}
 	lobbyTeamPanel := &widget.TeamPanel{}
-	lobbyCmdLabel := &widget.Label{}
+	lobbyInputModel := new(textinput.Model)
+	*lobbyInputModel = textinput.New()
+	lobbyInputModel.Prompt = ""
+	lobbyInputModel.Placeholder = ""
+	lobbyInputModel.CharLimit = 256
+	lobbyInputModel.SetWidth(78)
+	lobbyInputCtrl := &widget.CommandInput{TextInput: widget.TextInput{Model: lobbyInputModel}}
 	lobbyWindow := &widget.Window{
 		NoTopBorder: true,
-		FocusIdx:    0, // chat focused by default
+		FocusIdx:    2, // lobbyInput focused by default
 		Children: []widget.GridChild{
-			{Control: lobbyChatView, TabIndex: 0, Constraint: widget.GridConstraint{
+			{Control: lobbyChatView, TabIndex: 1, Constraint: widget.GridConstraint{
 				Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: widget.FillBoth,
 			}},
 			{Control: &widget.VDivider{Connected: true}, Constraint: widget.GridConstraint{
 				Col: 1, Row: 0, MinW: 1, WeightY: 1, Fill: widget.FillVertical,
 			}},
-			{Control: lobbyTeamPanel, TabIndex: 1, Constraint: widget.GridConstraint{
+			{Control: lobbyTeamPanel, TabIndex: 2, Constraint: widget.GridConstraint{
 				Col: 2, Row: 0, MinW: lobbyTeamPanelW, WeightY: 1, Fill: widget.FillVertical,
 			}},
 			{Control: &widget.HDivider{Connected: true}, Constraint: widget.GridConstraint{
 				Col: 0, Row: 1, ColSpan: 3, MinH: 1, Fill: widget.FillHorizontal,
 			}},
-			{Control: lobbyCmdLabel, Constraint: widget.GridConstraint{
-				Col: 0, Row: 2, ColSpan: 3, MinH: 1, Fill: widget.FillHorizontal,
+			{Control: lobbyInputCtrl, TabIndex: 0, Constraint: widget.GridConstraint{
+				Col: 0, Row: 2, ColSpan: 3, WeightX: 1, Fill: widget.FillHorizontal,
 			}},
 		},
+	}
+
+	lobbyMenuBar := &widget.MenuBar{}
+	lobbyStatusBar := &widget.StatusBar{}
+	lobbyScreen := &widget.Screen{
+		MenuBar:   lobbyMenuBar,
+		Window:    lobbyWindow,
+		StatusBar: lobbyStatusBar,
 	}
 
 	m := Model{
@@ -206,22 +223,28 @@ func NewModel(api ServerAPI, playerID string) Model {
 		lobbyWindow:    lobbyWindow,
 		lobbyChatView:  lobbyChatView,
 		lobbyTeamPanel: lobbyTeamPanel,
-		lobbyCmdLabel:  lobbyCmdLabel,
+		lobbyInput:     lobbyInputCtrl,
+		lobbyScreen:    lobbyScreen,
+		lobbyMenuBar:   lobbyMenuBar,
+		lobbyStatusBar: lobbyStatusBar,
 	}
+	lobbyMenuBar.Overlay = &m.overlay
+
+	// Wire lobby command input callbacks.
+	lobbyInputCtrl.OnSubmit = m.dispatchInput
+	lobbyInputCtrl.OnTab = m.lobbyTabComplete
+
 	m.syncChat()
 	// Always start in lobby/input mode. GameLoadedMsg will transition
 	// participating players into game mode. Late joiners stay in lobby.
 	SetInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 	m.mode = modeInput
-	m.input.Focus()
+	m.lobbyInput.Model.Focus()
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	if m.mode == modeInput {
-		return m.input.Focus() // starts cursor blink
-	}
-	return nil
+	return m.lobbyInput.Model.Focus() // starts cursor blink in lobby
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -313,6 +336,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		SetInputStyle(&m.input, m.theme.LayerAt(1).BgC(), m.theme.LayerAt(1).FgC())
 		m.mode = modeIdle
 		m.lobbyFocus = lobbyFocusChat
+		m.lobbyInput.Model.Blur()
 		m.input.Blur()
 		m.resizeViewports()
 		return m, nil
@@ -320,9 +344,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.GameUnloadedMsg:
 		m.inActiveGame = false
 		m.invalidateMenuCache()
-		SetInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
-		m.mode = modeInput
-		cmd := m.input.Focus()
+		m.lobbyFocus = lobbyFocusChat
+		m.lobbyWindow.FocusIdx = 4
+		cmd := m.lobbyInput.Model.Focus()
 		m.resizeViewports()
 		return m, cmd
 
@@ -367,31 +391,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if clickedPlayer != "" {
 						// Player name clicked — insert into chat input.
 						m.lobbyFocus = lobbyFocusChat
-						m.mode = modeInput
-						m.input.Focus()
-						if m.input.Value() == "" {
-							m.input.SetValue("/msg " + clickedPlayer + " ")
-							m.input.CursorEnd()
+						m.lobbyWindow.FocusIdx = 4
+						m.lobbyInput.Model.Focus()
+						if m.lobbyInput.Model.Value() == "" {
+							m.lobbyInput.Model.SetValue("/msg " + clickedPlayer + " ")
+							m.lobbyInput.Model.CursorEnd()
 						} else {
-							val := m.input.Value()
-							pos := m.input.Position()
-							m.input.SetValue(val[:pos] + clickedPlayer + val[pos:])
-							m.input.SetCursor(pos + len(clickedPlayer))
+							val := m.lobbyInput.Model.Value()
+							pos := m.lobbyInput.Model.Position()
+							m.lobbyInput.Model.SetValue(val[:pos] + clickedPlayer + val[pos:])
+							m.lobbyInput.Model.SetCursor(pos + len(clickedPlayer))
 						}
 						return m, nil
 					}
 					// Non-player row — switch focus to teams.
 					if m.lobbyFocus == lobbyFocusChat {
 						m.lobbyFocus = lobbyFocusTeams
-						m.input.Blur()
+						m.lobbyInput.Model.Blur()
 					}
 					return m, nil
 				}
 				// Clicked chat panel or elsewhere — switch to chat.
 				if m.lobbyFocus == lobbyFocusTeams {
 					m.lobbyFocus = lobbyFocusChat
-					m.mode = modeInput
-					cmd := m.input.Focus()
+					m.lobbyWindow.FocusIdx = 4
+					cmd := m.lobbyInput.Model.Focus()
 					return m, cmd
 				}
 			}
@@ -405,7 +429,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleKey(msg)
 	}
 
-	// Forward other messages to textinput in input mode (cursor blink etc.)
+	// Forward other messages to textinput for cursor blink etc.
+	if !m.inActiveGame {
+		// Lobby: forward to lobby command input.
+		updated, cmd := m.lobbyInput.Model.Update(msg)
+		*m.lobbyInput.Model = updated
+		return m, cmd
+	}
 	if m.mode == modeInput {
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
@@ -456,9 +486,23 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleTeamEditKey(msg)
 	}
 
-	// Lobby team panel focus — handle team navigation keys.
-	if !m.inActiveGame && m.lobbyFocus == lobbyFocusTeams {
-		return m.handleTeamKey(msg)
+	// Lobby: delegate to the NCWindow which routes to the focused child
+	// (NCCommandInput or NCTeamPanel).
+	if !m.inActiveGame {
+		if m.lobbyFocus == lobbyFocusTeams {
+			return m.handleTeamKey(msg)
+		}
+		// Chat/input focused — route through NCWindow to the NCCommandInput.
+		cmd := m.lobbyWindow.HandleUpdate(msg)
+		// Sync lobbyFocus from window's FocusIdx in case Tab cycled focus.
+		if m.lobbyWindow.FocusIdx == 2 {
+			m.lobbyFocus = lobbyFocusTeams
+		}
+		// Reset tab candidates on non-tab keys.
+		if msg.String() != "tab" {
+			m.tabCandidates = nil
+		}
+		return m, cmd
 	}
 
 	// Splash phase — admin can press Enter to start, others wait.
@@ -606,8 +650,8 @@ func (m Model) handleTeamKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "tab", "esc":
 		// Switch back to chat.
 		m.lobbyFocus = lobbyFocusChat
-		m.mode = modeInput
-		cmd := m.input.Focus()
+		m.lobbyWindow.FocusIdx = 4 // lobbyInput
+		cmd := m.lobbyInput.Model.Focus()
 		return m, cmd
 	case "up":
 		idx := m.api.State().PlayerTeamIndex(m.playerID)
@@ -866,7 +910,11 @@ func (m Model) View() tea.View {
 	shadowBg := m.theme.ShadowBgC()
 	if m.overlay.OpenMenu >= 0 {
 		menuLayer := m.theme.LayerAt(1)
-		if dd := m.overlay.RenderDropdown(menus, 1, menuLayer); dd.Content != "" {
+		ncBarRow := 0 // menu bar row (Screen puts it at row 0)
+		if m.inActiveGame && phase != common.PhaseNone {
+			ncBarRow = 1 // playing view: game name row + menu bar
+		}
+		if dd := m.overlay.RenderDropdown(menus, ncBarRow, menuLayer); dd.Content != "" {
 			sub := common.NewImageBuffer(dd.Width, dd.Height)
 			sub.PaintANSI(0, 0, dd.Width, dd.Height, dd.Content, menuLayer.FgC(), menuLayer.BgC())
 			buf.Blit(dd.Col, dd.Row, sub)
@@ -889,16 +937,17 @@ func (m Model) View() tea.View {
 
 	isLobby := !m.inActiveGame || phase == common.PhaseNone
 
-	if m.mode == modeInput {
-		if cursor := m.input.Cursor(); cursor != nil {
-			if isLobby {
-				// Command bar is 1 row above NCWindow bottom border, which is 1 row above status bar.
-				// NCWindow occupies rows 1..H-2, so bottom border = H-2, cmd bar = H-3.
-				cursor.Position.Y = m.height - 3
-				cursor.Position.X += 1 // +1 for left window border
-			} else {
-				cursor.Position.Y = m.height - 2 // row above framework status bar
+	if isLobby && m.lobbyFocus == lobbyFocusChat {
+		if cx, cy, visible := m.lobbyWindow.CursorPosition(); visible {
+			if cursor := m.lobbyInput.Model.Cursor(); cursor != nil {
+				cursor.Position.X = cx
+				cursor.Position.Y = cy
+				view.Cursor = cursor
 			}
+		}
+	} else if m.mode == modeInput && !isLobby {
+		if cursor := m.input.Cursor(); cursor != nil {
+			cursor.Position.Y = m.height - 2 // row above framework status bar
 			view.Cursor = cursor
 		}
 	}
@@ -930,14 +979,10 @@ func (m Model) View() tea.View {
 }
 
 // renderLobby renders the lobby view using NC controls directly into the buffer.
-// Layout: row 0 = NC menu bar, rows 1..H-2 = NCWindow (chat + teams + cmd bar), row H-1 = status bar.
+// Layout: row 0 = NCMenuBar, rows 1..H-2 = NCWindow (chat + teams + cmd bar), row H-1 = NCStatusBar.
 func (m Model) renderLobby(buf *common.ImageBuffer, menus []common.MenuDef) {
-	layer := m.theme.LayerAt(0)
-	menuLayer := m.theme.LayerAt(1)
-
-	// Row 0: NC action bar.
-	ncBar := m.overlay.RenderMenuBar(m.width, menus, menuLayer)
-	buf.PaintANSI(0, 0, m.width, 1, ncBar, menuLayer.FgC(), menuLayer.BgC())
+	// Update menu bar.
+	m.lobbyMenuBar.Menus = menus
 
 	// Update chat view.
 	m.lobbyChatView.Lines = m.chatLines
@@ -956,58 +1001,23 @@ func (m Model) renderLobby(buf *common.ImageBuffer, menus []common.MenuDef) {
 	}
 	m.lobbyTeamPanel.ShowCreate = !m.api.State().IsSoleMemberOfTeam(m.playerID)
 
-	// Update command bar text.
-	if m.teamEditing {
-		m.lobbyCmdLabel.Text = "[Enter] Save  [Esc] Cancel"
-	} else if m.lobbyFocus == lobbyFocusTeams {
-		m.lobbyCmdLabel.Text = "[Tab] Chat                    [\u2191\u2193] Move [\u2190\u2192] Color [\u23ce] Rename"
-	} else if m.mode == modeInput {
-		m.lobbyCmdLabel.Text = "[Enter] Send  [Esc] Cancel                          [Tab] Teams"
-	} else {
-		m.lobbyCmdLabel.Text = "[Enter] Chat  /help for commands                    [Tab] Teams"
-	}
-
 	// Set focus to match lobbyFocus.
 	if m.lobbyFocus == lobbyFocusTeams {
 		m.lobbyWindow.FocusIdx = 2 // team panel child index
 	} else {
-		m.lobbyWindow.FocusIdx = 0 // chat view child index
+		m.lobbyWindow.FocusIdx = 4 // lobbyInput child index
 	}
 
-	// Render NCWindow (rows 1 to H-2).
-	windowH := m.height - 2 // minus menu bar row and status bar row
-	if windowH < 3 {
-		windowH = 3
-	}
-	m.lobbyWindow.RenderToBuf(buf, 0, 1, m.width, windowH, layer)
-
-	// If in input mode, overlay the text input on the command bar row.
-	if m.mode == modeInput && m.lobbyFocus == lobbyFocusChat {
-		cmdRow := 1 + windowH - 2 // window starts at y=1, cmd bar is 1 row above bottom border
-		m.input.SetWidth(max(1, m.width-4)) // -2 borders -2 padding
-		inputView := m.input.View()
-		inputW := m.width - 2 // inside window borders
-		buf.PaintANSI(1, cmdRow, inputW, 1, truncateStyled(inputView, inputW), nil, layer.BgC())
-	}
-
-	// Status bar (last row): server info + time.
-	statusLayer := m.theme.LayerAt(1)
-	statusFg := statusLayer.FgC()
-	statusBg := statusLayer.BgC()
-	buf.Fill(0, m.height-1, m.width, 1, ' ', statusFg, statusBg, common.AttrNone)
-
+	// Update status bar.
 	modeLabel := "remote"
 	if m.IsLocal {
 		modeLabel = "local"
 	}
-	statusLeft := fmt.Sprintf(" null-space (%s) | %d players | uptime %s", modeLabel, m.api.State().PlayerCount(), m.api.Uptime())
-	buf.WriteString(0, m.height-1, statusLeft, statusFg, statusBg, common.AttrNone)
+	m.lobbyStatusBar.LeftText = fmt.Sprintf(" null-space (%s) | %d players | uptime %s", modeLabel, m.api.State().PlayerCount(), m.api.Uptime())
+	m.lobbyStatusBar.RightText = time.Now().Format("2006-01-02 15:04:05") + " "
 
-	statusRight := time.Now().Format("2006-01-02 15:04:05") + " "
-	rightX := m.width - len(statusRight)
-	if rightX > len(statusLeft) {
-		buf.WriteString(rightX, m.height-1, statusRight, statusFg, statusBg, common.AttrNone)
-	}
+	// Render the full screen: menu bar + window + status bar.
+	m.lobbyScreen.RenderToBuf(buf, 0, 0, m.width, m.height, m.theme)
 
 	// Sync chatScrollOffset back from NCTextView (it may have been changed by scroll input).
 	m.chatScrollOffset = m.lobbyChatView.ScrollOffset
@@ -1432,21 +1442,18 @@ func (m *Model) showShaderDialog() {
 func (m *Model) submitInput() {
 	text := strings.TrimSpace(m.input.Value())
 	m.input.SetValue("")
-	if text != "" {
-		if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != text {
-			m.inputHistory = append(m.inputHistory, text)
-			if len(m.inputHistory) > 50 {
-				m.inputHistory = m.inputHistory[1:]
-			}
-		}
-	}
 	// In-game: return to idle after submit so keys route to the game.
-	// Lobby: stay in input mode.
 	if m.inActiveGame {
 		SetInputStyle(&m.input, m.theme.LayerAt(1).BgC(), m.theme.LayerAt(1).FgC())
 		m.mode = modeIdle
 		m.input.Blur()
 	}
+	m.dispatchInput(text)
+}
+
+// dispatchInput processes submitted text (commands, chat, plugins).
+// Called by both the lobby NCCommandInput and the playing-mode textinput.
+func (m *Model) dispatchInput(text string) {
 	if text == "" {
 		return
 	}
@@ -1489,6 +1496,23 @@ func (m *Model) submitInput() {
 		playerName = p.Name
 	}
 	m.api.BroadcastChat(common.Message{Author: playerName, Text: text})
+}
+
+// lobbyTabComplete provides tab completion for the lobby command input.
+func (m *Model) lobbyTabComplete(current string) (string, bool) {
+	if !strings.HasPrefix(current, "/") {
+		return "", false
+	}
+	if m.tabCandidates == nil {
+		m.tabPrefix, m.tabCandidates = m.api.TabCandidates(current, m.api.State().PlayerNames())
+		m.tabIndex = 0
+	}
+	if len(m.tabCandidates) == 0 {
+		return "", false
+	}
+	result := m.tabPrefix + m.tabCandidates[m.tabIndex]
+	m.tabIndex = (m.tabIndex + 1) % len(m.tabCandidates)
+	return result, true
 }
 
 func (m *Model) handleThemeCommand(input string) {

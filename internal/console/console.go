@@ -54,6 +54,9 @@ type Model struct {
 	inputCtrl *widget.CommandInput
 	logView   *widget.TextView
 	window    *widget.Window
+	screen    *widget.Screen
+	menuBar   *widget.MenuBar
+	statusBar *widget.StatusBar
 
 	// All log lines (tagged), and filter state.
 	allLines []taggedLine
@@ -122,12 +125,23 @@ func NewModel(api ServerAPI, cancel context.CancelFunc) *Model {
 	}
 	window.FocusFirst()
 
+	menuBarCtrl := &widget.MenuBar{}
+	statusBarCtrl := &widget.StatusBar{}
+	screen := &widget.Screen{
+		MenuBar:   menuBarCtrl,
+		Window:    window,
+		StatusBar: statusBarCtrl,
+	}
+
 	m := &Model{
 		api:       api,
 		cancel:    cancel,
 		inputCtrl: inputCtrl,
 		logView:   logView,
 		window:    window,
+		screen:    screen,
+		menuBar:   menuBarCtrl,
+		statusBar: statusBarCtrl,
 		filter: map[LogCategory]bool{
 			CatInfo:    true,
 			CatWarn:    true,
@@ -139,6 +153,9 @@ func NewModel(api ServerAPI, cancel context.CancelFunc) *Model {
 		theme:   theme.Default(),
 		overlay: widget.OverlayState{OpenMenu: -1},
 	}
+
+	// Wire the menu bar to share the model's overlay state.
+	m.menuBar.Overlay = &m.overlay
 
 	// Wire callbacks — the NCTextInput handles Enter/Esc/Up/Down/Tab internally.
 	inputCtrl.OnSubmit = m.submitInput
@@ -449,21 +466,14 @@ func (m *Model) View() tea.View {
 	}
 
 	t := m.theme
-	primary := t.LayerAt(0)   // desktop
 	secondary := t.LayerAt(1) // menus, status bar
 
 	buf := common.NewImageBuffer(m.width, m.height)
 
-	// NC action bar (row 0) — PaintANSI the string into the buffer.
+	// Update menu bar and status bar before render.
 	menus := m.consoleMenus()
-	ncBar := m.overlay.RenderMenuBar(m.width, menus, secondary)
-	buf.PaintANSI(0, 0, m.width, 1, ncBar, secondary.FgC(), secondary.BgC())
+	m.menuBar.Menus = menus
 
-	// NC panel with log + input (rows 1 through height-2) — render directly.
-	panelH := m.height - 2 // subtract NC bar and status bar
-	m.window.RenderToBuf(buf, 0, 1, m.width, panelH, primary)
-
-	// Status bar (bottom row).
 	m.api.State().RLock()
 	gameName := m.api.State().GameName
 	phase := m.api.State().GamePhase
@@ -480,17 +490,10 @@ func (m *Model) View() tea.View {
 			gameLabel += " [game over]"
 		}
 	}
-	statusText := fmt.Sprintf("game: %s | players: %d | uptime %s | %s", gameLabel, m.api.State().PlayerCount(), m.api.Uptime(), time.Now().Format("15:04:05"))
-	sbFg := secondary.FgC()
-	sbBg := secondary.BgC()
-	buf.Fill(0, m.height-1, m.width, 1, ' ', sbFg, sbBg, common.AttrNone)
-	// Right-align status text.
-	statusRow := m.height - 1
-	startX := m.width - len(statusText)
-	if startX < 0 {
-		startX = 0
-	}
-	buf.WriteString(startX, statusRow, statusText, sbFg, sbBg, common.AttrNone)
+	m.statusBar.RightText = fmt.Sprintf("game: %s | players: %d | uptime %s | %s", gameLabel, m.api.State().PlayerCount(), m.api.Uptime(), time.Now().Format("15:04:05"))
+
+	// Render the full screen: menu bar + window + status bar.
+	m.screen.RenderToBuf(buf, 0, 0, m.width, m.height, t)
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
 	engine.ApplyShaders(m.shaders, buf)
@@ -522,7 +525,7 @@ func (m *Model) View() tea.View {
 
 	// Hide cursor when overlay (menu/dialog) is active.
 	if !m.overlay.IsActive() {
-		if cx, cy, visible := m.window.CursorPosition(); visible {
+		if cx, cy, visible := m.screen.CursorPosition(); visible {
 			if cursor := m.inputCtrl.Model.Cursor(); cursor != nil {
 				cursor.Position.X = cx
 				cursor.Position.Y = cy
