@@ -8,6 +8,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 
+	"null-space/internal/render"
 	"null-space/internal/theme"
 )
 
@@ -26,14 +27,19 @@ var benchDuration = flag.Duration("nc.benchtime", 10*time.Second, "how long to r
 //
 //	2026-04-01  827 µs/op
 //	2026-04-01  121 µs/op  (cellbuf rewrite — 6.8x speedup)
+//	2026-04-02   64 µs/op  (buffer reuse, zero-alloc SGR, cached theme colors — 1.9x speedup)
 func BenchmarkComplexNCRender(b *testing.B) {
-	theme := theme.Default()
-	layer := theme.LayerAt(0)
+	th := theme.Default()
+	layer := th.LayerAt(0)
 
 	window := buildComplexWindow()
 
+	const w, h = 120, 40
+	buf := render.NewImageBuffer(w, h)
+
 	// Sanity check: render once to make sure it doesn't panic.
-	output := window.Render(0, 0, 120, 40, layer)
+	window.RenderToBuf(buf, 0, 0, w, h, layer)
+	output := buf.ToString()
 	if len(output) == 0 {
 		b.Fatal("expected non-empty render output")
 	}
@@ -42,7 +48,9 @@ func BenchmarkComplexNCRender(b *testing.B) {
 	deadline := time.Now().Add(*benchDuration)
 	b.ResetTimer()
 	for time.Now().Before(deadline) {
-		_ = window.Render(0, 0, 120, 40, layer)
+		buf.Clear()
+		window.RenderToBuf(buf, 0, 0, w, h, layer)
+		_ = buf.ToString()
 		iterations++
 	}
 	b.StopTimer()

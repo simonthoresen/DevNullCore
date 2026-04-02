@@ -21,6 +21,12 @@ type Panel struct {
 	cellX, cellY       []int
 	cellW, cellH       []int
 	gridCols, gridRows int
+
+	// Reusable scratch slices for computeGrid.
+	scratchColMinW  []int
+	scratchRowMinH  []int
+	scratchColWeight []float64
+	scratchRowWeight []float64
 }
 
 func (p *Panel) Focusable() bool     { return false } // panels aren't directly focusable; their children are
@@ -122,10 +128,14 @@ func (p *Panel) computeGrid(innerX, innerY int) {
 		return
 	}
 
-	colMinW := make([]int, maxCol)
-	rowMinH := make([]int, maxRow)
-	colWeight := make([]float64, maxCol)
-	rowWeight := make([]float64, maxRow)
+	p.scratchColMinW = reuseIntSlice(p.scratchColMinW, maxCol)
+	p.scratchRowMinH = reuseIntSlice(p.scratchRowMinH, maxRow)
+	p.scratchColWeight = reuseFloatSlice(p.scratchColWeight, maxCol)
+	p.scratchRowWeight = reuseFloatSlice(p.scratchRowWeight, maxRow)
+	colMinW := p.scratchColMinW
+	rowMinH := p.scratchRowMinH
+	colWeight := p.scratchColWeight
+	rowWeight := p.scratchRowWeight
 
 	for _, child := range p.Children {
 		c := child.Constraint
@@ -150,11 +160,11 @@ func (p *Panel) computeGrid(innerX, innerY int) {
 		}
 	}
 
-	p.cellW = DistributeSpace(colMinW, colWeight, p.innerW)
-	p.cellH = DistributeSpace(rowMinH, rowWeight, p.innerH)
+	p.cellW = DistributeSpaceInto(p.cellW, colMinW, colWeight, p.innerW)
+	p.cellH = DistributeSpaceInto(p.cellH, rowMinH, rowWeight, p.innerH)
 
-	p.cellX = make([]int, maxCol)
-	p.cellY = make([]int, maxRow)
+	p.cellX = reuseIntSlice(p.cellX, maxCol)
+	p.cellY = reuseIntSlice(p.cellY, maxRow)
 	cx := innerX
 	for i := range p.cellX {
 		p.cellX[i] = cx

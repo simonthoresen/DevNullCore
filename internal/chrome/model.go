@@ -12,6 +12,7 @@ import (
 
 	"null-space/internal/domain"
 	"null-space/internal/engine"
+	"null-space/internal/render"
 	"null-space/internal/state"
 	"null-space/internal/theme"
 	"null-space/internal/widget"
@@ -149,6 +150,9 @@ type Model struct {
 
 	// Viewport bounds from the last renderPlaying call (for enhanced client OSC).
 	viewportX, viewportY, viewportW, viewportH int
+
+	// Reusable render buffer — cleared and resized each frame instead of allocated.
+	renderBuf *render.ImageBuffer
 }
 
 func NewModel(api ServerAPI, playerID string) Model {

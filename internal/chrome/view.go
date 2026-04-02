@@ -40,7 +40,12 @@ func (m Model) View() tea.View {
 	// Build menus once per frame — passed to sub-views and overlay rendering.
 	menus := m.cachedMenus()
 
-	buf := render.NewImageBuffer(m.width, m.height)
+	if m.renderBuf == nil {
+		m.renderBuf = render.NewImageBuffer(m.width, m.height)
+	} else {
+		m.renderBuf.EnsureSize(m.width, m.height)
+	}
+	buf := m.renderBuf
 
 	if !m.inActiveGame || phase == domain.PhaseNone || phase == domain.PhaseSuspended {
 		m.renderLobby(buf, menus)

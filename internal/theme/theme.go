@@ -25,6 +25,14 @@ type Palette struct {
 	InputBg     string `json:"inputBg"`     // text input field background
 	InputFg     string `json:"inputFg"`     // text input field foreground
 	DisabledFg  string `json:"disabledFg"`  // disabled/grayed items
+
+	// Cached resolved colors — populated by resolveColors().
+	resolved bool
+	bgC, fgC, accentC                             color.Color
+	highlightBgC, highlightFgC                     color.Color
+	activeBgC, activeFgC                           color.Color
+	inputBgC, inputFgC                             color.Color
+	disabledFgC                                    color.Color
 }
 
 // tc converts a hex string to a color.Color, returning fallback if empty.
@@ -35,17 +43,39 @@ func tc(hex, fallback string) color.Color {
 	return lipgloss.Color(hex)
 }
 
+// resolveColors populates the cached color fields. Called once after loading.
+func (p *Palette) resolveColors() {
+	p.bgC = tc(p.Bg, "#000080")
+	p.fgC = tc(p.Fg, "#00AAAA")
+	p.accentC = tc(p.Accent, "#FFFF55")
+	p.highlightBgC = tc(p.HighlightBg, "#00AAAA")
+	p.highlightFgC = tc(p.HighlightFg, "#000000")
+	p.activeBgC = tc(p.ActiveBg, "#FFFF55")
+	p.activeFgC = tc(p.ActiveFg, "#000000")
+	p.inputBgC = tc(p.InputBg, "#000000")
+	p.inputFgC = tc(p.InputFg, "#55FFFF")
+	p.disabledFgC = tc(p.DisabledFg, "#555555")
+	p.resolved = true
+}
+
+// ensureResolved lazily resolves colors if not yet done.
+func (p *Palette) ensureResolved() {
+	if !p.resolved {
+		p.resolveColors()
+	}
+}
+
 // Resolved color accessors.
-func (p *Palette) BgC() color.Color          { return tc(p.Bg, "#000080") }
-func (p *Palette) FgC() color.Color          { return tc(p.Fg, "#00AAAA") }
-func (p *Palette) AccentC() color.Color      { return tc(p.Accent, "#FFFF55") }
-func (p *Palette) HighlightBgC() color.Color { return tc(p.HighlightBg, "#00AAAA") }
-func (p *Palette) HighlightFgC() color.Color { return tc(p.HighlightFg, "#000000") }
-func (p *Palette) ActiveBgC() color.Color    { return tc(p.ActiveBg, "#FFFF55") }
-func (p *Palette) ActiveFgC() color.Color    { return tc(p.ActiveFg, "#000000") }
-func (p *Palette) InputBgC() color.Color     { return tc(p.InputBg, "#000000") }
-func (p *Palette) InputFgC() color.Color     { return tc(p.InputFg, "#55FFFF") }
-func (p *Palette) DisabledFgC() color.Color  { return tc(p.DisabledFg, "#555555") }
+func (p *Palette) BgC() color.Color          { p.ensureResolved(); return p.bgC }
+func (p *Palette) FgC() color.Color          { p.ensureResolved(); return p.fgC }
+func (p *Palette) AccentC() color.Color      { p.ensureResolved(); return p.accentC }
+func (p *Palette) HighlightBgC() color.Color { p.ensureResolved(); return p.highlightBgC }
+func (p *Palette) HighlightFgC() color.Color { p.ensureResolved(); return p.highlightFgC }
+func (p *Palette) ActiveBgC() color.Color    { p.ensureResolved(); return p.activeBgC }
+func (p *Palette) ActiveFgC() color.Color    { p.ensureResolved(); return p.activeFgC }
+func (p *Palette) InputBgC() color.Color     { p.ensureResolved(); return p.inputBgC }
+func (p *Palette) InputFgC() color.Color     { p.ensureResolved(); return p.inputFgC }
+func (p *Palette) DisabledFgC() color.Color  { p.ensureResolved(); return p.disabledFgC }
 
 // Lipgloss style helpers.
 func (p *Palette) BaseStyle() lipgloss.Style {

@@ -74,10 +74,44 @@ type Clickable interface {
 	HandleClick(rx, ry int)
 }
 
+// reuseIntSlice returns a zeroed []int of length n, reusing the backing
+// array of dst when possible to avoid allocation.
+func reuseIntSlice(dst []int, n int) []int {
+	if cap(dst) >= n {
+		dst = dst[:n]
+	} else {
+		dst = make([]int, n)
+	}
+	clear(dst)
+	return dst
+}
+
+// reuseFloatSlice returns a zeroed []float64 of length n, reusing the backing
+// array of dst when possible to avoid allocation.
+func reuseFloatSlice(dst []float64, n int) []float64 {
+	if cap(dst) >= n {
+		dst = dst[:n]
+	} else {
+		dst = make([]float64, n)
+	}
+	clear(dst)
+	return dst
+}
+
 // DistributeSpace allocates space to cells based on minimums and weights.
+// dst is an optional reuse buffer — if large enough, it is reused to avoid allocation.
 func DistributeSpace(mins []int, weights []float64, total int) []int {
+	return distributeSpaceInto(nil, mins, weights, total)
+}
+
+// DistributeSpaceInto is like DistributeSpace but reuses dst to avoid allocation.
+func DistributeSpaceInto(dst, mins []int, weights []float64, total int) []int {
+	return distributeSpaceInto(dst, mins, weights, total)
+}
+
+func distributeSpaceInto(dst, mins []int, weights []float64, total int) []int {
 	n := len(mins)
-	sizes := make([]int, n)
+	sizes := reuseIntSlice(dst, n)
 	copy(sizes, mins)
 
 	used := 0

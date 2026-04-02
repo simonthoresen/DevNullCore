@@ -24,6 +24,12 @@ type Window struct {
 	cellX, cellY     []int // absolute X/Y of each grid cell
 	cellW, cellH     []int // width/height of each grid cell
 	gridCols, gridRows int
+
+	// Reusable scratch slices for computeGrid (avoids per-frame allocations).
+	scratchColMinW  []int
+	scratchRowMinH  []int
+	scratchColWeight []float64
+	scratchRowWeight []float64
 }
 
 // Render draws the window at (x, y) with the given dimensions into buf.
@@ -147,11 +153,15 @@ func (w *Window) computeGrid() {
 		return
 	}
 
-	// Collect minimum sizes and weights per column/row.
-	colMinW := make([]int, maxCol)
-	rowMinH := make([]int, maxRow)
-	colWeight := make([]float64, maxCol)
-	rowWeight := make([]float64, maxRow)
+	// Reuse scratch slices for minimum sizes and weights.
+	w.scratchColMinW = reuseIntSlice(w.scratchColMinW, maxCol)
+	w.scratchRowMinH = reuseIntSlice(w.scratchRowMinH, maxRow)
+	w.scratchColWeight = reuseFloatSlice(w.scratchColWeight, maxCol)
+	w.scratchRowWeight = reuseFloatSlice(w.scratchRowWeight, maxRow)
+	colMinW := w.scratchColMinW
+	rowMinH := w.scratchRowMinH
+	colWeight := w.scratchColWeight
+	rowWeight := w.scratchRowWeight
 
 	for _, child := range w.Children {
 		c := child.Constraint
@@ -178,12 +188,12 @@ func (w *Window) computeGrid() {
 	}
 
 	// Distribute extra space by weight.
-	w.cellW = DistributeSpace(colMinW, colWeight, w.innerW)
-	w.cellH = DistributeSpace(rowMinH, rowWeight, w.innerH)
+	w.cellW = DistributeSpaceInto(w.cellW, colMinW, colWeight, w.innerW)
+	w.cellH = DistributeSpaceInto(w.cellH, rowMinH, rowWeight, w.innerH)
 
 	// Compute absolute positions.
-	w.cellX = make([]int, maxCol)
-	w.cellY = make([]int, maxRow)
+	w.cellX = reuseIntSlice(w.cellX, maxCol)
+	w.cellY = reuseIntSlice(w.cellY, maxRow)
 	cx := w.screenX + 1 // +1 for left border
 	for i := range w.cellX {
 		w.cellX[i] = cx

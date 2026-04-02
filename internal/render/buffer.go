@@ -1,7 +1,6 @@
 package render
 
 import (
-	"fmt"
 	"image/color"
 	"strings"
 	"unicode/utf8"
@@ -38,6 +37,7 @@ type Pixel struct {
 type ImageBuffer struct {
 	Width, Height int
 	Pixels        []Pixel // row-major: Pixels[y*Width + x]
+	strBuf        []byte  // reusable backing buffer for ToString()
 }
 
 // NewImageBuffer creates a buffer filled with spaces and nil colors.
@@ -53,6 +53,35 @@ func NewImageBuffer(w, h int) *ImageBuffer {
 		cells[i].Char = ' '
 	}
 	return &ImageBuffer{Width: w, Height: h, Pixels: cells}
+}
+
+// Clear resets all pixels to spaces with nil colors, ready for a new frame.
+// The underlying slice is reused — no allocation.
+func (b *ImageBuffer) Clear() {
+	for i := range b.Pixels {
+		b.Pixels[i] = Pixel{Char: ' '}
+	}
+}
+
+// EnsureSize grows the buffer if needed to fit (w, h). If the buffer is
+// already large enough, it just updates Width/Height and clears. This
+// avoids re-allocating every frame when terminal sizes are stable.
+func (b *ImageBuffer) EnsureSize(w, h int) {
+	if w < 0 {
+		w = 0
+	}
+	if h < 0 {
+		h = 0
+	}
+	need := w * h
+	if cap(b.Pixels) < need {
+		b.Pixels = make([]Pixel, need)
+	} else {
+		b.Pixels = b.Pixels[:need]
+	}
+	b.Width = w
+	b.Height = h
+	b.Clear()
 }
 
 // inBounds returns true if (x, y) is within the buffer.
@@ -417,9 +446,8 @@ func (b *ImageBuffer) ToString() string {
 		return ""
 	}
 
-	// Pre-allocate a generous builder.
-	var sb strings.Builder
-	sb.Grow(b.Width * b.Height * 3) // rough estimate
+	// Reuse the byte buffer — reset length but keep the backing array.
+	buf := b.strBuf[:0]
 
 	var curFg, curBg color.Color
 	var curAttr PixelAttr
@@ -427,10 +455,10 @@ func (b *ImageBuffer) ToString() string {
 
 	for y := 0; y < b.Height; y++ {
 		if y > 0 {
-			sb.WriteByte('\n')
+			buf = append(buf, '\n')
 		}
 		// Reset at each row start for clean state.
-		sb.WriteString("\x1b[0m")
+		buf = append(buf, "\x1b[0m"...)
 		curFg = nil
 		curBg = nil
 		curAttr = AttrNone
@@ -444,23 +472,21 @@ func (b *ImageBuffer) ToString() string {
 
 			// Emit SGR if style changed.
 			if first || !ColorEq(c.Fg, curFg) || !ColorEq(c.Bg, curBg) || c.Attr != curAttr {
-				sgr := buildSGR(c.Fg, c.Bg, c.Attr)
-				if sgr != "" {
-					sb.WriteString(sgr)
-				}
+				buf = appendSGR(buf, c.Fg, c.Bg, c.Attr)
 				curFg = c.Fg
 				curBg = c.Bg
 				curAttr = c.Attr
 				first = false
 			}
 
-			sb.WriteRune(c.Char)
+			buf = utf8.AppendRune(buf, c.Char)
 		}
 	}
 
 	// Final reset so the terminal returns to default.
-	sb.WriteString("\x1b[0m")
-	return sb.String()
+	buf = append(buf, "\x1b[0m"...)
+	b.strBuf = buf
+	return string(buf)
 }
 
 // ColorEq compares two color.Color values for equality.
@@ -477,39 +503,60 @@ func ColorEq(a, b color.Color) bool {
 	return ar == br && ag == bg && ab == bb && aa == ba
 }
 
-// buildSGR builds an SGR escape sequence for the given style.
-// Returns "" if all values are default (nil colors, no attrs).
-func buildSGR(fg, bg color.Color, attr PixelAttr) string {
-	var parts []string
-
-	// Always start with reset to avoid inheriting previous state,
-	// then add back what we need.
-	parts = append(parts, "0")
+// appendSGR appends an SGR escape sequence to buf.
+// Zero allocations — all formatting is done with append.
+func appendSGR(buf []byte, fg, bg color.Color, attr PixelAttr) []byte {
+	buf = append(buf, "\x1b[0"...)
 
 	if attr&AttrBold != 0 {
-		parts = append(parts, "1")
+		buf = append(buf, ";1"...)
 	}
 	if attr&AttrFaint != 0 {
-		parts = append(parts, "2")
+		buf = append(buf, ";2"...)
 	}
 	if attr&AttrItalic != 0 {
-		parts = append(parts, "3")
+		buf = append(buf, ";3"...)
 	}
 	if attr&AttrUnderline != 0 {
-		parts = append(parts, "4")
+		buf = append(buf, ";4"...)
 	}
 	if attr&AttrReverse != 0 {
-		parts = append(parts, "7")
+		buf = append(buf, ";7"...)
 	}
 
 	if fg != nil {
 		r, g, b, _ := fg.RGBA()
-		parts = append(parts, fmt.Sprintf("38;2;%d;%d;%d", r>>8, g>>8, b>>8))
+		buf = append(buf, ";38;2;"...)
+		buf = appendUint8(buf, uint8(r>>8))
+		buf = append(buf, ';')
+		buf = appendUint8(buf, uint8(g>>8))
+		buf = append(buf, ';')
+		buf = appendUint8(buf, uint8(b>>8))
 	}
 	if bg != nil {
 		r, g, b, _ := bg.RGBA()
-		parts = append(parts, fmt.Sprintf("48;2;%d;%d;%d", r>>8, g>>8, b>>8))
+		buf = append(buf, ";48;2;"...)
+		buf = appendUint8(buf, uint8(r>>8))
+		buf = append(buf, ';')
+		buf = appendUint8(buf, uint8(g>>8))
+		buf = append(buf, ';')
+		buf = appendUint8(buf, uint8(b>>8))
 	}
 
-	return "\x1b[" + strings.Join(parts, ";") + "m"
+	return append(buf, 'm')
+}
+
+// appendUint8 appends a uint8 as decimal digits without allocating.
+func appendUint8(buf []byte, v uint8) []byte {
+	if v >= 100 {
+		buf = append(buf, '0'+byte(v/100))
+		v %= 100
+		buf = append(buf, '0'+byte(v/10))
+		return append(buf, '0'+byte(v%10))
+	}
+	if v >= 10 {
+		buf = append(buf, '0'+byte(v/10))
+		return append(buf, '0'+byte(v%10))
+	}
+	return append(buf, '0'+byte(v))
 }

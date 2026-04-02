@@ -84,6 +84,9 @@ type Model struct {
 	// Per-console shaders (post-processing, run in order)
 	shaders     []domain.Shader
 	shaderNames []string
+
+	// Reusable render buffer — cleared and resized each frame instead of allocated.
+	renderBuf *render.ImageBuffer
 }
 
 // tea.Msg types for channel-based updates.
@@ -469,7 +472,12 @@ func (m *Model) View() tea.View {
 	t := m.theme
 	secondary := t.LayerAt(1) // menus, status bar
 
-	buf := render.NewImageBuffer(m.width, m.height)
+	if m.renderBuf == nil {
+		m.renderBuf = render.NewImageBuffer(m.width, m.height)
+	} else {
+		m.renderBuf.EnsureSize(m.width, m.height)
+	}
+	buf := m.renderBuf
 
 	// Update menu bar and status bar before render.
 	menus := m.consoleMenus()
