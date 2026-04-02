@@ -47,6 +47,13 @@ func stripANSI(s string) string {
 	return ansi.Strip(s)
 }
 
+// renderControl is a test helper that renders a control into a CellBuffer and returns the string.
+func renderControl(ctrl NCControl, w, h int, focused bool, layer *ThemeLayer) string {
+	buf := NewCellBuffer(w, h)
+	ctrl.Render(buf, 0, 0, w, h, focused, layer)
+	return buf.ToString()
+}
+
 // ─── Theme & Palette tests ────────────────────────────────────────────────────
 
 func TestDefaultThemeNotNil(t *testing.T) {
@@ -113,7 +120,7 @@ func TestNCTextInputRender(t *testing.T) {
 	ti := &NCTextInput{Model: model}
 	layer := testLayer()
 
-	output := ti.Render(20, 1, false, layer)
+	output := renderControl(ti, 20, 1, false, layer)
 	stripped := stripANSI(output)
 
 	if !strings.HasPrefix(stripped, "[") {
@@ -134,7 +141,7 @@ func TestNCTextInputRenderWidth(t *testing.T) {
 	layer := testLayer()
 
 	for _, w := range []int{10, 20, 40, 80} {
-		output := ti.Render(w, 1, false, layer)
+		output := renderControl(ti, w, 1, false, layer)
 		visW := ansi.StringWidth(output)
 		if visW > w {
 			t.Errorf("width %d: rendered width %d exceeds allocated width", w, visW)
@@ -259,7 +266,7 @@ func TestNCTextViewRender(t *testing.T) {
 	}
 	layer := testLayer()
 
-	output := tv.Render(20, 5, false, layer)
+	output := renderControl(tv, 20, 5, false, layer)
 	lines := strings.Split(output, "\n")
 
 	if len(lines) != 5 {
@@ -297,7 +304,7 @@ func TestNCTextViewScrollClamp(t *testing.T) {
 
 func TestNCButtonRender(t *testing.T) {
 	btn := &NCButton{Label: "OK"}
-	output := btn.Render(10, 1, false, testLayer())
+	output := renderControl(btn, 10, 1, false, testLayer())
 	stripped := stripANSI(output)
 	if !strings.Contains(stripped, "[ OK ]") {
 		t.Errorf("expected '[ OK ]', got %q", stripped)
@@ -333,14 +340,14 @@ func TestNCCheckboxToggle(t *testing.T) {
 
 func TestNCCheckboxRender(t *testing.T) {
 	cb := &NCCheckbox{Label: "Opt", Checked: true}
-	output := cb.Render(20, 1, false, testLayer())
+	output := renderControl(cb, 20, 1, false, testLayer())
 	stripped := stripANSI(output)
 	if !strings.Contains(stripped, "[x] Opt") {
 		t.Errorf("expected '[x] Opt', got %q", stripped)
 	}
 
 	cb.Checked = false
-	output = cb.Render(20, 1, false, testLayer())
+	output = renderControl(cb, 20, 1, false, testLayer())
 	stripped = stripANSI(output)
 	if !strings.Contains(stripped, "[ ] Opt") {
 		t.Errorf("expected '[ ] Opt', got %q", stripped)
@@ -481,7 +488,7 @@ func TestNCWindowGridLayout(t *testing.T) {
 
 func TestNCHDividerRender(t *testing.T) {
 	d := &NCHDivider{Connected: true}
-	output := d.Render(10, 1, false, testLayer())
+	output := renderControl(d, 10, 1, false, testLayer())
 	stripped := stripANSI(output)
 	// The divider renders inner horizontal chars repeated to fill width.
 	visW := ansi.StringWidth(output)
@@ -492,7 +499,7 @@ func TestNCHDividerRender(t *testing.T) {
 
 func TestNCVDividerRender(t *testing.T) {
 	d := &NCVDivider{}
-	output := d.Render(1, 3, false, testLayer())
+	output := renderControl(d, 1, 3, false, testLayer())
 	lines := strings.Split(output, "\n")
 	if len(lines) != 3 {
 		t.Errorf("expected 3 lines, got %d", len(lines))

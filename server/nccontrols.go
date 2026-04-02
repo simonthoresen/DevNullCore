@@ -3,6 +3,7 @@ package server
 import (
 	"image/color"
 	"strings"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -21,22 +22,34 @@ type NCLabel struct {
 func (l *NCLabel) Update(_ tea.Msg)    {}
 func (l *NCLabel) Focusable() bool     { return false }
 func (l *NCLabel) MinSize() (int, int) { return ansi.StringWidth(l.Text), 1 }
-func (l *NCLabel) Render(w, h int, _ bool, layer *ThemeLayer) string {
+func (l *NCLabel) Render(buf *CellBuffer, x, y, w, h int, _ bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
 	text := l.Text
-	vis := ansi.StringWidth(text)
-	style := layer.BaseStyle()
+	vis := utf8.RuneCountInString(text)
+
+	startX := x
 	switch l.Align {
 	case "center":
 		if vis < w {
-			pad := (w - vis) / 2
-			text = strings.Repeat(" ", pad) + text + strings.Repeat(" ", w-vis-pad)
+			startX = x + (w-vis)/2
 		}
 	case "right":
 		if vis < w {
-			text = strings.Repeat(" ", w-vis) + text
+			startX = x + w - vis
 		}
 	}
-	return style.Width(w).Render(truncateStyled(text, w))
+
+	col := startX
+	for _, r := range text {
+		if col >= x+w {
+			break
+		}
+		if col >= x {
+			buf.SetChar(col, y, r, fg, bg, AttrNone)
+		}
+		col++
+	}
 }
 
 // ─── NCTextInput ──────────────────────────────────────────────────────────────
@@ -186,54 +199,72 @@ func (ci *NCCommandInput) Update(msg tea.Msg) {
 	*ci.Model = updated
 }
 
-func (ti *NCTextInput) Render(width, height int, focused bool, layer *ThemeLayer) string {
-	bg := layer.InputBgC()
-	fg := layer.InputFgC()
-	ti.bg = bg
-	ti.fg = fg
+func (ti *NCTextInput) Render(buf *CellBuffer, x, y, width, height int, focused bool, layer *ThemeLayer) {
+	inputBg := layer.InputBgC()
+	inputFg := layer.InputFgC()
+	ti.bg = inputBg
+	ti.fg = inputFg
+	baseFg := layer.FgC()
+	baseBg := layer.BgC()
 
 	fieldW := max(1, width-2)
-	// Removed: slog.Debug here caused a feedback loop when debug logging
-	// was enabled — render → slog → console event → re-render.
-	bracketStyle := layer.BaseStyle()
-	inputStyle := lipgloss.NewStyle().Background(bg).Foreground(fg)
-	dotStyle := lipgloss.NewStyle().Background(bg).Foreground(fg).Faint(true)
 
+	// Configure the textinput model for rendering via PaintANSI.
 	ti.Model.Prompt = ""
 	ti.Model.Placeholder = ""
 	ti.Model.SetWidth(fieldW)
+	inputStyle := lipgloss.NewStyle().Background(inputBg).Foreground(inputFg)
 	s := ti.Model.Styles()
 	s.Focused.Prompt = lipgloss.NewStyle()
 	s.Focused.Text = inputStyle
 	s.Focused.Placeholder = lipgloss.NewStyle()
-	s.Cursor.Color = fg
+	s.Cursor.Color = inputFg
 	s.Cursor.Blink = true
 	ti.Model.SetStyles(s)
 	ti.Model.SetVirtualCursor(false)
 
+	// Brackets.
+	buf.SetChar(x, y, '[', baseFg, baseBg, AttrNone)
+	buf.SetChar(x+width-1, y, ']', baseFg, baseBg, AttrNone)
+
 	hasCursor := ti.Model.Focused()
 	if hasCursor {
+		// Use PaintANSI to render the textinput's styled output.
 		view := ti.Model.View()
-		// The textinput pads its output to fieldW with spaces; strip trailing
-		// space padding so we can replace it with dot fill.
 		stripped := strings.TrimRight(ansi.Strip(view), " ")
 		usedW := ansi.StringWidth(stripped)
 		dotsW := max(0, fieldW-usedW)
 		trimmedView := ansi.Truncate(view, usedW, "")
-		fill := dotStyle.Render(strings.Repeat("·", dotsW))
-		return bracketStyle.Render("[") + trimmedView + fill + bracketStyle.Render("]")
+		buf.PaintANSI(x+1, y, fieldW, 1, trimmedView, inputFg, inputBg)
+		// Fill remaining with dots.
+		for i := 0; i < dotsW; i++ {
+			buf.SetChar(x+1+usedW+i, y, '·', inputFg, inputBg, AttrFaint)
+		}
+		return
 	}
 
 	val := ti.Model.Value()
-	dotsW := max(0, fieldW-ansi.StringWidth(val))
+	valW := ansi.StringWidth(val)
 	if val == "" {
-		return bracketStyle.Render("[") +
-			dotStyle.Render(strings.Repeat("·", fieldW)) +
-			bracketStyle.Render("]")
+		// All dots.
+		for i := 0; i < fieldW; i++ {
+			buf.SetChar(x+1+i, y, '·', inputFg, inputBg, AttrFaint)
+		}
+		return
 	}
-	text := inputStyle.Render(truncateStyled(val, fieldW))
-	dots := dotStyle.Render(strings.Repeat("·", dotsW))
-	return bracketStyle.Render("[") + text + dots + bracketStyle.Render("]")
+	// Value + dots.
+	col := 0
+	for _, r := range val {
+		if col >= fieldW {
+			break
+		}
+		buf.SetChar(x+1+col, y, r, inputFg, inputBg, AttrNone)
+		col++
+	}
+	dotsW := max(0, fieldW-valW)
+	for i := 0; i < dotsW; i++ {
+		buf.SetChar(x+1+valW+i, y, '·', inputFg, inputBg, AttrFaint)
+	}
 }
 
 // ─── NCTextView ───────────────────────────────────────────────────────────────
@@ -303,8 +334,9 @@ func (v *NCTextView) clampScroll() {
 	}
 }
 
-func (v *NCTextView) Render(width, height int, focused bool, layer *ThemeLayer) string {
-	style := layer.BaseStyle()
+func (v *NCTextView) Render(buf *CellBuffer, x, y, width, height int, focused bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
 	v.height = height
 	h := max(1, height)
 	v.clampScroll()
@@ -316,12 +348,12 @@ func (v *NCTextView) Render(width, height int, focused bool, layer *ThemeLayer) 
 		contentW = max(1, width-1)
 	}
 
+	// Fill background.
+	buf.Fill(x, y, width, height, ' ', fg, bg, AttrNone)
+
+	// Determine visible slice.
 	var visibleLines []string
-	if n == 0 {
-		for i := 0; i < h; i++ {
-			visibleLines = append(visibleLines, "")
-		}
-	} else {
+	if n > 0 {
 		end := n - v.ScrollOffset
 		if end < 0 {
 			end = 0
@@ -333,29 +365,19 @@ func (v *NCTextView) Render(width, height int, focused bool, layer *ThemeLayer) 
 		visibleLines = v.Lines[start:end]
 	}
 
-	var rows []string
+	// Render visible lines. Lines may contain ANSI codes (chat messages).
+	startRow := y
 	if v.BottomAlign && len(visibleLines) < h {
-		for i := 0; i < h-len(visibleLines); i++ {
-			rows = append(rows, style.Width(contentW).Render(""))
-		}
+		startRow = y + h - len(visibleLines)
 	}
-	for _, line := range visibleLines {
-		rows = append(rows, style.Width(contentW).Render(truncateStyled(line, contentW)))
-	}
-	for len(rows) < h {
-		rows = append(rows, style.Width(contentW).Render(""))
+	for i, line := range visibleLines {
+		buf.PaintANSI(x, startRow+i, contentW, 1, line, fg, bg)
 	}
 
+	// Scrollbar.
 	if showScrollbar {
-		sb := renderScrollbar(n, h, v.ScrollOffset, style)
-		for i := range rows {
-			if i < len(sb) {
-				rows[i] = rows[i] + sb[i]
-			}
-		}
+		renderScrollbarBuf(buf, x+contentW, y, n, h, v.ScrollOffset, fg, bg)
 	}
-
-	return strings.Join(rows, "\n")
 }
 
 // ─── NCTextArea ───────────────────────────────────────────────────────────────
@@ -452,13 +474,13 @@ func (a *NCTextArea) Update(msg tea.Msg) {
 	}
 }
 
-func (a *NCTextArea) Render(width, height int, focused bool, layer *ThemeLayer) string {
+func (a *NCTextArea) Render(buf *CellBuffer, x, y, width, height int, focused bool, layer *ThemeLayer) {
 	a.height = height
 	fieldW := max(1, width-2) // -2 for "[" and "]"
-
-	bracketStyle := layer.BaseStyle()
-	inputStyle := layer.InputStyle()
-	dotStyle := lipgloss.NewStyle().Background(layer.InputBgC()).Foreground(layer.InputFgC()).Faint(true)
+	baseFg := layer.FgC()
+	baseBg := layer.BgC()
+	inputFg := layer.InputFgC()
+	inputBg := layer.InputBgC()
 
 	// Ensure at least one line.
 	if len(a.Lines) == 0 {
@@ -473,26 +495,39 @@ func (a *NCTextArea) Render(width, height int, focused bool, layer *ThemeLayer) 
 		a.ScrollTop = a.CursorRow - height + 1
 	}
 
-	var rows []string
 	for i := 0; i < height; i++ {
 		lineIdx := a.ScrollTop + i
+		row := y + i
+
+		// Brackets.
+		buf.SetChar(x, row, '[', baseFg, baseBg, AttrNone)
+		buf.SetChar(x+width-1, row, ']', baseFg, baseBg, AttrNone)
+
 		var lineContent string
 		if lineIdx < len(a.Lines) {
 			lineContent = a.Lines[lineIdx]
 		}
-		text := truncateStyled(lineContent, fieldW)
-		textW := ansi.StringWidth(text)
-		dotsW := max(0, fieldW-textW)
-		dots := dotStyle.Render(strings.Repeat("·", dotsW))
 
 		if lineContent != "" {
-			rows = append(rows, bracketStyle.Render("[")+inputStyle.Render(text)+dots+bracketStyle.Render("]"))
+			col := 0
+			for _, r := range lineContent {
+				if col >= fieldW {
+					break
+				}
+				buf.SetChar(x+1+col, row, r, inputFg, inputBg, AttrNone)
+				col++
+			}
+			// Dots for remaining.
+			for col < fieldW {
+				buf.SetChar(x+1+col, row, '·', inputFg, inputBg, AttrFaint)
+				col++
+			}
 		} else {
-			rows = append(rows, bracketStyle.Render("[")+dotStyle.Render(strings.Repeat("·", fieldW))+bracketStyle.Render("]"))
+			for col := 0; col < fieldW; col++ {
+				buf.SetChar(x+1+col, row, '·', inputFg, inputBg, AttrFaint)
+			}
 		}
 	}
-
-	return strings.Join(rows, "\n")
 }
 
 // ─── NCButton ─────────────────────────────────────────────────────────────────
@@ -525,12 +560,24 @@ func (b *NCButton) Update(msg tea.Msg) {
 		}
 	}
 }
-func (b *NCButton) Render(width, height int, focused bool, layer *ThemeLayer) string {
-	label := "[ " + b.Label + " ]"
+func (b *NCButton) Render(buf *CellBuffer, x, y, width, height int, focused bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
+	attr := CellAttr(AttrNone)
 	if focused {
-		return layer.HighlightStyle().Render(label)
+		fg = layer.HighlightFgC()
+		bg = layer.HighlightBgC()
+		attr = AttrBold
 	}
-	return layer.BaseStyle().Render(label)
+	label := "[ " + b.Label + " ]"
+	col := x
+	for _, r := range label {
+		if col >= x+width {
+			break
+		}
+		buf.SetChar(col, y, r, fg, bg, attr)
+		col++
+	}
 }
 
 // ─── NCCheckbox ───────────────────────────────────────────────────────────────
@@ -565,17 +612,28 @@ func (cb *NCCheckbox) Update(msg tea.Msg) {
 		}
 	}
 }
-func (cb *NCCheckbox) Render(width, height int, focused bool, layer *ThemeLayer) string {
-	mark := " "
-	if cb.Checked {
-		mark = "x"
-	}
-	text := "[" + mark + "] " + cb.Label
-	style := layer.BaseStyle()
+func (cb *NCCheckbox) Render(buf *CellBuffer, x, y, width, height int, focused bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
+	attr := CellAttr(AttrNone)
 	if focused {
-		style = layer.HighlightStyle()
+		fg = layer.HighlightFgC()
+		bg = layer.HighlightBgC()
+		attr = AttrBold
 	}
-	return style.Width(width).Render(truncateStyled(text, width))
+	mark := ' '
+	if cb.Checked {
+		mark = 'x'
+	}
+	text := "[" + string(mark) + "] " + cb.Label
+	col := x
+	for _, r := range text {
+		if col >= x+width {
+			break
+		}
+		buf.SetChar(col, y, r, fg, bg, attr)
+		col++
+	}
 }
 
 // ─── NCHDivider ───────────────────────────────────────────────────────────────
@@ -590,9 +648,13 @@ type NCHDivider struct {
 func (d *NCHDivider) Update(_ tea.Msg)     {}
 func (d *NCHDivider) Focusable() bool      { return false }
 func (d *NCHDivider) MinSize() (int, int)  { return 1, 1 }
-func (d *NCHDivider) Render(width, height int, _ bool, layer *ThemeLayer) string {
-	// The actual junction chars are rendered by the window — here we just render the inner line.
-	return layer.BaseStyle().Render(strings.Repeat(layer.IH(), width))
+func (d *NCHDivider) Render(buf *CellBuffer, x, y, width, height int, _ bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
+	ch := runeOf(layer.IH())
+	for col := x; col < x+width; col++ {
+		buf.SetChar(col, y, ch, fg, bg, AttrNone)
+	}
 }
 
 // ─── NCVDivider ───────────────────────────────────────────────────────────────
@@ -607,13 +669,13 @@ type NCVDivider struct {
 func (d *NCVDivider) Update(_ tea.Msg)     {}
 func (d *NCVDivider) Focusable() bool      { return false }
 func (d *NCVDivider) MinSize() (int, int)  { return 1, 1 }
-func (d *NCVDivider) Render(width, height int, _ bool, layer *ThemeLayer) string {
-	style := layer.BaseStyle()
-	var rows []string
-	for i := 0; i < height; i++ {
-		rows = append(rows, style.Render(layer.IV()))
+func (d *NCVDivider) Render(buf *CellBuffer, x, y, width, height int, _ bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
+	ch := runeOf(layer.IV())
+	for row := y; row < y+height; row++ {
+		buf.SetChar(x, row, ch, fg, bg, AttrNone)
 	}
-	return strings.Join(rows, "\n")
 }
 
 // ─── NCPanel ──────────────────────────────────────────────────────────────────
@@ -634,66 +696,103 @@ func (p *NCPanel) Focusable() bool     { return false } // panels aren't directl
 func (p *NCPanel) MinSize() (int, int) { return 4, 3 }  // min border box
 func (p *NCPanel) Update(msg tea.Msg)  {}               // updates go to children directly
 
-func (p *NCPanel) Render(width, height int, _ bool, layer *ThemeLayer) string {
+func (p *NCPanel) Render(buf *CellBuffer, x, y, width, height int, _ bool, layer *ThemeLayer) {
 	p.innerW = max(1, width-2)
 	p.innerH = max(1, height-2)
+	p.screenX = x
+	p.screenY = y
 
-	boxStyle := layer.BaseStyle()
-	titleStyle := layer.HighlightStyle()
-	lv := boxStyle.Render(layer.OV())
-	rv := boxStyle.Render(layer.OV())
+	fg := layer.FgC()
+	bg := layer.BgC()
+	hlFg := layer.HighlightFgC()
+	hlBg := layer.HighlightBgC()
 
-	var topRow string
+	// Fill with background.
+	buf.Fill(x, y, width, height, ' ', fg, bg, AttrNone)
+
+	// Top border with optional title (same pattern as NCWindow).
+	buf.SetChar(x, y, runeOf(layer.OTL()), fg, bg, AttrNone)
+	buf.SetChar(x+width-1, y, runeOf(layer.OTR()), fg, bg, AttrNone)
 	if p.Title != "" {
 		titleText := " " + p.Title + " "
-		titleRendered := titleStyle.Render(titleText)
-		titleFill := max(0, p.innerW-1-ansi.StringWidth(titleText))
-		topRow = boxStyle.Render(layer.OTL()+layer.IH()) + titleRendered + boxStyle.Render(strings.Repeat(layer.OH(), titleFill)+layer.OTR())
+		buf.SetChar(x+1, y, runeOf(layer.IH()), fg, bg, AttrNone)
+		n := buf.WriteString(x+2, y, titleText, hlFg, hlBg, AttrBold)
+		for col := x + 2 + n; col < x+width-1; col++ {
+			buf.SetChar(col, y, runeOf(layer.OH()), fg, bg, AttrNone)
+		}
 	} else {
-		topRow = boxStyle.Render(layer.OTL() + strings.Repeat(layer.OH(), p.innerW) + layer.OTR())
+		for col := x + 1; col < x+width-1; col++ {
+			buf.SetChar(col, y, runeOf(layer.OH()), fg, bg, AttrNone)
+		}
 	}
 
-	// Fill inner area with base style.
-	var innerRows []string
-	for i := 0; i < p.innerH; i++ {
-		innerRows = append(innerRows, boxStyle.Width(p.innerW).Render(""))
+	// Bottom border.
+	boty := y + height - 1
+	buf.SetChar(x, boty, runeOf(layer.OBL()), fg, bg, AttrNone)
+	buf.SetChar(x+width-1, boty, runeOf(layer.OBR()), fg, bg, AttrNone)
+	for col := x + 1; col < x+width-1; col++ {
+		buf.SetChar(col, boty, runeOf(layer.OH()), fg, bg, AttrNone)
 	}
 
-	// TODO: render children with grid layout (for now, stack vertically).
-	cy := 0
+	// Left/right borders.
+	vr := runeOf(layer.OV())
+	for row := y + 1; row < boty; row++ {
+		buf.SetChar(x, row, vr, fg, bg, AttrNone)
+		buf.SetChar(x+width-1, row, vr, fg, bg, AttrNone)
+	}
+
+	// Render children stacked vertically in the inner area.
+	cy := y + 1
 	for _, child := range p.Children {
 		_, minH := child.Control.MinSize()
 		ch := minH
 		if child.Constraint.WeightY > 0 {
-			ch = max(minH, p.innerH-cy)
+			ch = max(minH, (y+1+p.innerH)-cy)
 		}
-		if cy+ch > p.innerH {
-			ch = p.innerH - cy
+		if cy+ch > y+1+p.innerH {
+			ch = y + 1 + p.innerH - cy
 		}
 		if ch <= 0 {
 			continue
 		}
-		content := child.Control.Render(p.innerW, ch, false, layer)
-		for j, line := range strings.Split(content, "\n") {
-			if cy+j < p.innerH {
-				innerRows[cy+j] = line
-			}
-		}
+		child.Control.Render(buf, x+1, cy, p.innerW, ch, false, layer)
 		cy += ch
 	}
-
-	var rows []string
-	rows = append(rows, topRow)
-	for _, ir := range innerRows {
-		rows = append(rows, lv+ir+rv)
-	}
-	rows = append(rows, boxStyle.Render(layer.OBL()+strings.Repeat(layer.OH(), p.innerW)+layer.OBR()))
-
-	return strings.Join(rows, "\n")
 }
 
 // ─── Scrollbar helper ─────────────────────────────────────────────────────────
 
+// renderScrollbarBuf writes a scrollbar track directly into the buffer.
+func renderScrollbarBuf(buf *CellBuffer, x, y, total, visible, offset int, fg, bg color.Color) {
+	if visible <= 0 {
+		return
+	}
+	if total <= visible {
+		for i := 0; i < visible; i++ {
+			buf.SetChar(x, y+i, ' ', fg, bg, AttrNone)
+		}
+		return
+	}
+	thumbSize := max(1, visible*visible/total)
+	scrollRange := total - visible
+	topOffset := scrollRange - offset
+	if topOffset < 0 {
+		topOffset = 0
+	}
+	thumbPos := 0
+	if scrollRange > 0 {
+		thumbPos = topOffset * (visible - thumbSize) / scrollRange
+	}
+	for i := 0; i < visible; i++ {
+		ch := '░'
+		if i >= thumbPos && i < thumbPos+thumbSize {
+			ch = '█'
+		}
+		buf.SetChar(x, y+i, ch, fg, bg, AttrNone)
+	}
+}
+
+// renderScrollbar returns styled string slices for a scrollbar (legacy, used by widget.go).
 func renderScrollbar(total, visible, offset int, style lipgloss.Style) []string {
 	if visible <= 0 {
 		return nil
@@ -766,27 +865,15 @@ func (g *NCGameView) Update(msg tea.Msg) {
 	}
 }
 
-func (g *NCGameView) Render(width, height int, _ bool, layer *ThemeLayer) string {
+func (g *NCGameView) Render(buf *CellBuffer, x, y, width, height int, _ bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
 	if g.ViewFn == nil {
-		blank := strings.Repeat(" ", width)
-		var rows []string
-		for range height {
-			rows = append(rows, blank)
-		}
-		return strings.Join(rows, "\n")
+		buf.Fill(x, y, width, height, ' ', fg, bg, AttrNone)
+		return
 	}
 	raw := g.ViewFn(width, height)
-	lines := strings.Split(raw, "\n")
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for i := range lines {
-		lines[i] = fitLine(lines[i], width)
-	}
-	return strings.Join(lines, "\n")
+	buf.PaintANSI(x, y, width, height, raw, fg, bg)
 }
 
 // ─── NCTable ─────────────────────────────────────────────────────────────────
@@ -800,63 +887,61 @@ func (t *NCTable) Update(_ tea.Msg)           {}
 func (t *NCTable) Focusable() bool            { return false }
 func (t *NCTable) MinSize() (int, int)        { return 1, len(t.Rows) }
 
-func (t *NCTable) Render(width, height int, _ bool, layer *ThemeLayer) string {
+func (t *NCTable) Render(buf *CellBuffer, x, y, width, height int, _ bool, layer *ThemeLayer) {
+	fg := layer.FgC()
+	bg := layer.BgC()
+
 	if len(t.Rows) == 0 {
-		blank := strings.Repeat(" ", width)
-		var lines []string
-		for range height {
-			lines = append(lines, blank)
-		}
-		return strings.Join(lines, "\n")
+		return
 	}
 
 	// Calculate column widths.
-	cols := 0
+	numCols := 0
 	for _, row := range t.Rows {
-		if len(row) > cols {
-			cols = len(row)
+		if len(row) > numCols {
+			numCols = len(row)
 		}
 	}
-	colWidths := make([]int, cols)
+	colWidths := make([]int, numCols)
 	for _, row := range t.Rows {
 		for c, cell := range row {
-			w := ansi.StringWidth(cell)
+			w := utf8.RuneCountInString(cell)
 			if w > colWidths[c] {
 				colWidths[c] = w
 			}
 		}
 	}
 
-	var result []string
-	for _, row := range t.Rows {
-		var line strings.Builder
-		for c := range cols {
+	row := y
+	for _, dataRow := range t.Rows {
+		if row >= y+height {
+			break
+		}
+		col := x
+		for c := 0; c < numCols; c++ {
 			cell := ""
-			if c < len(row) {
-				cell = row[c]
+			if c < len(dataRow) {
+				cell = dataRow[c]
 			}
-			line.WriteString(fitLine(cell, colWidths[c]))
-			if c < cols-1 {
-				line.WriteByte(' ')
+			n := buf.WriteString(col, row, cell, fg, bg, AttrNone)
+			// Pad to column width.
+			for i := n; i < colWidths[c]; i++ {
+				buf.SetChar(col+i, row, ' ', fg, bg, AttrNone)
+			}
+			col += colWidths[c]
+			if c < numCols-1 {
+				buf.SetChar(col, row, ' ', fg, bg, AttrNone)
+				col++
 			}
 		}
-		result = append(result, fitLine(line.String(), width))
+		row++
 	}
-
-	for len(result) < height {
-		result = append(result, strings.Repeat(" ", width))
-	}
-	if len(result) > height {
-		result = result[:height]
-	}
-	return strings.Join(result, "\n")
 }
 
 // ─── NCContainer ─────────────────────────────────────────────────────────────
 
 // NCContainer is a borderless layout container that arranges children
-// horizontally (hsplit) or vertically (vsplit). It replaces the duplicated
-// layout logic that was in ncrender.go.
+// horizontally (hsplit) or vertically (vsplit).
 type NCContainer struct {
 	Horizontal bool // true = side-by-side, false = stacked
 	Children   []ContainerChild
@@ -873,23 +958,32 @@ func (c *NCContainer) Update(_ tea.Msg)     {}
 func (c *NCContainer) Focusable() bool      { return false }
 func (c *NCContainer) MinSize() (int, int)  { return 1, 1 }
 
-func (c *NCContainer) Render(width, height int, _ bool, layer *ThemeLayer) string {
+func (c *NCContainer) Render(buf *CellBuffer, bx, by, width, height int, _ bool, layer *ThemeLayer) {
 	if len(c.Children) == 0 {
-		blank := strings.Repeat(" ", width)
-		var lines []string
-		for range height {
-			lines = append(lines, blank)
-		}
-		return strings.Join(lines, "\n")
+		return
 	}
 
-	// Compute sizes using the same allocation logic.
 	sizes := c.allocate(width, height)
 
 	if c.Horizontal {
-		return c.renderHorizontal(sizes, width, height, layer)
+		col := bx
+		for i, child := range c.Children {
+			cw := sizes[i]
+			if cw > 0 {
+				child.Control.Render(buf, col, by, cw, height, false, layer)
+			}
+			col += cw
+		}
+	} else {
+		row := by
+		for i, child := range c.Children {
+			ch := sizes[i]
+			if ch > 0 {
+				child.Control.Render(buf, bx, row, width, ch, false, layer)
+			}
+			row += ch
+		}
 	}
-	return c.renderVertical(sizes, width, height, layer)
 }
 
 func (c *NCContainer) allocate(width, height int) []int {
@@ -937,47 +1031,4 @@ func (c *NCContainer) allocate(width, height int) []int {
 		}
 	}
 	return sizes
-}
-
-func (c *NCContainer) renderHorizontal(widths []int, totalW, height int, layer *ThemeLayer) string {
-	// Render each child column.
-	childCols := make([][]string, len(c.Children))
-	for i, child := range c.Children {
-		cw := widths[i]
-		rendered := child.Control.Render(cw, height, false, layer)
-		childCols[i] = strings.Split(rendered, "\n")
-	}
-
-	// Merge columns side by side.
-	result := make([]string, height)
-	for y := range height {
-		var row strings.Builder
-		for i, cols := range childCols {
-			cw := widths[i]
-			if y < len(cols) {
-				row.WriteString(fitLine(cols[y], cw))
-			} else {
-				row.WriteString(strings.Repeat(" ", cw))
-			}
-		}
-		result[y] = row.String()
-	}
-	return strings.Join(result, "\n")
-}
-
-func (c *NCContainer) renderVertical(heights []int, width, totalH int, layer *ThemeLayer) string {
-	var lines []string
-	for i, child := range c.Children {
-		ch := heights[i]
-		rendered := child.Control.Render(width, ch, false, layer)
-		lines = append(lines, strings.Split(rendered, "\n")...)
-	}
-
-	for len(lines) < totalH {
-		lines = append(lines, strings.Repeat(" ", width))
-	}
-	if len(lines) > totalH {
-		lines = lines[:totalH]
-	}
-	return strings.Join(lines, "\n")
 }

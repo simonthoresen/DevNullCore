@@ -1,21 +1,20 @@
 package server
 
 import (
-	"strings"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // ─── Core interfaces ──────────────────────────────────────────────────────────
 
 // NCControl is the base interface for all NC widgets.
 type NCControl interface {
-	// Render returns the styled content for this control at the given size.
-	// focused is true when this control currently has keyboard focus.
-	Render(width, height int, focused bool, layer *ThemeLayer) string
+	// Render writes the control's content into buf at position (x, y)
+	// within the given (width × height) region. focused is true when this
+	// control currently has keyboard focus.
+	Render(buf *CellBuffer, x, y, width, height int, focused bool, layer *ThemeLayer)
 	// Update handles a tea.Msg. Only called when this control has focus.
 	Update(msg tea.Msg)
 	// MinSize returns the minimum (width, height) this control needs.
@@ -83,8 +82,17 @@ type NCWindow struct {
 	gridCols, gridRows int
 }
 
-// Render draws the window at (x, y) with the given dimensions.
+// Render draws the window at (x, y) with the given dimensions into buf.
+// Returns the string representation for backward compatibility with callers
+// that have not yet been migrated to use CellBuffer directly.
 func (w *NCWindow) Render(x, y, width, height int, layer *ThemeLayer) string {
+	buf := NewCellBuffer(width, height)
+	w.RenderToBuf(buf, x, y, width, height, layer)
+	return buf.ToString()
+}
+
+// RenderToBuf draws the window into the given buffer at absolute position (x, y).
+func (w *NCWindow) RenderToBuf(buf *CellBuffer, x, y, width, height int, layer *ThemeLayer) {
 	w.screenX = x
 	w.screenY = y
 	w.width = width
@@ -92,65 +100,70 @@ func (w *NCWindow) Render(x, y, width, height int, layer *ThemeLayer) string {
 	w.innerW = max(1, width-2)
 	w.innerH = max(1, height-2) // top border + bottom border
 
-	boxStyle := layer.BaseStyle()
-	titleStyle := layer.HighlightStyle()
-	lv := boxStyle.Render(layer.OV())
-	rv := boxStyle.Render(layer.OV())
+	fg := layer.FgC()
+	bg := layer.BgC()
+	hlFg := layer.HighlightFgC()
+	hlBg := layer.HighlightBgC()
 
-	// Top border / title row.
-	var topRow string
+	// Fill inner area with base bg.
+	buf.Fill(x, y, width, height, ' ', fg, bg, AttrNone)
+
+	// Top border row.
+	buf.SetChar(x, y, runeOf(layer.OTL()), fg, bg, AttrNone)
+	buf.SetChar(x+width-1, y, runeOf(layer.OTR()), fg, bg, AttrNone)
 	if w.Title != "" {
 		titleText := " " + w.Title + " "
-		titleRendered := titleStyle.Render(titleText)
-		titleFill := max(0, w.innerW-1-ansi.StringWidth(titleText))
-		topRow = boxStyle.Render(layer.OTL()+layer.IH()) + titleRendered + boxStyle.Render(strings.Repeat(layer.OH(), titleFill)+layer.OTR())
+		buf.SetChar(x+1, y, runeOf(layer.IH()), fg, bg, AttrNone)
+		n := buf.WriteString(x+2, y, titleText, hlFg, hlBg, AttrBold)
+		for col := x + 2 + n; col < x+width-1; col++ {
+			buf.SetChar(col, y, runeOf(layer.OH()), fg, bg, AttrNone)
+		}
 	} else {
-		topRow = boxStyle.Render(layer.OTL() + strings.Repeat(layer.OH(), w.innerW) + layer.OTR())
+		for col := x + 1; col < x+width-1; col++ {
+			buf.SetChar(col, y, runeOf(layer.OH()), fg, bg, AttrNone)
+		}
+	}
+
+	// Bottom border row.
+	boty := y + height - 1
+	buf.SetChar(x, boty, runeOf(layer.OBL()), fg, bg, AttrNone)
+	buf.SetChar(x+width-1, boty, runeOf(layer.OBR()), fg, bg, AttrNone)
+	for col := x + 1; col < x+width-1; col++ {
+		buf.SetChar(col, boty, runeOf(layer.OH()), fg, bg, AttrNone)
+	}
+
+	// Left and right border columns.
+	vr := runeOf(layer.OV())
+	for row := y + 1; row < boty; row++ {
+		buf.SetChar(x, row, vr, fg, bg, AttrNone)
+		buf.SetChar(x+width-1, row, vr, fg, bg, AttrNone)
 	}
 
 	// Compute grid layout.
-	w.computeGrid(layer)
+	w.computeGrid()
 
-	// Render each row of the inner area.
-	innerRows := make([]string, w.innerH)
-	for i := range innerRows {
-		innerRows[i] = boxStyle.Width(w.innerW).Render("")
-	}
-
-	// Render each child into its cell position.
+	// Render each child directly into the buffer.
 	for i, child := range w.Children {
 		cx, cy, cw, ch := w.childRect(i)
 		if cw <= 0 || ch <= 0 {
 			continue
 		}
 		hasFocus := i == w.FocusIdx
-		content := child.Control.Render(cw, ch, hasFocus, layer)
-		contentLines := strings.Split(content, "\n")
-		for j, line := range contentLines {
-			ry := cy - (y + 1) + j // relative to inner area
-			if ry >= 0 && ry < w.innerH {
-				rx := cx - (x + 1) // relative to inner area
-				innerRows[ry] = overlayAt(innerRows[ry], rx, line, boxStyle)
-			}
-		}
+		child.Control.Render(buf, cx, cy, cw, ch, hasFocus, layer)
 	}
+}
 
-	// Assemble rows with borders.
-	var rows []string
-	rows = append(rows, topRow)
-	for _, ir := range innerRows {
-		rows = append(rows, lv+ir+rv)
+// runeOf returns the first rune from a string, or ' ' if empty.
+func runeOf(s string) rune {
+	r, _ := utf8.DecodeRuneInString(s)
+	if r == utf8.RuneError || r == 0 {
+		return ' '
 	}
-	rows = append(rows, boxStyle.Render(layer.OBL()+strings.Repeat(layer.OH(), w.innerW)+layer.OBR()))
-
-	// Render connected dividers (HDivider, VDivider) with proper junctions.
-	// TODO: junction rendering for connected dividers
-
-	return strings.Join(rows, "\n")
+	return r
 }
 
 // computeGrid determines column widths and row heights.
-func (w *NCWindow) computeGrid(layer *ThemeLayer) {
+func (w *NCWindow) computeGrid() {
 	// Determine grid dimensions.
 	maxCol, maxRow := 0, 0
 	for _, child := range w.Children {
@@ -283,28 +296,6 @@ func distributeSpace(mins []int, weights []float64, total int) []int {
 	return sizes
 }
 
-// overlayAt places overlay text at column offset rx within a row string.
-func overlayAt(row string, rx int, overlay string, baseStyle lipgloss.Style) string {
-	rowW := ansi.StringWidth(row)
-	overW := ansi.StringWidth(overlay)
-	if rx < 0 || rx >= rowW {
-		return row
-	}
-
-	left := ansi.Truncate(row, rx, "")
-	leftW := lipgloss.Width(left)
-	if leftW < rx {
-		left += baseStyle.Render(strings.Repeat(" ", rx-leftW))
-	}
-
-	right := ""
-	end := rx + overW
-	if end < rowW {
-		right = ansiSkipColumns(row, end)
-	}
-
-	return left + overlay + right
-}
 
 // ─── Focus management ─────────────────────────────────────────────────────────
 
