@@ -13,7 +13,7 @@ build-pinggy:
 	go build -ldflags="-s -w" -o dist/pinggy-helper.exe ./cmd/pinggy-helper
 
 # Run directly from source, using dist/ as the data directory
-run: build-server
+run: build-server build-pinggy
 	./dist/null-space-server.exe --data-dir dist
 
 # Run in LAN-only mode (no UPnP, no public IP, no Pinggy)
