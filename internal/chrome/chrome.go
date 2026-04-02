@@ -714,11 +714,6 @@ func (m Model) View() tea.View {
 	phase := m.api.State().GamePhase
 	m.api.State().RUnlock()
 
-	barLayer := m.theme.LayerAt(1) // secondary: menu bar, status bar, command bar
-
-	mbStyle := barLayer.HighlightStyle()
-	ciStyle := barLayer.BaseStyle()
-
 	if (!m.inActiveGame || phase == common.PhaseNone) && m.teamEditing {
 		SetInputStyle(&m.teamEditInput, m.theme.LayerAt(0).InputBgC(), m.theme.LayerAt(0).InputFgC())
 	}
@@ -730,14 +725,8 @@ func (m Model) View() tea.View {
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		m.renderLobby(buf, menus)
-	} else if phase == common.PhaseSplash {
-		content := m.viewSplash(menus, game, gameName, mbStyle, ciStyle)
-		buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
-	} else if phase == common.PhaseGameOver {
-		content := m.viewGameOver(menus, game, gameName, mbStyle, ciStyle)
-		buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
 	} else {
-		m.renderPlaying(buf, menus, game, gameName)
+		m.renderPlaying(buf, menus, game, gameName, phase)
 	}
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
@@ -854,74 +843,8 @@ func (m Model) renderLobby(buf *common.ImageBuffer, menus []common.MenuDef) {
 	m.chatScrollOffset = m.lobbyChatView.ScrollOffset
 }
 
-func (m Model) viewSplash(menus []common.MenuDef, game common.Game, gameName string, mbStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.RenderMenuBar(m.width, menus, m.theme.LayerAt(1))
-	displayName := gameName
-	if gn := game.GameName(); gn != "" {
-		displayName = gn
-	}
 
-	menuBar := mbStyle.Width(m.width).Render(truncateStyled(displayName, m.width))
-
-	viewportH := m.height - 4
-	if viewportH < 1 {
-		viewportH = 1
-	}
-
-	splashContent := game.SplashScreen()
-	if splashContent == "" {
-		splashContent = m.defaultSplashScreen(displayName, m.width, viewportH)
-	}
-
-	viewport := fitBlock(splashContent, m.width, viewportH)
-
-	player := m.api.State().GetPlayer(m.playerID)
-	isAdmin := player != nil && player.IsAdmin
-	var cmdBar string
-	if isAdmin {
-		cmdBar = ciStyle.Width(m.width).Render("[Enter] Start game")
-	} else {
-		cmdBar = ciStyle.Width(m.width).Render("Waiting for host to start...")
-	}
-
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
-}
-
-func (m Model) viewGameOver(menus []common.MenuDef, game common.Game, gameName string, mbStyle, ciStyle lipgloss.Style) string {
-	ncBar := m.overlay.RenderMenuBar(m.width, menus, m.theme.LayerAt(1))
-	displayName := gameName
-	if gn := game.GameName(); gn != "" {
-		displayName = gn
-	}
-
-	menuBar := mbStyle.Width(m.width).Render(truncateStyled(displayName+" - Game Over", m.width))
-
-	viewportH := m.height - 4
-	if viewportH < 1 {
-		viewportH = 1
-	}
-
-	m.api.State().RLock()
-	results := m.api.State().GameOverResults
-	m.api.State().RUnlock()
-
-	goContent := m.defaultGameOverScreen(results, m.width, viewportH)
-	viewport := fitBlock(goContent, m.width, viewportH)
-
-	remaining := 15 - int(time.Since(m.gameOverStart).Seconds())
-	if remaining < 0 {
-		remaining = 0
-	}
-	cmdBar := ciStyle.Width(m.width).Render(fmt.Sprintf("[Enter] Continue to lobby (%ds remaining)", remaining))
-
-	statusBar := mbStyle.Width(m.width).Align(lipgloss.Right).Render(time.Now().Format("2006-01-02 15:04:05"))
-
-	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
-}
-
-func (m Model) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, game common.Game, gameName string) {
+func (m Model) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, game common.Game, gameName string, phase common.GamePhase) {
 	// Compute game viewport height (16:9 aspect ratio with min chat height).
 	// Window interior = total - menuBar(1) - statusBar(1) - topBorder(1) - bottomBorder(1) = height - 4
 	// Interior rows: gameView + divider(1) + chat + divider(1) + cmdInput(1) = gameH + chatH + 3
@@ -940,17 +863,40 @@ func (m Model) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, ga
 	// Update gameview constraint for aspect-ratio sizing.
 	m.playingWindow.Children[0].Constraint.MinH = gameH
 
-	// Wire game rendering into the gameview.
-	m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
-		game.Render(gbuf, m.playerID, x, y, w, h)
+	displayName := gameName
+	if gn := game.GameName(); gn != "" {
+		displayName = gn
 	}
-	m.playingGameView.OnKey = func(key string) {
-		game.OnInput(m.playerID, key)
+
+	// Wire gameview rendering based on phase.
+	switch phase {
+	case common.PhaseSplash:
+		m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
+			if !game.RenderSplash(gbuf, m.playerID, x, y, w, h) {
+				m.defaultRenderSplash(gbuf, displayName, x, y, w, h)
+			}
+		}
+		m.playingGameView.OnKey = nil // splash ignores game keys
+	case common.PhaseGameOver:
+		m.api.State().RLock()
+		results := m.api.State().GameOverResults
+		m.api.State().RUnlock()
+		m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
+			if !game.RenderGameOver(gbuf, m.playerID, x, y, w, h, results) {
+				m.defaultRenderGameOver(gbuf, results, x, y, w, h)
+			}
+		}
+		m.playingGameView.OnKey = nil // game-over ignores game keys
+	default: // PhasePlaying
+		m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
+			game.Render(gbuf, m.playerID, x, y, w, h)
+		}
+		m.playingGameView.OnKey = func(key string) {
+			game.OnInput(m.playerID, key)
+		}
 	}
 
 	// TODO: handle RenderNC (NC-tree games) — for now, use direct render.
-	// When RenderNC is supported, the gameview child would be replaced with
-	// the reconciled NC tree controls.
 
 	// Update chat view.
 	m.playingChatView.Lines = m.chatLines
@@ -958,7 +904,24 @@ func (m Model) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, ga
 
 	// Update menu bar and status bar.
 	m.playingMenuBar.Menus = menus
-	m.playingStatusBar.LeftText = " " + game.StatusBar(m.playerID)
+	switch phase {
+	case common.PhaseSplash:
+		player := m.api.State().GetPlayer(m.playerID)
+		isAdmin := player != nil && player.IsAdmin
+		if isAdmin {
+			m.playingStatusBar.LeftText = " [Enter] Start game"
+		} else {
+			m.playingStatusBar.LeftText = " Waiting for host to start..."
+		}
+	case common.PhaseGameOver:
+		remaining := 15 - int(time.Since(m.gameOverStart).Seconds())
+		if remaining < 0 {
+			remaining = 0
+		}
+		m.playingStatusBar.LeftText = fmt.Sprintf(" [Enter] Continue to lobby (%ds remaining)", remaining)
+	default:
+		m.playingStatusBar.LeftText = " " + game.StatusBar(m.playerID)
+	}
 	m.playingStatusBar.RightText = time.Now().Format("2006-01-02 15:04:05") + " "
 
 	// Render the full screen.
@@ -968,54 +931,49 @@ func (m Model) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, ga
 	m.chatScrollOffset = m.playingChatView.ScrollOffset
 }
 
-// defaultSplashScreen renders a simple splash screen with the game name centered in a box.
-func (m Model) defaultSplashScreen(name string, width, height int) string {
-	boxW := len(name) + 6
-	if boxW > width-4 {
-		boxW = width - 4
+// defaultRenderSplash renders a figlet game name centered in the viewport.
+func (m Model) defaultRenderSplash(buf *common.ImageBuffer, name string, x, y, w, h int) {
+	figletTitle := strings.TrimRight(engine.Figlet(name, ""), "\n")
+	var lines []string
+	if figletTitle != "" {
+		lines = strings.Split(figletTitle, "\n")
+		// Check if figlet fits; fall back to plain text if too wide.
+		maxW := 0
+		for _, l := range lines {
+			if len(l) > maxW {
+				maxW = len(l)
+			}
+		}
+		if maxW > w {
+			lines = []string{name}
+		}
+	} else {
+		lines = []string{name}
 	}
-	if boxW < 10 {
-		boxW = 10
-	}
 
-	border := "+" + strings.Repeat("-", boxW-2) + "+"
-	pad := boxW - 2 - len(name)
-	leftPad := pad / 2
-	rightPad := pad - leftPad
-	middle := "|" + strings.Repeat(" ", leftPad) + name + strings.Repeat(" ", rightPad) + "|"
-
-	boxLines := []string{border, middle, border}
-
-	// Center vertically.
-	topPad := (height - len(boxLines)) / 2
+	// Center vertically and horizontally.
+	topPad := (h - len(lines)) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
-
-	var lines []string
-	for i := 0; i < topPad; i++ {
-		lines = append(lines, "")
+	for i, line := range lines {
+		row := y + topPad + i
+		if row >= y+h {
+			break
+		}
+		col := x + (w-len(line))/2
+		if col < x {
+			col = x
+		}
+		buf.WriteString(col, row, line, nil, nil, common.AttrNone)
 	}
-	// Center horizontally.
-	leftMargin := (width - boxW) / 2
-	if leftMargin < 0 {
-		leftMargin = 0
-	}
-	prefix := strings.Repeat(" ", leftMargin)
-	for _, bl := range boxLines {
-		lines = append(lines, prefix+bl)
-	}
-	for len(lines) < height {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines, "\n")
 }
 
-// defaultGameOverScreen renders a "GAME OVER" screen with ranked results.
-func (m Model) defaultGameOverScreen(results []common.GameResult, width, height int) string {
+// defaultRenderGameOver renders a figlet "GAME OVER" title with ranked results.
+func (m Model) defaultRenderGameOver(buf *common.ImageBuffer, results []common.GameResult, x, y, w, h int) {
 	var lines []string
 
-	lines = append(lines, "")
+	// Figlet title.
 	figletTitle := strings.TrimRight(engine.Figlet("GAME OVER", "slant"), "\n")
 	figletLines := strings.Split(figletTitle, "\n")
 	maxW := 0
@@ -1024,18 +982,14 @@ func (m Model) defaultGameOverScreen(results []common.GameResult, width, height 
 			maxW = len(l)
 		}
 	}
-	if figletTitle != "" && maxW <= width {
-		pad := strings.Repeat(" ", max(0, (width-maxW)/2))
-		for _, l := range figletLines {
-			lines = append(lines, pad+l)
-		}
+	if figletTitle != "" && maxW <= w {
+		lines = append(lines, figletLines...)
 	} else {
-		title := "G A M E   O V E R"
-		pad := strings.Repeat(" ", max(0, (width-len(title))/2))
-		lines = append(lines, pad+title)
+		lines = append(lines, "G A M E   O V E R")
 	}
 	lines = append(lines, "")
 
+	// Results table.
 	if len(results) > 0 {
 		lines = append(lines, "")
 		maxNameLen := 0
@@ -1046,26 +1000,26 @@ func (m Model) defaultGameOverScreen(results []common.GameResult, width, height 
 		}
 		for i, r := range results {
 			pos := fmt.Sprintf("%d.", i+1)
-			line := fmt.Sprintf("  %-3s %-*s  %s", pos, maxNameLen, r.Name, r.Result)
-			lines = append(lines, line)
+			lines = append(lines, fmt.Sprintf("  %-3s %-*s  %s", pos, maxNameLen, r.Name, r.Result))
 		}
 	}
 
 	// Center vertically.
-	totalLines := len(lines)
-	topPad := (height - totalLines) / 2
+	topPad := (h - len(lines)) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
-	var result []string
-	for i := 0; i < topPad; i++ {
-		result = append(result, "")
+	for i, line := range lines {
+		row := y + topPad + i
+		if row >= y+h {
+			break
+		}
+		col := x + (w-len(line))/2
+		if col < x {
+			col = x
+		}
+		buf.WriteString(col, row, line, nil, nil, common.AttrNone)
 	}
-	result = append(result, lines...)
-	for len(result) < height {
-		result = append(result, "")
-	}
-	return strings.Join(result, "\n")
 }
 
 func (m *Model) syncChat() {
@@ -1591,27 +1545,6 @@ func headerWithSpinner(text string, width int, spinner string) string {
 		spaces = 1
 	}
 	return left + strings.Repeat(" ", spaces) + spinner
-}
-
-func fitBlock(content string, width, height int) string {
-	return fitStyledBlock(content, width, height, lipgloss.NewStyle())
-}
-
-func fitStyledBlock(content string, width, height int, style lipgloss.Style) string {
-	if width <= 0 || height <= 0 {
-		return ""
-	}
-	lines := strings.Split(content, "\n")
-	if len(lines) > height {
-		lines = lines[:height]
-	}
-	for i, line := range lines {
-		lines[i] = style.Width(width).MaxWidth(width).Render(truncateStyled(line, width))
-	}
-	for len(lines) < height {
-		lines = append(lines, style.Width(width).Render(strings.Repeat(" ", width)))
-	}
-	return strings.Join(lines, "\n")
 }
 
 func truncateStyled(text string, width int) string {

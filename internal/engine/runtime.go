@@ -77,18 +77,19 @@ type JSRuntime struct {
 	ChatCh      chan common.Message // drained by server goroutine; closed on unload
 
 	// game object methods (nil if not defined)
-	updateFn      goja.Callable
-	onPlayerLeave goja.Callable
-	onInput       goja.Callable
-	renderFn      goja.Callable
-	renderNCFn    goja.Callable
-	statusBarFn   goja.Callable
-	commandBarFn  goja.Callable
+	updateFn        goja.Callable
+	onPlayerLeave   goja.Callable
+	onInput         goja.Callable
+	renderFn        goja.Callable
+	renderSplashFn  goja.Callable
+	renderGameOverFn goja.Callable
+	renderNCFn      goja.Callable
+	statusBarFn     goja.Callable
+	commandBarFn    goja.Callable
 
 	// lifecycle
-	gameNameProp     string
-	teamRangeProp    common.TeamRange
-	splashScreenProp string // read from Game.splashScreen after init
+	gameNameProp  string
+	teamRangeProp common.TeamRange
 	initFn           goja.Callable
 	startFn          goja.Callable
 
@@ -141,12 +142,15 @@ func (r *JSRuntime) Init(savedState any) {
 	defer cancel()
 	_, _ = r.initFn(goja.Undefined(), r.vm.ToValue(savedState))
 
-	// Re-read splashScreen — init() may have set it dynamically.
+	// Re-read renderSplash — init() may have defined it dynamically.
 	gameVal := r.vm.Get("Game")
 	if gameVal != nil && !goja.IsUndefined(gameVal) && !goja.IsNull(gameVal) {
 		if obj := gameVal.ToObject(r.vm); obj != nil {
-			if v := obj.Get("splashScreen"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-				r.splashScreenProp = v.String()
+			if r.renderSplashFn == nil {
+				r.renderSplashFn = extractCallable(obj, "renderSplash")
+			}
+			if r.renderGameOverFn == nil {
+				r.renderGameOverFn = extractCallable(obj, "renderGameOver")
 			}
 		}
 	}
@@ -481,6 +485,8 @@ func (r *JSRuntime) extractGameObject() error {
 	r.onPlayerLeave = extractCallable(gameObj, "onPlayerLeave")
 	r.onInput = extractCallable(gameObj, "onInput")
 	r.renderFn = extractCallable(gameObj, "render")
+	r.renderSplashFn = extractCallable(gameObj, "renderSplash")
+	r.renderGameOverFn = extractCallable(gameObj, "renderGameOver")
 	r.renderNCFn = extractCallable(gameObj, "renderNC")
 	r.statusBarFn = extractCallable(gameObj, "statusBar")
 	r.commandBarFn = extractCallable(gameObj, "commandBar")
@@ -508,11 +514,6 @@ func (r *JSRuntime) extractGameObject() error {
 				r.teamRangeProp.Max = int(mv.ToInteger())
 			}
 		}
-	}
-
-	// Read splashScreen property (string)
-	if v := gameObj.Get("splashScreen"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		r.splashScreenProp = v.String()
 	}
 
 	return nil
@@ -867,8 +868,47 @@ func (r *JSRuntime) TeamRange() common.TeamRange {
 	return r.teamRangeProp
 }
 
-func (r *JSRuntime) SplashScreen() string {
-	return r.splashScreenProp
+func (r *JSRuntime) RenderSplash(buf *common.ImageBuffer, playerID string, x, y, width, height int) bool {
+	if r.renderSplashFn == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer r.recoverJS("RenderSplash")
+	defer TraceJS(r.vm, "RenderSplash")()
+	cancel := WatchdogJS(r.vm, "RenderSplash")
+	defer cancel()
+	jsBuf := r.newJSImageBuffer(buf, x, y, width, height)
+	_, err := r.renderSplashFn(goja.Undefined(), r.vm.ToValue(jsBuf), r.vm.ToValue(playerID), r.vm.ToValue(x), r.vm.ToValue(y), r.vm.ToValue(width), r.vm.ToValue(height))
+	if err != nil {
+		slog.Error("JS RenderSplash error", "error", err)
+		return false
+	}
+	return true
+}
+
+func (r *JSRuntime) RenderGameOver(buf *common.ImageBuffer, playerID string, x, y, width, height int, results []common.GameResult) bool {
+	if r.renderGameOverFn == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer r.recoverJS("RenderGameOver")
+	defer TraceJS(r.vm, "RenderGameOver")()
+	cancel := WatchdogJS(r.vm, "RenderGameOver")
+	defer cancel()
+	jsBuf := r.newJSImageBuffer(buf, x, y, width, height)
+	// Convert results to JS-friendly array of {name, result} objects.
+	jsResults := make([]map[string]any, len(results))
+	for i, r := range results {
+		jsResults[i] = map[string]any{"name": r.Name, "result": r.Result}
+	}
+	_, err := r.renderGameOverFn(goja.Undefined(), r.vm.ToValue(jsBuf), r.vm.ToValue(playerID), r.vm.ToValue(x), r.vm.ToValue(y), r.vm.ToValue(width), r.vm.ToValue(height), r.vm.ToValue(jsResults))
+	if err != nil {
+		slog.Error("JS RenderGameOver error", "error", err)
+		return false
+	}
+	return true
 }
 
 // IsGameOverPending returns true if JS called gameOver() and clears the flag.

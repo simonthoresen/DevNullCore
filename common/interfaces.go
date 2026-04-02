@@ -64,15 +64,20 @@ type Shader interface {
 // All methods are implemented by jsRuntime; optional JS hooks return zero values
 // when not defined by the game script.
 type Game interface {
-	GameName() string                      // display name (fallback: filename stem)
-	TeamRange() TeamRange                  // supported team count range (zero = no constraint)
-	SplashScreen() string                  // splash screen content (empty = use default)
-	Init(savedState any)                   // called before splash with persisted state (or nil)
-	Start()                                // called at splash→playing transition
-	Update(dt float64)                     // called once per tick with seconds since last update
+	GameName() string   // display name (fallback: filename stem)
+	TeamRange() TeamRange // supported team count range (zero = no constraint)
+	Init(savedState any)  // called before splash with persisted state (or nil)
+	Start()               // called at splash→playing transition
+	Update(dt float64)    // called once per tick with seconds since last update
 	OnPlayerLeave(playerID string)
 	OnInput(playerID, key string)
 	Render(buf *ImageBuffer, playerID string, x, y, width, height int)
+	// RenderSplash renders a custom splash screen into buf. Returns false to
+	// use the framework's default figlet-based splash screen.
+	RenderSplash(buf *ImageBuffer, playerID string, x, y, width, height int) bool
+	// RenderGameOver renders a custom game-over screen into buf. Returns false
+	// to use the framework's default game-over screen with figlet title + results.
+	RenderGameOver(buf *ImageBuffer, playerID string, x, y, width, height int, results []GameResult) bool
 	// RenderNC returns a declarative widget tree for the game viewport.
 	// If it returns nil, the framework falls back to wrapping Render() in a
 	// default gameview node. Games can mix NC panels with raw Render() output

@@ -134,14 +134,10 @@ var Game = {
     // Omit to allow any number of teams.
     teamRange: { min: 2, max: 4 },
 
-    // Custom splash screen content (multi-line string). If omitted, the framework
-    // renders the game name centered in a box. Can be set dynamically in init().
-    splashScreen: "=== MY GAME ===\nPress Enter to start",
-
     // --- Lifecycle ---
 
     // Called before splash with persisted state (or null on first run). Mandatory.
-    // teams() global is available. Can set Game.splashScreen dynamically.
+    // teams() global is available.
     init: function(savedState) {
         if (savedState) {
             // restore previous state
@@ -192,6 +188,16 @@ var Game = {
             }
         }
     },
+
+    // Custom splash screen rendering. Optional — if omitted or returns false,
+    // the framework renders a figlet game name centered in the viewport.
+    // Same buf API as render(). Return true to indicate custom rendering was done.
+    // renderSplash: function(buf, playerID, ox, oy, width, height) { ... return true; },
+
+    // Custom game-over screen rendering. Optional — if omitted or returns false,
+    // the framework renders a figlet "GAME OVER" title with ranked results.
+    // results is an array of {name, result} objects in ranked order.
+    // renderGameOver: function(buf, playerID, ox, oy, width, height, results) { ... return true; },
 
     statusBar: function(playerID) {
         var p = players[playerID];
@@ -368,8 +374,8 @@ GAME OVER (framework results screen, up to 15s)
 LOBBY (game unloaded, back to teams + chat)
 ```
 
-- **Load**: Framework snapshots teams for the game (lobby stays independent), loads saved state, calls `init(savedState)`. `teams()` returns game teams. Game can set `Game.splashScreen` dynamically.
-- **Splash screen**: If `splashScreen` is set, that content is rendered. Otherwise, the game name is displayed in a centered box. The admin can press Enter to skip, or it auto-starts after 10s.
+- **Load**: Framework snapshots teams for the game (lobby stays independent), loads saved state, calls `init(savedState)`. `teams()` returns game teams.
+- **Splash screen**: If `renderSplash(buf, playerID, x, y, w, h)` is defined and returns true, that custom rendering is used. Otherwise, the framework renders the game name in figlet ASCII art centered in the viewport. The admin can press Enter to skip, or it auto-starts after 10s.
 - **Splash→Playing**: Framework calls `start()`. Game sets up its playing state.
 - **Playing**: Normal game mode — `update(dt)` is called once per tick, then `render()`/`renderNC()`, `onInput()`, `statusBar()`, `commandBar()` are called per player.
 - **Game over**: Triggered when JS calls `gameOver(results, state)`. The framework renders a "GAME OVER" screen with the ranked results list. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.

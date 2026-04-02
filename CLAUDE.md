@@ -60,7 +60,7 @@ go run ./cmd/null-space --local --data-dir dist --game example --player alice
 LOBBY (teams + chat) → SPLASH → PLAYING → GAME OVER → LOBBY
 ```
 1. **Lobby**: Players configure teams, chat. Admin loads game with `/game load <name>`.
-2. **Load**: Framework snapshots teams for the game (lobby teams stay independent), loads saved state, calls `init(savedState)`. `teams()` returns game teams. Game can set `Game.splashScreen` dynamically.
+2. **Load**: Framework snapshots teams for the game (lobby teams stay independent), loads saved state, calls `init(savedState)`. `teams()` returns game teams.
 3. **Splash**: Shows game splash screen (custom or default with game name). Admin presses Enter to start, or auto-starts after 10s.
 4. **Splash→Playing**: Framework calls `start()`. Game sets up its playing state.
 5. **Reconnect**: If a player disconnects mid-game and reconnects with the same name, they rejoin the game automatically.
@@ -175,15 +175,16 @@ Row 2: StatusBar    (fixed 1)   ← left text + right-aligned time
 type Game interface {
     GameName() string                      // display name (fallback: filename stem)
     TeamRange() TeamRange                  // {Min, Max} — zero = no constraint
-    SplashScreen() string                  // splash screen content (empty = use default)
     Init(savedState any)                   // called before splash with persisted state
     Start()                                // called at splash→playing transition
     Update(dt float64)                     // called once per tick with seconds since last update
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
     Render(buf *ImageBuffer, playerID string, x, y, width, height int) // write game viewport into buffer
+    RenderSplash(buf *ImageBuffer, playerID string, x, y, w, h int) bool   // custom splash (false = use default figlet)
+    RenderGameOver(buf *ImageBuffer, playerID string, x, y, w, h int, results []GameResult) bool // custom game-over
     RenderNC(playerID string, width, height int) *WidgetNode           // declarative NC layout (nil = use Render)
-    StatusBar(playerID string) string      // game status bar (2nd row, below menu bar)
+    StatusBar(playerID string) string      // feeds framework status bar (left-aligned)
     CommandBar(playerID string) string     // command bar (above framework status bar)
     Commands() []Command
     Unload()
@@ -232,7 +233,7 @@ type Message struct {
 
 Games live in `dist/games/` as either single `.js` files or folders containing `main.js` (for multi-file games using `include()`). Loaded at runtime via `/game load <name>`. A HTTPS URL can be given instead of a name — `.js` files are cached in `dist/games/.cache/`, `.zip` files are extracted to `dist/games/<name>/`. GitHub blob URLs are converted to raw automatically.
 
-**Game** — exports a global `Game` object with hooks `update`, `onPlayerLeave`, `onInput`, `render`, `renderNC`, `statusBar`, `commandBar`. Optional properties: `gameName`, `teamRange`, `splashScreen`. Mandatory `init(savedState)` called on load. Loaded one at a time; owns the viewport. `update(dt)` is called once per tick with elapsed seconds — all game logic belongs here. `render(buf, playerID, ox, oy, w, h)` receives an `ImageBuffer` and writes pixels directly via `buf.setChar(x, y, ch, fg, bg)`, `buf.writeString(x, y, text, fg, bg)`, `buf.fill(x, y, w, h, ch, fg, bg)`. Colors are `"#RRGGBB"` hex strings or `null`. Attribute constants: `ATTR_BOLD`, `ATTR_FAINT`, `ATTR_ITALIC`, `ATTR_UNDERLINE`, `ATTR_REVERSE`. `renderNC` returns a declarative widget tree that the framework renders using real NC controls; if defined, `render()` is only called for `{type: "gameview"}` nodes within the tree. Interactive node types (`button`, `textinput`, `checkbox`) route actions back via `onInput(playerID, action)`. Tab cycles focus between interactive controls; Esc returns to raw `onInput` mode.
+**Game** — exports a global `Game` object with hooks `update`, `onPlayerLeave`, `onInput`, `render`, `renderSplash`, `renderGameOver`, `renderNC`, `statusBar`, `commandBar`. Optional properties: `gameName`, `teamRange`. Mandatory `init(savedState)` called on load. Loaded one at a time; owns the viewport. `update(dt)` is called once per tick with elapsed seconds — all game logic belongs here. `render(buf, playerID, ox, oy, w, h)` receives an `ImageBuffer` and writes pixels directly via `buf.setChar(x, y, ch, fg, bg)`, `buf.writeString(x, y, text, fg, bg)`, `buf.fill(x, y, w, h, ch, fg, bg)`. Colors are `"#RRGGBB"` hex strings or `null`. Attribute constants: `ATTR_BOLD`, `ATTR_FAINT`, `ATTR_ITALIC`, `ATTR_UNDERLINE`, `ATTR_REVERSE`. `renderSplash(buf, playerID, ox, oy, w, h)` renders a custom splash screen (return true); if omitted, framework renders figlet game name. `renderGameOver(buf, playerID, ox, oy, w, h, results)` renders a custom game-over screen (return true); if omitted, framework renders figlet "GAME OVER" + results table. `renderNC` returns a declarative widget tree that the framework renders using real NC controls; if defined, `render()` is only called for `{type: "gameview"}` nodes within the tree. Interactive node types (`button`, `textinput`, `checkbox`) route actions back via `onInput(playerID, action)`. Tab cycles focus between interactive controls; Esc returns to raw `onInput` mode.
 
 **Global functions available to JS:** `log()`, `chat()`, `chatPlayer()`, `teams()`, `now()`, `registerCommand()`, `gameOver(results, state)`, `figlet(text, font?)` (ASCII art via figlet4go; built-in fonts: `"standard"`, `"larry3d"`; extra fonts loaded from `dist/fonts/*.flf` at startup), `include(name)` (evaluate another `.js` file from the same directory — for multi-file games).
 
