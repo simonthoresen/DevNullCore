@@ -62,22 +62,27 @@ type Server struct {
 
 	upnpMapping *network.UPnPMapping
 
-	lastUpdate    time.Time      // last time Update() was called on the active game
+	tickInterval  time.Duration   // how often the server ticks (default 100ms)
+	lastUpdate    time.Time       // last time Update() was called on the active game
 	splashDone    chan struct{}   // closed to end splash phase early
 	gameOverTimer chan struct{}   // closed to end game-over phase early
 }
 
-func New(address, password, dataDir string) (*Server, error) {
+func New(address, password, dataDir string, tickInterval time.Duration) (*Server, error) {
+	if tickInterval <= 0 {
+		tickInterval = 100 * time.Millisecond
+	}
 	app := &Server{
-		state:    state.New(password),
-		registry: newCommandRegistry(),
-		dataDir:  dataDir,
-		clock:    domain.RealClock{},
-		programs: make(map[string]*tea.Program),
-		sessions: make(map[string]ssh.Session),
-		logCh:    make(chan string, 256),
-		chatCh:   make(chan domain.Message, 256),
-		slogCh:   make(chan console.SlogLine, 256),
+		state:        state.New(password),
+		registry:     newCommandRegistry(),
+		dataDir:      dataDir,
+		clock:        domain.RealClock{},
+		tickInterval: tickInterval,
+		programs:     make(map[string]*tea.Program),
+		sessions:     make(map[string]ssh.Session),
+		logCh:        make(chan string, 256),
+		chatCh:       make(chan domain.Message, 256),
+		slogCh:       make(chan console.SlogLine, 256),
 	}
 
 	app.registerBuiltins()
@@ -500,7 +505,7 @@ func (a *Server) unregisterSession(playerID string) {
 }
 
 func (a *Server) runTicker(ctx context.Context) {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(a.tickInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -509,6 +514,7 @@ func (a *Server) runTicker(ctx context.Context) {
 		case <-ticker.C:
 			a.state.Lock()
 			a.state.TickN++
+			a.state.ElapsedSec = float64(a.state.TickN) * a.tickInterval.Seconds()
 			n := a.state.TickN
 			game := a.state.ActiveGame
 			phase := a.state.GamePhase

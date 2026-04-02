@@ -9,12 +9,12 @@ var STARTING_CHIPS = 1000;
 var SMALL_BLIND = 10;
 var BIG_BLIND = 20;
 var BLIND_INCREASE_HANDS = 10;
-var ACTION_TIMEOUT = 300; // ticks (30 seconds at 10fps)
+var ACTION_TIMEOUT = 30; // seconds
 var MIN_SEATS = 4;
 var AI_NAMES = ['Ace', 'Bluff', 'Cash', 'Dice', 'Edge', 'Flint', 'Grit', 'Hawk', 'Iron', 'Jinx'];
 var AI_PREFIX = 'ai_';
-var AI_THINK_MIN = 10;
-var AI_THINK_MAX = 30;
+var AI_THINK_MIN = 1.0; // seconds
+var AI_THINK_MAX = 3.0; // seconds
 
 // ─── Game State ────────────────────────────────────────────────────────
 
@@ -333,7 +333,7 @@ function doShowdown() {
     chat(winMsg);
     log(winMsg);
     Game.state.showdownResults = results;
-    Game.state.showdownTimer = 50;
+    Game.state.showdownTimer = 5;
 }
 
 function awardPot(winnerID) {
@@ -347,7 +347,7 @@ function awardPot(winnerID) {
 
 function endHand() {
     Game.state.phase = 'between';
-    Game.state.showdownTimer = 30;
+    Game.state.showdownTimer = 3;
     Game.state.eliminated = [];
     for (var i = 0; i < Game.state.seatOrder.length; i++) {
         var s = Game.state.seats[Game.state.seatOrder[i]];
@@ -426,9 +426,9 @@ function aiDecide(seatID) {
 
 // ─── Tick ──────────────────────────────────────────────────────────────
 
-function tick() {
+function tick(dt) {
     if (Game.state.phase === 'showdown' || Game.state.phase === 'between') {
-        Game.state.showdownTimer--;
+        Game.state.showdownTimer -= dt;
         if (Game.state.showdownTimer <= 0) {
             endHand();
             if (Game.state.phase === 'between') {
@@ -446,15 +446,15 @@ function tick() {
 
         if (s && isAI(id) && !s.folded && !s.allIn) {
             if (!s.aiThinkTimer) {
-                s.aiThinkTimer = AI_THINK_MIN + Math.floor(Math.random() * (AI_THINK_MAX - AI_THINK_MIN));
+                s.aiThinkTimer = AI_THINK_MIN + Math.random() * (AI_THINK_MAX - AI_THINK_MIN);
             }
-            s.aiThinkTimer--;
+            s.aiThinkTimer -= dt;
             if (s.aiThinkTimer <= 0) {
                 s.aiThinkTimer = 0;
                 aiDecide(id);
             }
         } else if (Game.state.actionTimer > 0) {
-            Game.state.actionTimer--;
+            Game.state.actionTimer -= dt;
             if (Game.state.actionTimer <= 0) {
                 if (s) {
                     if (s.bet >= Game.state.currentBet) doCheck(id);
@@ -567,7 +567,7 @@ var Game = {
     },
 
     update: function(dt) {
-        tick();
+        tick(dt);
     },
 
     render: function(buf, playerID, ox, oy, width, height) {

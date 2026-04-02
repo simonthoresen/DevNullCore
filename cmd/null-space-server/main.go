@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	xterm "github.com/charmbracelet/x/term"
 
@@ -38,6 +39,7 @@ func main() {
 	var localGame string
 	var localPlayer string
 	var lanMode bool
+	var tickInterval time.Duration
 	flag.StringVar(&password, "password", "", "admin password (optional, can be set at runtime via /password)")
 	flag.StringVar(&address, "address", ":23234", "listen address")
 	flag.StringVar(&portOverride, "port", "", "SSH listen port (overrides --address port, default 23234)")
@@ -46,6 +48,7 @@ func main() {
 	flag.BoolVar(&lanMode, "lan", false, "LAN-only server (no UPnP, no public IP, no Pinggy)")
 	flag.StringVar(&localGame, "game", "", "game to preload (local mode)")
 	flag.StringVar(&localPlayer, "player", "player", "player name (local mode)")
+	flag.DurationVar(&tickInterval, "tick-interval", 100*time.Millisecond, "server tick interval (e.g. 100ms, 50ms)")
 	flag.Parse()
 
 	if portOverride != "" {
@@ -56,7 +59,7 @@ func main() {
 		startBootStep("Generating invite command")
 		finishBootStep("SKIP")
 
-		app := server.NewLocal(dataDir)
+		app := server.NewLocal(dataDir, tickInterval)
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 		if err := app.RunLocal(ctx, localPlayer, localGame); err != nil {
@@ -84,7 +87,7 @@ func main() {
 	}
 
 	startBootStep("SSH server")
-	app, err := server.New(address, password, dataDir)
+	app, err := server.New(address, password, dataDir, tickInterval)
 	if err != nil {
 		finishBootStep("FAIL")
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

@@ -47,9 +47,12 @@ var BOX = [
 // Scoring & timing
 var PTS_DOT = 10, PTS_POW = 50;
 var PTS_GHOST = [200, 400, 800, 1600];
-var POWER_DUR = 70;
-var RESPAWN_S = 20, RESPAWN_L = 50, INVULN = 30;
-var SPD_PAC = 2, SPD_GHOST = 2;
+var POWER_DUR = 7.0;     // seconds
+var RESPAWN_S = 2.0;     // seconds (short respawn)
+var RESPAWN_L = 5.0;     // seconds (long respawn with penalty)
+var INVULN = 3.0;        // seconds of invulnerability
+var SPD_PAC = 0.2;       // seconds between pac moves
+var SPD_GHOST = 0.2;     // seconds between ghost moves
 
 // ============================================================
 // Maze — classic 28×26 layout
@@ -92,7 +95,9 @@ var GSPAWN = [{x:14,y:9},{x:13,y:12},{x:11,y:12},{x:15,y:12}];
 var maze = [], dots = 0, wallMask = [];
 var pls = {}, plOrder = [];
 var ghosts = [];
-var frame = 0, round = 1;
+var round = 1;
+var pacMoveTimer = 0, ghostMoveTimer = 0;
+var animTimer = 0; // for animation frames (replaces frame counter in render)
 
 // ============================================================
 // Helpers
@@ -167,7 +172,7 @@ function resetGhosts() {
         ghosts.push({
             x: GSPAWN[i].x, y: GSPAWN[i].y,
             dir: UP, inHouse: i > 0,
-            releaseAt: i * 20, eaten: false, returning: false
+            releaseTimer: i * 2.0, eaten: false, returning: false
         });
     }
 }
@@ -241,7 +246,7 @@ function moveGhost(g, i) {
     if (g.returning) {
         if (g.x === 14 && g.y === 12) {
             g.returning = false; g.eaten = false;
-            g.inHouse = true; g.releaseAt = frame + 30;
+            g.inHouse = true; g.releaseTimer = 3.0;
             return;
         }
         var d = bfsDir(g.x, g.y, 14, 12);
@@ -255,7 +260,7 @@ function moveGhost(g, i) {
         return;
     }
     if (g.inHouse) {
-        if (frame < g.releaseAt) return;
+        if (g.releaseTimer > 0) return;
         if (g.x < 13) { g.x++; return; }
         if (g.x > 14) { g.x--; return; }
         if (g.y > 9)  { g.y--; return; }
@@ -296,7 +301,7 @@ function newPlayer(id, name) {
         id: id, name: name,
         x: SPAWN.x, y: SPAWN.y, dir: LEFT, nextDir: LEFT,
         score: 0, lives: 3,
-        dead: false, respawnAt: 0, invuln: 0,
+        dead: false, respawnTimer: 0, invulnTimer: 0,
         powerT: 0, geaten: 0,
         ci: plOrder.length % E_SETS.length
     };
@@ -322,8 +327,25 @@ function movePac(p) {
 // ============================================================
 // Update
 // ============================================================
-function tick() {
-    frame++;
+function tick(dt) {
+    animTimer += dt;
+
+    // Decrement all timers by dt
+    for (var i = 0; i < plOrder.length; i++) {
+        var p = pls[plOrder[i]];
+        if (!p) continue;
+        if (p.respawnTimer > 0) p.respawnTimer -= dt;
+        if (p.invulnTimer > 0) p.invulnTimer -= dt;
+        if (p.powerT > 0) {
+            p.powerT -= dt;
+            if (p.powerT <= 0) { p.powerT = 0; p.geaten = 0; }
+        }
+    }
+    for (var i = 0; i < ghosts.length; i++) {
+        if (ghosts[i].inHouse && ghosts[i].releaseTimer > 0) {
+            ghosts[i].releaseTimer -= dt;
+        }
+    }
 
     // Save previous positions for head-on collision detection
     for (var i = 0; i < plOrder.length; i++) {
@@ -334,41 +356,39 @@ function tick() {
         ghosts[i].px = ghosts[i].x; ghosts[i].py = ghosts[i].y;
     }
 
-    // Tick per-player power timers
-    for (var i = 0; i < plOrder.length; i++) {
-        var p = pls[plOrder[i]];
-        if (p && p.powerT > 0) {
-            p.powerT--;
-            if (p.powerT === 0) p.geaten = 0;
-        }
-    }
+    // Accumulate movement timers
+    pacMoveTimer += dt;
+    ghostMoveTimer += dt;
 
-    // Move players — powered players move every frame, others every SPD_PAC
+    // Move players — powered players move every tick, others at SPD_PAC interval
+    var pacShouldMove = pacMoveTimer >= SPD_PAC;
     for (var i = 0; i < plOrder.length; i++) {
         var p = pls[plOrder[i]];
         if (!p) continue;
         if (p.dead) {
-            if (frame >= p.respawnAt) {
+            if (p.respawnTimer <= 0) {
                 p.dead = false; p.x = SPAWN.x; p.y = SPAWN.y;
                 p.dir = LEFT; p.nextDir = LEFT;
-                p.invuln = frame + INVULN;
+                p.invulnTimer = INVULN;
             }
             continue;
         }
-        if (p.powerT > 0 || frame % SPD_PAC === 0) {
+        if (p.powerT > 0 || pacShouldMove) {
             movePac(p);
         }
     }
+    if (pacShouldMove) pacMoveTimer -= SPD_PAC;
 
-    // Returning eyes move every frame (fast!)
+    // Returning eyes move every tick (fast!)
     for (var i = 0; i < ghosts.length; i++) {
         if (ghosts[i].returning) moveGhost(ghosts[i], i);
     }
-    // Ghosts always move at normal speed
-    if (frame % SPD_GHOST === 0) {
+    // Ghosts move at normal speed
+    if (ghostMoveTimer >= SPD_GHOST) {
         for (var i = 0; i < ghosts.length; i++) {
             if (!ghosts[i].returning) moveGhost(ghosts[i], i);
         }
+        ghostMoveTimer -= SPD_GHOST;
     }
 
     // Collisions: same-cell OR head-on swap
@@ -388,16 +408,16 @@ function tick() {
                 var b = PTS_GHOST[Math.min(p.geaten, 3)];
                 p.score += b; p.geaten++;
                 chat(p.name + " ate " + GNAME[g] + "! +" + b);
-            } else if (frame >= p.invuln) {
+            } else if (p.invulnTimer <= 0) {
                 // Ghost kills this player
                 p.lives--;
                 p.dead = true;
                 if (p.lives <= 0) {
-                    p.respawnAt = frame + RESPAWN_L;
+                    p.respawnTimer = RESPAWN_L;
                     p.lives = 3; p.score = Math.max(0, p.score - 500);
                     chat(p.name + " was caught! Respawning with penalty...");
                 } else {
-                    p.respawnAt = frame + RESPAWN_S;
+                    p.respawnTimer = RESPAWN_S;
                     chat(p.name + " was caught! " + p.lives + " lives left");
                 }
             }
@@ -413,7 +433,7 @@ function tick() {
             if (!p) continue;
             p.x = SPAWN.x; p.y = SPAWN.y;
             p.dir = LEFT; p.nextDir = LEFT;
-            p.dead = false; p.invuln = frame + INVULN;
+            p.dead = false; p.invulnTimer = INVULN;
             p.powerT = 0; p.geaten = 0;
         }
     }
@@ -480,7 +500,7 @@ function render(buf, pid, width, height) {
             var emoji;
             if (p.dead) {
                 emoji = set[E_DEAD];
-            } else if (frame < p.invuln) {
+            } else if (p.invulnTimer > 0) {
                 emoji = set[E_INVULN];
             } else if (p.powerT > 0) {
                 emoji = set[E_POWERED];
@@ -494,7 +514,7 @@ function render(buf, pid, width, height) {
             } else {
                 var col = PCOL[p.ci % PCOL.length];
                 var poN = ["^", "v", "<", ">"];
-                var ch = (frame % 6 < 3) ? poN[p.dir] : "o";
+                var ch = (Math.floor(animTimer * 10) % 6 < 3) ? poN[p.dir] : "o";
                 ents[k] = {ch: ch, fg: col, bg: null, bold: (plOrder[i] === pid)};
             }
         }
@@ -583,7 +603,8 @@ registerCommand({
     description: "Reset the Pac-Man game",
     adminOnly: true,
     handler: function(pid, isAdmin, args) {
-        round = 1; frame = 0;
+        round = 1;
+        pacMoveTimer = 0; ghostMoveTimer = 0; animTimer = 0;
         parseMaze(); resetGhosts();
         for (var i = 0; i < plOrder.length; i++) {
             var p = pls[plOrder[i]];
@@ -591,7 +612,8 @@ registerCommand({
             p.score = 0; p.lives = 3;
             p.x = SPAWN.x; p.y = SPAWN.y;
             p.dir = LEFT; p.nextDir = LEFT;
-            p.dead = false; p.invuln = frame + INVULN;
+            p.dead = false; p.invulnTimer = INVULN;
+            p.respawnTimer = 0;
             p.powerT = 0; p.geaten = 0;
         }
         chat("Game reset by admin!");
@@ -624,7 +646,7 @@ var Game = {
     },
 
     update: function(dt) {
-        tick();
+        tick(dt);
     },
 
     render: function(buf, playerID, ox, oy, width, height) {

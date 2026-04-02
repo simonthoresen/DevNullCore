@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
@@ -20,12 +21,16 @@ import (
 
 // NewLocal creates a Server for local (non-SSH) use: a single player on the
 // local terminal. No SSH server, no networking, no host key file.
-func NewLocal(dataDir string) *Server {
+func NewLocal(dataDir string, tickInterval time.Duration) *Server {
+	if tickInterval <= 0 {
+		tickInterval = 100 * time.Millisecond
+	}
 	app := &Server{
-		state:    state.New(""),
-		registry: newCommandRegistry(),
-		dataDir:  dataDir,
-		programs: make(map[string]*tea.Program),
+		state:        state.New(""),
+		registry:     newCommandRegistry(),
+		dataDir:      dataDir,
+		tickInterval: tickInterval,
+		programs:     make(map[string]*tea.Program),
 		// sessions left nil — SSH middleware never runs in local mode;
 		// map reads against a nil map are safe (return zero value).
 		logCh:  make(chan string, 256),

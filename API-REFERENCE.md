@@ -72,10 +72,10 @@ var Game = {
 
     // --- Core hooks ---
 
-    // Called once per server tick (~100ms) with the time elapsed since the last
-    // update in seconds (typically ~0.1). Put all game logic here — movement,
-    // timers, collision detection, gameOver() calls. This is called exactly once
-    // per tick regardless of how many players are connected.
+    // Called once per server tick with the time elapsed since the last update
+    // in seconds. Put all game logic here — movement, timers, collision
+    // detection, gameOver() calls. This is called exactly once per tick
+    // regardless of how many players are connected. Use dt for all timing.
     update: function(dt) {},
 
     // Called when a player disconnects mid-game.
@@ -90,7 +90,7 @@ var Game = {
     // buf is an ImageBuffer — call buf.setChar(x, y, ch, fg, bg), buf.writeString(x, y, text, fg, bg),
     // buf.fill(x, y, w, h, ch, fg, bg) to write pixels directly. Colors are "#RRGGBB" strings or null.
     // Coordinates are relative to the buffer region (0,0 = top-left of the game viewport).
-    // Called per player on every render tick (~10 fps). Must be pure rendering — no game state mutation.
+    // Called per player on every render tick. Must be pure rendering — no game state mutation.
     render: function(buf, playerID, ox, oy, width, height) {
         buf.writeString(0, 0, "Hello!", "#FFFFFF", null);
     },
@@ -521,7 +521,7 @@ var Game = {
 
 **`render()` is called per player per tick.** Keep it fast and side-effect-free — no game state mutation. Put all game logic in `update(dt)` instead.
 
-**`update(dt)` is called once per tick.** The `dt` argument is seconds since the last update (typically ~0.1). All game logic — movement, timers, collision, gameOver() calls — belongs here.
+**`update(dt)` is called once per tick.** The `dt` argument is seconds since the last update. All game logic — movement, timers, collision, gameOver() calls — belongs here. Always use `dt` for timing (accumulate elapsed time, count down timers by subtracting `dt`) — never count ticks.
 
 **Rendering is character-based.** Each character is one cell wide. For box-drawing or emoji that span multiple columns, count display width carefully — the framework does not reflow.
 
@@ -643,7 +643,7 @@ const Shader = {
     // Optional: called once when the shader is loaded.
     init() { },
 
-    // Optional: called every tick (~100ms) with elapsed seconds.
+    // Optional: called every tick with elapsed seconds.
     // Use this to animate shader effects over time.
     update(dt) { },
 

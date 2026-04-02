@@ -498,7 +498,7 @@ func (m *Model) View() tea.View {
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
 	m.api.State().RLock()
-	shaderElapsed := float64(m.api.State().TickN) * 0.1
+	shaderElapsed := m.api.State().ElapsedSec
 	m.api.State().RUnlock()
 	engine.ApplyShaders(m.shaders, buf, shaderElapsed)
 

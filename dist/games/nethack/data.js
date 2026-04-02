@@ -17,7 +17,7 @@ var TILES = {
 
 // ─── Monster Definitions ───────────────────────────────────────────────────
 // Each entry: { ch, name, hp, atk, def, speed, xp, minDepth }
-// speed: 1 = every tick, 2 = every other tick, etc.
+// speed: 1 = every step, 2 = every other step, etc.
 var MONSTER_DEFS = [
     { ch: 'r', name: 'rat',             hp: 4,   atk: 2,  def: 0,  speed: 1, xp: 5,   minDepth: 1 },
     { ch: 'b', name: 'bat',             hp: 3,   atk: 1,  def: 0,  speed: 1, xp: 4,   minDepth: 1 },

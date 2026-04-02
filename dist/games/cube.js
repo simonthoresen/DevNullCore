@@ -261,8 +261,8 @@ var Game = {
     gameName: "Spinning Cube",
 
     state: {
-        tick: 0,
-        maxTicks: 300, // 30 seconds at 100ms per tick
+        elapsed: 0,
+        gameDuration: 30
         angleX: 0,
         angleY: 0,
         angleZ: 0
@@ -281,14 +281,14 @@ var Game = {
                +  "╚═══════════════════════════╝",
 
     init: function(savedState) {
-        Game.state.tick = 0;
+        Game.state.elapsed = 0;
         Game.state.angleX = 0;
         Game.state.angleY = 0;
         Game.state.angleZ = 0;
     },
 
     start: function() {
-        Game.state.tick = 0;
+        Game.state.elapsed = 0;
         log("Spinning Cube started");
     },
 
@@ -297,14 +297,14 @@ var Game = {
     },
 
     update: function(dt) {
-        Game.state.tick++;
+        Game.state.elapsed += dt;
 
-        if (Game.state.tick >= Game.state.maxTicks) {
+        if (Game.state.elapsed >= Game.state.gameDuration) {
             gameOver();
         }
 
         // Smooth rotation speeds (different per axis for interesting tumble)
-        var t = Game.state.tick * 0.02;
+        var t = Game.state.elapsed * 0.2;
         Game.state.angleX = t * 1.0;
         Game.state.angleY = t * 1.3;
         Game.state.angleZ = t * 0.7;
@@ -315,13 +315,13 @@ var Game = {
     },
 
     statusBar: function(playerID) {
-        var remaining = Math.max(0, Math.ceil((Game.state.maxTicks - Game.state.tick) / 10));
-        var elapsed = Math.floor(Game.state.tick / 10);
-        return "Spinning Cube  |  " + elapsed + "s / 30s  |  " + remaining + "s remaining";
+        var remaining = Math.max(0, Math.ceil(Game.state.gameDuration - Game.state.elapsed));
+        var elapsed = Math.floor(Game.state.elapsed);
+        return "Spinning Cube  |  " + elapsed + "s / " + Game.state.gameDuration + "s  |  " + remaining + "s remaining";
     },
 
     commandBar: function(playerID) {
-        var fraction = Math.min(1, Game.state.tick / Game.state.maxTicks);
+        var fraction = Math.min(1, Game.state.elapsed / Game.state.gameDuration);
         return progressBar(40, fraction) + "  [Enter] Chat";
     }
 };

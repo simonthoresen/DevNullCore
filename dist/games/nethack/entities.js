@@ -99,12 +99,12 @@ function checkLevelUp(player) {
 
 // ─── Monster AI ────────────────────────────────────────────────────────────
 
-function updateMonsters(level, players, tick) {
+function updateMonsters(level, players, step) {
     for (var m = 0; m < level.monsters.length; m++) {
         var mon = level.monsters[m];
         if (mon.hp <= 0) continue;
-        // Speed check: skip if tick not aligned
-        if (tick % mon.speed !== 0) continue;
+        // Speed check: skip if step not aligned
+        if (step % mon.speed !== 0) continue;
 
         // Find nearest player on this level
         var nearest = null;

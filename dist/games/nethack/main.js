@@ -12,7 +12,8 @@ include("ui");
 var MAX_DEPTH = 10;
 var LEVEL_WIDTH = 60;
 var LEVEL_HEIGHT = 30;
-var HUNGER_TICK_RATE = 5; // lose 1 hunger every N ticks
+var MONSTER_INTERVAL = 0.3; // seconds between monster updates
+var HUNGER_INTERVAL = 5.0;  // seconds between hunger ticks
 
 
 // ─── Level Management ──────────────────────────────────────────────────────
@@ -50,7 +51,9 @@ var Game = {
     state: {
         players: {},        // playerID -> player object
         levels: {},         // depth -> level object
-        tick: 0,
+        monsterTimer: 0,    // accumulator for monster update interval
+        hungerTimer: 0,     // accumulator for hunger interval
+        monsterStep: 0,     // counts monster update steps for per-monster speed
         inventoryOpen: {},  // playerID -> boolean
         highScores: []      // persistent high scores
     },
@@ -146,17 +149,20 @@ var Game = {
     },
 
     update: function(dt) {
-        Game.state.tick++;
-
-        // Update monsters
-        if (Game.state.tick % 3 === 0) { // monsters move every 3 ticks (300ms)
+        // Update monsters on a fixed interval
+        Game.state.monsterTimer += dt;
+        while (Game.state.monsterTimer >= MONSTER_INTERVAL) {
+            Game.state.monsterTimer -= MONSTER_INTERVAL;
+            Game.state.monsterStep++;
             for (var d in Game.state.levels) {
-                updateMonsters(Game.state.levels[d], Game.state.players, Game.state.tick);
+                updateMonsters(Game.state.levels[d], Game.state.players, Game.state.monsterStep);
             }
         }
 
         // Hunger system
-        if (Game.state.tick % (HUNGER_TICK_RATE * 10) === 0) {
+        Game.state.hungerTimer += dt;
+        while (Game.state.hungerTimer >= HUNGER_INTERVAL) {
+            Game.state.hungerTimer -= HUNGER_INTERVAL;
             for (var pid in Game.state.players) {
                 var p = Game.state.players[pid];
                 if (!p.dead) {

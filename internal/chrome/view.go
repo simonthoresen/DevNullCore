@@ -49,9 +49,8 @@ func (m Model) View() tea.View {
 	}
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
-	// Elapsed time is derived from the tick counter (deterministic, replicable on client).
 	m.api.State().RLock()
-	shaderElapsed := float64(m.api.State().TickN) * 0.1
+	shaderElapsed := m.api.State().ElapsedSec
 	m.api.State().RUnlock()
 	engine.ApplyShaders(m.shaders, buf, shaderElapsed)
 

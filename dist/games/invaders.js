@@ -56,23 +56,25 @@ var E_UFO    = "\uD83D\uDEF8";  // 🛸
 var E_FIRE   = "\uD83D\uDD25";  // 🔥
 // Bunker block chars: full → medium → light shade, same visual family
 
-// Timing
-var ALIEN_MOVE_INTERVAL = 8;
+// Timing (all durations in seconds)
+var ALIEN_MOVE_INTERVAL = 0.8;
 var ALIEN_SHOOT_CHANCE = 0.015;
 var BULLET_SPEED = 1;
 var ALIEN_BULLET_SPEED = 1;
 var PLAYER_SPEED = 1;
-var RESPAWN_TICKS = 30;
-var INVULN_TICKS = 20;
-var UFO_INTERVAL = 300;
-var UFO_SPEED = 3;
+var RESPAWN_TIME = 3.0;
+var INVULN_TIME = 2.0;
+var UFO_INTERVAL = 30.0;
+var UFO_MOVE_INTERVAL = 0.3;
 var POWERUP_CHANCE = 0.15;
-var RAPID_FIRE_DUR = 80;
-var SHIELD_DUR = 60;
-var FIRE_COOLDOWN = 4;
-var RAPID_COOLDOWN = 2;
+var POWERUP_MOVE_INTERVAL = 0.3;
+var RAPID_FIRE_DUR = 8.0;
+var SHIELD_DUR = 6.0;
+var FIRE_COOLDOWN = 0.4;
+var RAPID_COOLDOWN = 0.2;
 var GAME_WAVES = 5;
-var WAVE_PAUSE = 30;
+var WAVE_PAUSE = 3.0;
+var BOOM_TTL = 0.5;
 
 // Derived constants
 var PLAYER_Y = MAP_H - 2;   // player row (above ground)
@@ -99,7 +101,9 @@ var booms = [];
 var powerups = [];
 var ufo = null;
 var ufoTimer = 0;
-var frame = 0;
+var ufoMoveTimer = 0;
+var powerupMoveTimer = 0;
+var elapsed = 0;
 var wave = 1;
 var waveAlienCount = 0;
 var wavePause = 0;
@@ -204,7 +208,7 @@ function newPlayer(id, name) {
         id: id, name: name,
         x: Math.floor(MAP_W / 2), y: PLAYER_Y,
         score: 0, lives: 3,
-        dead: false, respawnAt: 0, invuln: 0,
+        dead: false, respawnTimer: 0, invulnTimer: 0,
         cooldown: 0,
         rapidFire: 0,
         shield: 0,
@@ -215,10 +219,10 @@ function newPlayer(id, name) {
 // ============================================================
 // Tick — all coordinates in fixed world space
 // ============================================================
-function tick() {
+function tick(dt) {
     if (gameOver) return;
 
-    frame++;
+    elapsed += dt;
 
     if (!inited) {
         inited = true;
@@ -227,8 +231,8 @@ function tick() {
 
     // Wave pause
     if (wavePause > 0) {
-        wavePause--;
-        if (wavePause === 0) {
+        wavePause -= dt;
+        if (wavePause <= 0) {
             spawnWave();
             for (var i = 0; i < plOrder.length; i++) {
                 var p = pls[plOrder[i]];
@@ -242,15 +246,19 @@ function tick() {
     for (var i = 0; i < plOrder.length; i++) {
         var p = pls[plOrder[i]];
         if (!p) continue;
-        if (p.cooldown > 0) p.cooldown--;
-        if (p.rapidFire > 0) p.rapidFire--;
-        if (p.shield > 0) p.shield--;
-        if (p.dead && frame >= p.respawnAt) {
-            p.dead = false;
-            p.x = Math.floor(MAP_W / 2);
-            p.y = PLAYER_Y;
-            p.invuln = frame + INVULN_TICKS;
+        if (p.cooldown > 0) p.cooldown -= dt;
+        if (p.rapidFire > 0) p.rapidFire -= dt;
+        if (p.shield > 0) p.shield -= dt;
+        if (p.dead) {
+            p.respawnTimer -= dt;
+            if (p.respawnTimer <= 0) {
+                p.dead = false;
+                p.x = Math.floor(MAP_W / 2);
+                p.y = PLAYER_Y;
+                p.invulnTimer = INVULN_TIME;
+            }
         }
+        if (p.invulnTimer > 0) p.invulnTimer -= dt;
     }
 
     // Move player bullets (up)
@@ -278,9 +286,9 @@ function tick() {
     }
 
     // Move alien formation
-    alienMoveTimer++;
+    alienMoveTimer += dt;
     var alive = aliveAliens();
-    var speedUp = Math.max(2, ALIEN_MOVE_INTERVAL - Math.floor((waveAlienCount - alive) / 4));
+    var speedUp = Math.max(0.2, ALIEN_MOVE_INTERVAL - Math.floor((waveAlienCount - alive) / 4) * 0.1);
     if (alienMoveTimer >= speedUp) {
         alienMoveTimer = 0;
         var b = alienBounds();
@@ -329,7 +337,7 @@ function tick() {
     }
 
     // UFO
-    ufoTimer++;
+    ufoTimer += dt;
     if (ufoTimer >= UFO_INTERVAL && !ufo) {
         ufoTimer = 0;
         var dir = rng() > 0.5 ? 1 : -1;
@@ -340,14 +348,24 @@ function tick() {
             pts: [50, 100, 150, 300][rngInt(0, 3)]
         };
     }
-    if (ufo && frame % UFO_SPEED === 0) {
-        ufo.x += ufo.dir;
-        if (ufo.x < 1 || ufo.x >= MAP_W - 1) ufo = null;
+    if (ufo) {
+        ufoMoveTimer += dt;
+        while (ufoMoveTimer >= UFO_MOVE_INTERVAL) {
+            ufoMoveTimer -= UFO_MOVE_INTERVAL;
+            ufo.x += ufo.dir;
+            if (ufo.x < 1 || ufo.x >= MAP_W - 1) { ufo = null; break; }
+        }
     }
 
     // Move powerups
+    powerupMoveTimer += dt;
+    var powerupSteps = 0;
+    while (powerupMoveTimer >= POWERUP_MOVE_INTERVAL) {
+        powerupMoveTimer -= POWERUP_MOVE_INTERVAL;
+        powerupSteps++;
+    }
     for (var i = powerups.length - 1; i >= 0; i--) {
-        if (frame % 3 === 0) powerups[i].y++;
+        powerups[i].y += powerupSteps;
         if (powerups[i].y >= GROUND_Y) {
             powerups.splice(i, 1);
         }
@@ -355,7 +373,7 @@ function tick() {
 
     // Decay explosions
     for (var i = booms.length - 1; i >= 0; i--) {
-        booms[i].ttl--;
+        booms[i].ttl -= dt;
         if (booms[i].ttl <= 0) booms.splice(i, 1);
     }
 
@@ -373,7 +391,7 @@ function tick() {
                 hit = true;
                 var shooter = pls[bul.owner];
                 if (shooter) shooter.score += ALIEN_PTS[a.tier];
-                booms.push({x: a.x, y: a.y, ttl: 4});
+                booms.push({x: a.x, y: a.y, ttl: BOOM_TTL});
                 if (rng() < POWERUP_CHANCE) {
                     var types = ["rapid", "shield", "life"];
                     powerups.push({x: a.x, y: a.y, type: types[rngInt(0, 2)]});
@@ -389,7 +407,7 @@ function tick() {
                     shooter.score += ufo.pts;
                     chat(shooter.name + " shot the UFO! +" + ufo.pts);
                 }
-                booms.push({x: ufo.x, y: ufo.y, ttl: 5});
+                booms.push({x: ufo.x, y: ufo.y, ttl: BOOM_TTL});
                 ufo = null;
             }
         }
@@ -404,10 +422,10 @@ function tick() {
             if (!p || p.dead) continue;
             if (Math.abs(bul.x - p.x) <= 1 && bul.y === p.y) {
                 alienBullets.splice(bi, 1);
-                if (frame < p.invuln) break;
+                if (p.invulnTimer > 0) break;
                 if (p.shield > 0) {
                     p.shield = 0;
-                    booms.push({x: p.x, y: p.y - 1, ttl: 3});
+                    booms.push({x: p.x, y: p.y - 1, ttl: BOOM_TTL});
                     break;
                 }
                 killPlayer(p);
@@ -428,7 +446,7 @@ function tick() {
             if (a.y < PLAYER_Y - 1) continue;
             for (var pi = 0; pi < plOrder.length; pi++) {
                 var p = pls[plOrder[pi]];
-                if (!p || p.dead || frame < p.invuln) continue;
+                if (!p || p.dead || p.invulnTimer > 0) continue;
                 if (Math.abs(a.x - p.x) <= 1 && Math.abs(a.y - p.y) <= 1) {
                     if (p.shield > 0) { p.shield = 0; }
                     else { killPlayer(p); }
@@ -436,7 +454,7 @@ function tick() {
             }
         }
         if (invaded) {
-            log("Aliens reached ground at frame " + frame + ", wiping wave");
+            log("Aliens reached ground at " + elapsed.toFixed(1) + "s, wiping wave");
             chat("The aliens reached the ground! All players lose a life!");
             for (var ai = 0; ai < aliens.length; ai++) {
                 aliens[ai].alive = false;
@@ -473,14 +491,14 @@ function tick() {
     }
 
     // Wave cleared?
-    if (aliveAliens() === 0 && wavePause === 0) {
+    if (aliveAliens() === 0 && wavePause <= 0) {
         if (wave >= GAME_WAVES) {
-            log("All waves complete, ending game at frame " + frame);
+            log("All waves complete, ending game at " + elapsed.toFixed(1) + "s");
             endGame();
         } else {
             wave++;
             wavePause = WAVE_PAUSE;
-            log("Wave " + wave + " starting in " + WAVE_PAUSE + " ticks (frame " + frame + ")");
+            log("Wave " + wave + " starting in " + WAVE_PAUSE + "s (elapsed " + elapsed.toFixed(1) + "s)");
             chat("Wave " + wave + " incoming!");
         }
     }
@@ -489,21 +507,21 @@ function tick() {
 function killPlayer(p) {
     p.lives--;
     p.dead = true;
-    booms.push({x: p.x, y: p.y, ttl: 5});
+    booms.push({x: p.x, y: p.y, ttl: BOOM_TTL});
     if (p.lives <= 0) {
-        p.respawnAt = frame + RESPAWN_TICKS * 2;
+        p.respawnTimer = RESPAWN_TIME * 2;
         p.lives = 3;
         p.score = Math.max(0, p.score - 200);
         chat(p.name + " destroyed! Respawning with penalty...");
     } else {
-        p.respawnAt = frame + RESPAWN_TICKS;
+        p.respawnTimer = RESPAWN_TIME;
         chat(p.name + " hit! " + p.lives + " lives left");
     }
 }
 
 function endGame() {
     gameOver = true;
-    gameOverAt = frame;
+    gameOverAt = elapsed;
     var sorted = plOrder.slice().sort(function(a, b) {
         return (pls[b] ? pls[b].score : 0) - (pls[a] ? pls[a].score : 0);
     });
@@ -603,7 +621,7 @@ function render(buf, pid, width, height) {
     for (var i = 0; i < booms.length; i++) {
         var b = booms[i];
         if (cw === 2) {
-            ents[b.x + "," + b.y] = {emoji: b.ttl > 2 ? E_BOOM : E_FIRE};
+            ents[b.x + "," + b.y] = {emoji: b.ttl > BOOM_TTL * 0.4 ? E_BOOM : E_FIRE};
         } else {
             ents[b.x + "," + b.y] = {ch: "*", fg: CRED, bg: null, attr: ATTR_BOLD};
         }
@@ -669,8 +687,9 @@ function render(buf, pid, width, height) {
         var k = p.x + "," + p.y;
         var bg = SHIP_BG[p.ci];
         var col = SHIP_COLORS[p.ci];
+        var blinkOn = Math.floor(elapsed / 0.2) % 2 === 0;
         if (cw === 2) {
-            if (frame < p.invuln && frame % 4 < 2) {
+            if (p.invulnTimer > 0 && blinkOn) {
                 ents[k] = {ch: " ", ch2: " ", fg: null, bg: null, attr: 0};
             } else if (p.shield > 0) {
                 ents[k] = {ch: "{", ch2: "}", fg: CWHT, bg: bg, attr: ATTR_BOLD};
@@ -678,7 +697,7 @@ function render(buf, pid, width, height) {
                 ents[k] = {ch: "/", ch2: "\\", fg: CWHT, bg: bg, attr: ATTR_BOLD};
             }
         } else {
-            if (frame < p.invuln && frame % 4 < 2) {
+            if (p.invulnTimer > 0 && blinkOn) {
                 ents[k] = {ch: " ", fg: null, bg: null, attr: 0};
             } else if (p.shield > 0) {
                 ents[k] = {ch: "O", fg: col, bg: null, attr: ATTR_BOLD};
@@ -771,15 +790,16 @@ registerCommand({
     description: "Reset the Space Invaders game",
     adminOnly: true,
     handler: function(pid, isAdmin, args) {
-        wave = 1; frame = 0; gameOver = false;
+        wave = 1; elapsed = 0; gameOver = false;
         aliens = []; alienBullets = []; playerBullets = [];
         booms = []; powerups = []; ufo = null; ufoTimer = 0;
+        ufoMoveTimer = 0; powerupMoveTimer = 0;
         wavePause = 0; bunkers = {}; inited = false;
         for (var i = 0; i < plOrder.length; i++) {
             var p = pls[plOrder[i]];
             if (!p) continue;
             p.score = 0; p.lives = 3;
-            p.dead = false; p.invuln = frame + INVULN_TICKS;
+            p.dead = false; p.invulnTimer = INVULN_TIME;
             p.rapidFire = 0; p.shield = 0; p.cooldown = 0;
             p.x = Math.floor(MAP_W / 2); p.y = PLAYER_Y;
         }
@@ -838,7 +858,7 @@ var Game = {
     },
 
     update: function(dt) {
-        tick();
+        tick(dt);
     },
 
     render: function(buf, playerID, ox, oy, width, height) {

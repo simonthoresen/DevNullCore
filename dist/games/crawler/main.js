@@ -11,6 +11,7 @@ var MAZE_W = 20;
 var MAZE_H = 20;
 var TURN_SPEED = Math.PI / 4; // 45 degrees per key press
 var MOVE_SPEED = 1.0;
+var MONSTER_AI_INTERVAL = 0.5; // seconds between monster AI updates
 
 
 function createPlayer(id, name) {
@@ -80,7 +81,7 @@ var Game = {
         maze: null,
         items: [],     // items on the ground: { x, y, item }
         monsters: [],  // { x, y, hp, maxHp, name, atk, ch, color, loot }
-        tick: 0,
+        monsterTimer: 0,
         floor: 1,
         messages: {}   // playerID -> [strings]
     },
@@ -199,10 +200,10 @@ var Game = {
     },
 
     update: function(dt) {
-        Game.state.tick++;
-
-        // Monster AI - move toward nearby players every 5 ticks
-        if (Game.state.tick % 5 === 0) {
+        // Monster AI on a fixed interval
+        Game.state.monsterTimer += dt;
+        while (Game.state.monsterTimer >= MONSTER_AI_INTERVAL) {
+            Game.state.monsterTimer -= MONSTER_AI_INTERVAL;
             for (var m = 0; m < Game.state.monsters.length; m++) {
                 var mon = Game.state.monsters[m];
                 if (mon.hp <= 0) continue;

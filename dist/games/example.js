@@ -8,8 +8,8 @@ var Game = {
     // suspend/resume and client-side state replication.
     state: {
         players: {},
-        tick: 0,
-        maxTicks: 300,  // game lasts 30 seconds (300 ticks at 100ms)
+        elapsed: 0,
+        gameDuration: 30
         highScore: 0
     },
 
@@ -72,10 +72,10 @@ var Game = {
     },
 
     update: function(dt) {
-        Game.state.tick++;
+        Game.state.elapsed += dt;
 
         // Check if game is over.
-        if (Game.state.tick >= Game.state.maxTicks) {
+        if (Game.state.elapsed >= Game.state.gameDuration) {
             // Update high score.
             var best = 0;
             for (var id in Game.state.players) {
@@ -115,7 +115,7 @@ var Game = {
     statusBar: function(playerID) {
         var p = Game.state.players[playerID];
         if (!p) return "Example Arena";
-        var remaining = Math.max(0, Math.ceil((Game.state.maxTicks - Game.state.tick) / 10));
+        var remaining = Math.max(0, Math.ceil(Game.state.gameDuration - Game.state.elapsed));
         var count = Object.keys(Game.state.players).length;
         return "Example Arena  |  " + p.team + "  |  score: " + p.score + "  |  " + remaining + "s  |  players: " + count;
     },

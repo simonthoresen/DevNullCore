@@ -26,7 +26,8 @@ type CentralState struct {
 
 	AdminPassword string
 	StartTime     time.Time
-	TickN         int // increments every 100ms; SpinnerFrame = TickN/10
+	TickN      int     // increments every tick
+	ElapsedSec float64 // total seconds elapsed since server start (TickN * tickInterval)
 
 	ActiveGame domain.Game
 	GameName   string
@@ -79,7 +80,7 @@ func (s *CentralState) RLock() { s.mu.RLock() }
 func (s *CentralState) RUnlock() { s.mu.RUnlock() }
 
 func (s *CentralState) SpinnerChar() rune {
-	frame := (s.TickN / 10) % len(spinnerFrames)
+	frame := int(s.ElapsedSec) % len(spinnerFrames)
 	return spinnerFrames[frame]
 }
 

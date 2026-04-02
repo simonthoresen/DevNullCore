@@ -139,7 +139,7 @@ func (n *WidgetNode) Hash() uint64 {
 
 // Tea messages
 
-type TickMsg struct{ N int }               // broadcast to all programs every 100ms; N is tick counter
+type TickMsg struct{ N int }               // broadcast to all programs every tick; N is tick counter
 type PlayerJoinedMsg struct{ Player *Player }
 type PlayerLeftMsg struct{ PlayerID string }
 type ChatMsg struct{ Msg Message }
