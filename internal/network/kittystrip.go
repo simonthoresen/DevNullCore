@@ -1,18 +1,18 @@
-package server
+package network
 
 import (
 	"bytes"
 	"io"
 )
 
-// kittyStripWriter wraps an io.Writer and strips Kitty keyboard protocol
+// KittyStripWriter wraps an io.Writer and strips Kitty keyboard protocol
 // escape sequences from the output stream. Bubble Tea v2's renderer always
 // enables KittyDisambiguateEscapeCodes, which causes the client terminal to
 // send multi-byte CSI u-encoded keystrokes. Over SSH, this breaks input
 // parsing — the server's Bubble Tea input reader misinterprets or drops
 // alternating keys. By stripping the enable/disable sequences from the output,
 // the client terminal stays in legacy mode and sends simple 1-byte ASCII keys.
-type kittyStripWriter struct {
+type KittyStripWriter struct {
 	inner io.Writer
 }
 
@@ -40,11 +40,12 @@ var kittyPatterns = [][]byte{
 	[]byte("\x1b[>4m"),
 }
 
-func newKittyStripWriter(w io.Writer) *kittyStripWriter {
-	return &kittyStripWriter{inner: w}
+// NewKittyStripWriter creates a new writer that strips Kitty protocol sequences.
+func NewKittyStripWriter(w io.Writer) *KittyStripWriter {
+	return &KittyStripWriter{inner: w}
 }
 
-func (w *kittyStripWriter) Write(p []byte) (int, error) {
+func (w *KittyStripWriter) Write(p []byte) (int, error) {
 	original := len(p)
 	cleaned := p
 	for _, pat := range kittyPatterns {
@@ -63,7 +64,7 @@ func (w *kittyStripWriter) Write(p []byte) (int, error) {
 
 // Read delegates to the underlying writer if it also implements io.Reader
 // (which ssh.Session does).
-func (w *kittyStripWriter) Read(p []byte) (int, error) {
+func (w *KittyStripWriter) Read(p []byte) (int, error) {
 	if r, ok := w.inner.(io.Reader); ok {
 		return r.Read(p)
 	}

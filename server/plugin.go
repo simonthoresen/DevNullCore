@@ -11,6 +11,7 @@ import (
 	"github.com/dop251/goja"
 
 	"null-space/common"
+	"null-space/internal/network"
 )
 
 // jsPlugin wraps a goja JS runtime for a per-player or per-console plugin.
@@ -116,9 +117,9 @@ func (p *jsPlugin) Unload() {
 // resolvePluginPath resolves a plugin name or URL to a local file path,
 // downloading and caching if it's a URL.
 func resolvePluginPath(nameOrURL, dataDir string) (name, path string, err error) {
-	if isURL(nameOrURL) {
+	if network.IsURL(nameOrURL) {
 		cacheDir := filepath.Join(dataDir, "plugins", ".cache")
-		local, err := downloadToCache(nameOrURL, cacheDir)
+		local, err := network.DownloadToCache(nameOrURL, cacheDir)
 		if err != nil {
 			return "", "", fmt.Errorf("download plugin: %w", err)
 		}

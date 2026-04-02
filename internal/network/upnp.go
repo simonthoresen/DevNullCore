@@ -1,4 +1,4 @@
-package server
+package network
 
 import (
 	"context"
@@ -9,20 +9,20 @@ import (
 	"github.com/huin/goupnp/dcps/internetgateway2"
 )
 
-// upnpMapping holds state for a UPnP port mapping so it can be cleaned up on
+// UPnPMapping holds state for a UPnP port mapping so it can be cleaned up on
 // shutdown.
-type upnpMapping struct {
+type UPnPMapping struct {
 	client       *internetgateway2.WANIPConnection2
 	externalPort uint16
 }
 
-// tryUPnP attempts to create a port mapping on the local router via UPnP IGD.
-// It stores results into *CentralState.Net.
-func tryUPnP(state *CentralState, port string) *upnpMapping {
+// TryUPnP attempts to create a port mapping on the local router via UPnP IGD.
+// Returns a mapping handle (for cleanup) and whether the mapping succeeded.
+func TryUPnP(port string) (*UPnPMapping, bool) {
 	p, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		slog.Warn("upnp: invalid port", "port", port, "error", err)
-		return nil
+		return nil, false
 	}
 	externalPort := uint16(p)
 
@@ -31,35 +31,26 @@ func tryUPnP(state *CentralState, port string) *upnpMapping {
 
 	// Try IGD v2 WANIPConnection2 first (most modern routers).
 	if mapping := tryWANIPConnection2(ctx, externalPort); mapping != nil {
-		state.mu.Lock()
-		state.Net.UPnPMapped = true
-		state.mu.Unlock()
-		return mapping
+		return mapping, true
 	}
 
 	// Fall back to IGD v1 WANIPConnection1.
 	if tryWANIPConnection1(ctx, externalPort) {
 		slog.Info("upnp: mapped via WANIPConnection1 (no cleanup handle)")
-		state.mu.Lock()
-		state.Net.UPnPMapped = true
-		state.mu.Unlock()
-		return nil // v1 clients have a different type; best-effort
+		return nil, true // v1 clients have a different type; best-effort
 	}
 
 	// Fall back to WANPPPConnection1 (DSL modems).
 	if tryWANPPPConnection1(ctx, externalPort) {
 		slog.Info("upnp: mapped via WANPPPConnection1 (no cleanup handle)")
-		state.mu.Lock()
-		state.Net.UPnPMapped = true
-		state.mu.Unlock()
-		return nil
+		return nil, true
 	}
 
 	slog.Info("upnp: no IGD gateway found on this network")
-	return nil
+	return nil, false
 }
 
-func tryWANIPConnection2(ctx context.Context, port uint16) *upnpMapping {
+func tryWANIPConnection2(ctx context.Context, port uint16) *UPnPMapping {
 	clients, _, err := internetgateway2.NewWANIPConnection2ClientsCtx(ctx)
 	if err != nil || len(clients) == 0 {
 		return nil
@@ -84,7 +75,7 @@ func tryWANIPConnection2(ctx context.Context, port uint16) *upnpMapping {
 			"external_port", port,
 			"internal_ip", client.LocalAddr().String(),
 		)
-		return &upnpMapping{client: client, externalPort: port}
+		return &UPnPMapping{client: client, externalPort: port}
 	}
 	return nil
 }
@@ -149,8 +140,8 @@ func tryWANPPPConnection1(ctx context.Context, port uint16) bool {
 	return false
 }
 
-// removeMapping removes a previously created UPnP port mapping.
-func (m *upnpMapping) removeMapping() {
+// RemoveMapping removes a previously created UPnP port mapping.
+func (m *UPnPMapping) RemoveMapping() {
 	if m == nil || m.client == nil {
 		return
 	}

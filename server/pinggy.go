@@ -1,12 +1,11 @@
 package server
 
 import (
-	"bufio"
 	"context"
 	"log/slog"
-	"os"
-	"strings"
 	"time"
+
+	"null-space/internal/network"
 )
 
 // EnablePinggyLogBridge starts polling the Pinggy status file and updates
@@ -29,7 +28,7 @@ func (a *Server) runPinggyLogBridge(ctx context.Context, statusFile string) {
 			slog.Info("pinggy log bridge stopped")
 			return
 		case <-ticker.C:
-			status, err := readPinggyStatus(statusFile)
+			status, err := network.ReadPinggyStatus(statusFile)
 			if err != nil {
 				slog.Debug("pinggy log bridge read failed", "error", err)
 				continue
@@ -61,42 +60,4 @@ func (a *Server) runPinggyLogBridge(ctx context.Context, statusFile string) {
 			}
 		}
 	}
-}
-
-type pinggyStatus struct {
-	LogLines    []string
-	TcpAddress  string
-	JoinCommand string
-}
-
-func readPinggyStatus(statusFile string) (*pinggyStatus, error) {
-	file, err := os.Open(statusFile)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close() //nolint:errcheck
-
-	status := &pinggyStatus{}
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 0, 1024), 1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		switch {
-		case strings.HasPrefix(line, "PINGGY_LOG="):
-			message := strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_LOG="))
-			if message != "" {
-				status.LogLines = append(status.LogLines, message)
-			}
-		case strings.HasPrefix(line, "PINGGY_TCP="):
-			status.TcpAddress = strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_TCP="))
-		case strings.HasPrefix(line, "PINGGY_JOIN="):
-			status.JoinCommand = strings.TrimSpace(strings.TrimPrefix(line, "PINGGY_JOIN="))
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, err
-	}
-
-	return status, nil
 }

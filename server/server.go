@@ -25,6 +25,7 @@ import (
 	"github.com/dop251/goja"
 
 	"null-space/common"
+	"null-space/internal/network"
 )
 
 type Server struct {
@@ -54,7 +55,7 @@ type Server struct {
 	consoleProgram   *tea.Program
 	consoleWidth     int
 
-	upnpMapping *upnpMapping
+	upnpMapping *network.UPnPMapping
 
 	lastUpdate    time.Time      // last time Update() was called on the active game
 	splashDone    chan struct{}   // closed to end splash phase early
@@ -138,7 +139,7 @@ func (a *Server) Start(ctx context.Context) error {
 
 func (a *Server) shutdown() error {
 	slog.Info("server shutdown requested")
-	a.upnpMapping.removeMapping()
+	a.upnpMapping.RemoveMapping()
 	if err := a.sshServer.Close(); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 		slog.Error("server shutdown failed", "error", err)
 		return err
@@ -150,14 +151,18 @@ func (a *Server) shutdown() error {
 // SetupUPnP attempts UPnP port mapping and returns true if successful.
 // Should be called after New() and before Start().
 func (a *Server) SetupUPnP(port string) bool {
-	a.upnpMapping = tryUPnP(a.state, port)
-	return a.state.Net.UPnPMapped
+	mapping, mapped := network.TryUPnP(port)
+	a.upnpMapping = mapping
+	a.state.mu.Lock()
+	a.state.Net.UPnPMapped = mapped
+	a.state.mu.Unlock()
+	return mapped
 }
 
 // SetupPublicIP detects the public IP and stores it in state.
 // Returns the detected IP, or empty string if detection failed.
 func (a *Server) SetupPublicIP() string {
-	publicIP := detectPublicIP()
+	publicIP := network.DetectPublicIP()
 	if publicIP != "" {
 		a.state.mu.Lock()
 		a.state.Net.PublicIP = publicIP
@@ -384,7 +389,7 @@ func (a *Server) sessionProgramOptions(sess ssh.Session) []tea.ProgramOption {
 		tea.WithFPS(60),
 		tea.WithEnvironment(envs), // override MakeOptions' env to include COLORTERM
 		tea.WithColorProfile(cp),
-		tea.WithOutput(newKittyStripWriter(sess)),
+		tea.WithOutput(network.NewKittyStripWriter(sess)),
 	)
 	return opts
 }
@@ -690,17 +695,17 @@ func (a *Server) uniqueName(raw string) string {
 }
 
 func (a *Server) loadGame(path string) error {
-	if isURL(path) {
-		if isZipURL(path) {
+	if network.IsURL(path) {
+		if network.IsZipURL(path) {
 			gamesDir := filepath.Join(a.dataDir, "games")
-			local, err := downloadAndExtractZip(path, gamesDir)
+			local, err := network.DownloadAndExtractZip(path, gamesDir)
 			if err != nil {
 				return fmt.Errorf("download game zip: %w", err)
 			}
 			path = local
 		} else {
 			cacheDir := filepath.Join(a.dataDir, "games", ".cache")
-			local, err := downloadToCache(path, cacheDir)
+			local, err := network.DownloadToCache(path, cacheDir)
 			if err != nil {
 				return fmt.Errorf("download game: %w", err)
 			}
@@ -1101,7 +1106,7 @@ func (a *Server) registerBuiltins() {
 					return
 				}
 				var path string
-				if isURL(args[1]) {
+				if network.IsURL(args[1]) {
 					path = args[1]
 				} else {
 					path = resolveGamePath(filepath.Join(a.dataDir, "games"), args[1])

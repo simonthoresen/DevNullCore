@@ -1,4 +1,4 @@
-package server
+package network
 
 import (
 	"archive/zip"
@@ -15,15 +15,15 @@ import (
 
 var githubBlobRe = regexp.MustCompile(`^https://github\.com/([^/]+/[^/]+)/blob/(.+)$`)
 
-// isURL returns true if s is an HTTPS URL.
-func isURL(s string) bool {
+// IsURL returns true if s is an HTTPS URL.
+func IsURL(s string) bool {
 	return strings.HasPrefix(s, "https://")
 }
 
-// toRawURL converts a GitHub blob URL to its raw.githubusercontent.com equivalent.
+// ToRawURL converts a GitHub blob URL to its raw.githubusercontent.com equivalent.
 // raw.githubusercontent.com and other HTTPS URLs are returned unchanged.
 // Non-HTTPS URLs return an error.
-func toRawURL(u string) (string, error) {
+func ToRawURL(u string) (string, error) {
 	if !strings.HasPrefix(u, "https://") {
 		return "", fmt.Errorf("only HTTPS URLs are supported")
 	}
@@ -33,11 +33,11 @@ func toRawURL(u string) (string, error) {
 	return u, nil
 }
 
-// downloadToCache downloads the JS file at rawURL into cacheDir and returns
+// DownloadToCache downloads the JS file at rawURL into cacheDir and returns
 // the local file path. Re-downloading the same URL overwrites the cached copy.
 // The cache filename is derived from the last path segment of the URL.
-func downloadToCache(rawURL, cacheDir string) (string, error) {
-	downloadURL, err := toRawURL(rawURL)
+func DownloadToCache(rawURL, cacheDir string) (string, error) {
+	downloadURL, err := ToRawURL(rawURL)
 	if err != nil {
 		return "", err
 	}
@@ -46,7 +46,7 @@ func downloadToCache(rawURL, cacheDir string) (string, error) {
 	urlPath := strings.Split(downloadURL, "?")[0]
 	urlPath = strings.TrimRight(urlPath, "/")
 	parts := strings.Split(urlPath, "/")
-	filename := sanitizeFilename(parts[len(parts)-1])
+	filename := SanitizeFilename(parts[len(parts)-1])
 	if filename == "" {
 		return "", fmt.Errorf("could not derive a filename from URL")
 	}
@@ -86,19 +86,19 @@ func downloadToCache(rawURL, cacheDir string) (string, error) {
 	return localPath, nil
 }
 
-// isZipURL returns true if the URL points to a .zip file.
-func isZipURL(u string) bool {
+// IsZipURL returns true if the URL points to a .zip file.
+func IsZipURL(u string) bool {
 	// Strip query string and fragment.
 	path := strings.Split(u, "?")[0]
 	path = strings.Split(path, "#")[0]
 	return strings.HasSuffix(strings.ToLower(path), ".zip")
 }
 
-// downloadAndExtractZip downloads a zip file, extracts it to gamesDir/<name>/,
+// DownloadAndExtractZip downloads a zip file, extracts it to gamesDir/<name>/,
 // and returns the path to main.js inside. The zip must contain a main.js at
 // the root (or inside a single top-level directory).
-func downloadAndExtractZip(rawURL, gamesDir string) (string, error) {
-	downloadURL, err := toRawURL(rawURL)
+func DownloadAndExtractZip(rawURL, gamesDir string) (string, error) {
+	downloadURL, err := ToRawURL(rawURL)
 	if err != nil {
 		return "", err
 	}
@@ -107,7 +107,7 @@ func downloadAndExtractZip(rawURL, gamesDir string) (string, error) {
 	urlPath := strings.Split(downloadURL, "?")[0]
 	urlPath = strings.TrimRight(urlPath, "/")
 	parts := strings.Split(urlPath, "/")
-	filename := sanitizeFilename(parts[len(parts)-1])
+	filename := SanitizeFilename(parts[len(parts)-1])
 	name := strings.TrimSuffix(filename, ".zip")
 	if name == "" {
 		return "", fmt.Errorf("could not derive game name from URL")
@@ -188,8 +188,8 @@ func downloadAndExtractZip(rawURL, gamesDir string) (string, error) {
 	return "", fmt.Errorf("zip must contain main.js at root")
 }
 
-// sanitizeFilename keeps only characters safe for a cross-platform filename.
-func sanitizeFilename(name string) string {
+// SanitizeFilename keeps only characters safe for a cross-platform filename.
+func SanitizeFilename(name string) string {
 	var b strings.Builder
 	for _, r := range name {
 		switch {

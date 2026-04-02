@@ -12,6 +12,7 @@ import (
 	"github.com/dop251/goja"
 
 	"null-space/common"
+	"null-space/internal/network"
 )
 
 // jsShader wraps a goja JS runtime for a per-player post-processing shader.
@@ -226,9 +227,9 @@ func newJSShaderBuffer(vm *goja.Runtime, buf *common.ImageBuffer) map[string]any
 // resolveShaderPath resolves a shader name or URL to a local file path,
 // downloading and caching if it's a URL.
 func resolveShaderPath(nameOrURL, dataDir string) (name, path string, err error) {
-	if isURL(nameOrURL) {
+	if network.IsURL(nameOrURL) {
 		cacheDir := filepath.Join(dataDir, "shaders", ".cache")
-		local, err := downloadToCache(nameOrURL, cacheDir)
+		local, err := network.DownloadToCache(nameOrURL, cacheDir)
 		if err != nil {
 			return "", "", fmt.Errorf("download shader: %w", err)
 		}

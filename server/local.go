@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 
 	"null-space/common"
+	"null-space/internal/network"
 )
 
 // NewLocal creates a Server for local (non-SSH) use: a single player on the
@@ -47,7 +48,7 @@ func (a *Server) RunLocal(ctx context.Context, playerName, gameName string) erro
 
 	if gameName != "" {
 		var path string
-		if isURL(gameName) {
+		if network.IsURL(gameName) {
 			path = gameName
 		} else {
 			path = filepath.Join(a.dataDir, "games", gameName+".js")

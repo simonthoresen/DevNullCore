@@ -1,4 +1,4 @@
-package server
+package network
 
 import (
 	"io"
@@ -8,10 +8,10 @@ import (
 	"time"
 )
 
-// detectPublicIP queries an external service to discover this machine's public
+// DetectPublicIP queries an external service to discover this machine's public
 // IP address. Returns an empty string on failure so callers can fall back
 // gracefully.
-func detectPublicIP() string {
+func DetectPublicIP() string {
 	services := []string{
 		"https://ifconfig.me/ip",
 		"https://api.ipify.org",
