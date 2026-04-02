@@ -888,15 +888,28 @@ func (m Model) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, ga
 		}
 		m.playingGameView.OnKey = nil // game-over ignores game keys
 	default: // PhasePlaying
-		m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
-			game.Render(gbuf, m.playerID, x, y, w, h)
-		}
-		m.playingGameView.OnKey = func(key string) {
-			game.OnInput(m.playerID, key)
+		if ncTree := game.RenderNC(m.playerID, m.width, gameH); ncTree != nil {
+			// NC-tree game: reconcile into a GameWindow and render/route through it.
+			m.gameWindow = widget.ReconcileGameWindow(m.gameWindow, ncTree,
+				func(gbuf *common.ImageBuffer, bx, by, bw, bh int) { game.Render(gbuf, m.playerID, bx, by, bw, bh) },
+				func(action string) { game.OnInput(m.playerID, action) })
+			m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
+				m.gameWindow.Window.RenderToBuf(gbuf, x, y, w, h, m.theme.LayerAt(0))
+			}
+			// Route keys to the reconciled window's focused control.
+			m.playingGameView.OnKey = func(key string) {
+				game.OnInput(m.playerID, key)
+			}
+		} else {
+			m.gameWindow = nil
+			m.playingGameView.RenderFn = func(gbuf *common.ImageBuffer, x, y, w, h int) {
+				game.Render(gbuf, m.playerID, x, y, w, h)
+			}
+			m.playingGameView.OnKey = func(key string) {
+				game.OnInput(m.playerID, key)
+			}
 		}
 	}
-
-	// TODO: handle RenderNC (NC-tree games) — for now, use direct render.
 
 	// Update chat view.
 	m.playingChatView.Lines = m.chatLines
