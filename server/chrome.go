@@ -16,22 +16,7 @@ import (
 	"null-space/common"
 )
 
-// Lobby chrome colors — hardcoded for now; should migrate to theme palettes.
-// These define the player lobby layout colors (chat panel + team panel).
-var (
-	defaultMenuBg = lipgloss.Color("#D8C7A0")
-	defaultMenuFg = lipgloss.Color("#4A2D18")
-	defaultCmdBg  = lipgloss.Color("#B8AA88")
-	defaultChatBg = lipgloss.Color("#EADFC7")
-	defaultChatFg = lipgloss.Color("#2C1810")
-
-	menuBg = defaultMenuBg
-	menuFg = defaultMenuFg
-	cmdBg  = defaultCmdBg
-
-	lobbyTeamActiveBg = lipgloss.Color("#CEDAEA")
-	lobbyTeamFg       = lipgloss.Color("#1A2A40")
-)
+// lobbyTeamPanelW is the fixed width of the team panel in the lobby.
 
 const lobbyTeamPanelW = 32
 
@@ -197,7 +182,7 @@ func newChromeModel(app *Server, playerID string) chromeModel {
 	m.syncChat()
 	// Always start in lobby/input mode. GameLoadedMsg will transition
 	// participating players into game mode. Late joiners stay in lobby.
-	setInputStyle(&m.input, menuBg, menuFg)
+	setInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 	m.mode = modeInput
 	m.input.Focus()
 	return m
@@ -296,7 +281,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// This player was connected when the game loaded — they're in the game.
 		m.inActiveGame = true
 		m.invalidateMenuCache()
-		setInputStyle(&m.input, cmdBg, menuFg)
+		setInputStyle(&m.input, m.theme.LayerAt(1).BgC(), m.theme.LayerAt(1).FgC())
 		m.mode = modeIdle
 		m.lobbyFocus = lobbyFocusChat
 		m.input.Blur()
@@ -306,7 +291,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case common.GameUnloadedMsg:
 		m.inActiveGame = false
 		m.invalidateMenuCache()
-		setInputStyle(&m.input, menuBg, menuFg)
+		setInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 		m.mode = modeInput
 		cmd := m.input.Focus()
 		m.resizeViewports()
@@ -318,7 +303,7 @@ func (m chromeModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.Phase == common.PhaseNone {
 			m.inActiveGame = false
-			setInputStyle(&m.input, menuBg, menuFg)
+			setInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 			m.mode = modeInput
 			cmd := m.input.Focus()
 			m.resizeViewports()
@@ -494,7 +479,7 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		switch key {
 		case "enter":
-			setInputStyle(&m.input, menuBg, menuFg)
+			setInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 			m.mode = modeInput
 			cmd := m.input.Focus()
 			return m, cmd
@@ -523,7 +508,7 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.historyDraft = ""
 		m.input.SetValue("")
 		if m.inActiveGame {
-			setInputStyle(&m.input, cmdBg, menuFg)
+			setInputStyle(&m.input, m.theme.LayerAt(1).BgC(), m.theme.LayerAt(1).FgC())
 			m.mode = modeIdle
 			m.input.Blur()
 		}
@@ -807,21 +792,23 @@ func (m chromeModel) View() tea.View {
 	phase := m.app.state.GamePhase
 	m.app.state.mu.RUnlock()
 
-	mbStyle := lipgloss.NewStyle().Background(defaultMenuBg).Foreground(defaultMenuFg).Bold(true)
-	chStyle := lipgloss.NewStyle().Background(defaultChatBg).Foreground(defaultChatFg)
-	ciStyle := lipgloss.NewStyle().Background(defaultCmdBg).Foreground(defaultMenuFg)
+	barLayer := m.theme.LayerAt(1) // secondary: menu bar, status bar, command bar
+	bodyLayer := m.theme.LayerAt(0) // primary: content areas
+	mbStyle := barLayer.HighlightStyle()
+	chStyle := bodyLayer.BaseStyle()
+	ciStyle := barLayer.BaseStyle()
 
 	if !m.inActiveGame || phase == common.PhaseNone {
 		if m.mode == modeInput {
-			setInputStyle(&m.input, menuBg, menuFg)
+			setInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 		}
 		if m.teamEditing {
-			setInputStyle(&m.teamEditInput, lobbyTeamActiveBg, lobbyTeamFg)
+			setInputStyle(&m.teamEditInput, m.theme.LayerAt(0).InputBgC(), m.theme.LayerAt(0).InputFgC())
 		}
 	} else if m.mode == modeInput {
-		setInputStyle(&m.input, menuBg, menuFg)
+		setInputStyle(&m.input, m.theme.LayerAt(1).HighlightBgC(), m.theme.LayerAt(1).HighlightFgC())
 	} else {
-		setInputStyle(&m.input, cmdBg, menuFg)
+		setInputStyle(&m.input, m.theme.LayerAt(1).BgC(), m.theme.LayerAt(1).FgC())
 	}
 
 	// Build menus once per frame — passed to sub-views and overlay rendering.
@@ -832,13 +819,13 @@ func (m chromeModel) View() tea.View {
 	if !m.inActiveGame || phase == common.PhaseNone {
 		m.renderLobby(buf, menus)
 	} else if phase == common.PhaseSplash {
-		content := m.viewSplash(menus, game, gameName, mbStyle, chStyle, ciStyle)
+		content := m.viewSplash(menus, game, gameName, mbStyle, ciStyle)
 		buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
 	} else if phase == common.PhaseGameOver {
-		content := m.viewGameOver(menus, game, gameName, mbStyle, chStyle, ciStyle)
+		content := m.viewGameOver(menus, game, gameName, mbStyle, ciStyle)
 		buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
 	} else {
-		m.renderPlaying(buf, menus, game, gameName, mbStyle, chStyle, ciStyle, defaultChatBg)
+		m.renderPlaying(buf, menus, game, gameName, mbStyle, chStyle, ciStyle)
 	}
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
@@ -996,7 +983,7 @@ func (m chromeModel) renderLobby(buf *common.ImageBuffer, menus []common.MenuDef
 	m.chatScrollOffset = m.lobbyChatView.ScrollOffset
 }
 
-func (m chromeModel) viewSplash(menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
+func (m chromeModel) viewSplash(menus []common.MenuDef, game common.Game, gameName string, mbStyle, ciStyle lipgloss.Style) string {
 	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.LayerAt(1))
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
@@ -1031,7 +1018,7 @@ func (m chromeModel) viewSplash(menus []common.MenuDef, game common.Game, gameNa
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) viewGameOver(menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) string {
+func (m chromeModel) viewGameOver(menus []common.MenuDef, game common.Game, gameName string, mbStyle, ciStyle lipgloss.Style) string {
 	ncBar := m.overlay.renderNCBar(m.width, menus, m.theme.LayerAt(1))
 	displayName := gameName
 	if gn := game.GameName(); gn != "" {
@@ -1063,7 +1050,7 @@ func (m chromeModel) viewGameOver(menus []common.MenuDef, game common.Game, game
 	return lipgloss.JoinVertical(lipgloss.Left, menuBar, ncBar, viewport, cmdBar, statusBar)
 }
 
-func (m chromeModel) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style, chatBg color.Color) {
+func (m chromeModel) renderPlaying(buf *common.ImageBuffer, menus []common.MenuDef, game common.Game, gameName string, mbStyle, chStyle, ciStyle lipgloss.Style) {
 	// Row layout: menuBar(1) + ncBar(1) + gameStatusBar(1) + game(gameH) + chat(chatH) + cmdBar(1) + statusBar(1)
 	// = 5 + gameH + chatH = m.height
 
@@ -1109,7 +1096,7 @@ func (m chromeModel) renderPlaying(buf *common.ImageBuffer, menus []common.MenuD
 	row += gameH
 
 	// Chat rows.
-	chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle, chatBg)
+	chatView := renderChatLines(m.chatLines, m.width, chatH, m.chatScrollOffset, chStyle)
 	buf.PaintANSI(0, row, m.width, chatH, chatView, nil, nil)
 	row += chatH
 
@@ -1426,7 +1413,7 @@ func (m *chromeModel) submitInput() {
 	// In-game: return to idle after submit so keys route to the game.
 	// Lobby: stay in input mode.
 	if m.inActiveGame {
-		setInputStyle(&m.input, cmdBg, menuFg)
+		setInputStyle(&m.input, m.theme.LayerAt(1).BgC(), m.theme.LayerAt(1).FgC())
 		m.mode = modeIdle
 		m.input.Blur()
 	}
@@ -1763,7 +1750,7 @@ func headerWithSpinner(text string, width int, spinner string) string {
 }
 
 
-func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style, _ color.Color) string {
+func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style) string {
 	end := len(lines) - scrollOffset
 	if end < 0 {
 		end = 0
