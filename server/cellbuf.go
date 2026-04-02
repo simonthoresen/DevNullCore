@@ -138,6 +138,31 @@ func (b *CellBuffer) RecolorRect(x, y, w, h int, fg, bg color.Color, attr CellAt
 	}
 }
 
+// blitShadow renders an L-shaped drop shadow around a box in the buffer.
+// Right strip: 1 cell wide. Bottom strip: boxW cells wide, offset by 1.
+func blitShadow(buf *CellBuffer, boxCol, boxRow, boxW, boxH int, shadowFg, shadowBg color.Color) {
+	// Right strip (skip first row to offset).
+	for dy := 1; dy < boxH; dy++ {
+		r := boxRow + dy
+		c := boxCol + boxW
+		if cell := buf.at(c, r); cell != nil {
+			cell.Fg = shadowFg
+			cell.Bg = shadowBg
+			cell.Attr = AttrNone
+		}
+	}
+	// Bottom strip (skip first column to offset).
+	bottomRow := boxRow + boxH
+	for dx := 1; dx <= boxW; dx++ {
+		c := boxCol + dx
+		if cell := buf.at(c, bottomRow); cell != nil {
+			cell.Fg = shadowFg
+			cell.Bg = shadowBg
+			cell.Attr = AttrNone
+		}
+	}
+}
+
 // ─── ANSI Parsing ────────────────────────────────────────────────────────────
 
 // PaintANSI parses a string containing ANSI escape codes and paints the

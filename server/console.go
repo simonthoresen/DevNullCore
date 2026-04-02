@@ -10,7 +10,6 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"null-space/common"
 )
@@ -377,14 +376,18 @@ func (m *consoleModel) View() tea.View {
 	primary := t.LayerAt(0)   // desktop
 	secondary := t.LayerAt(1) // menus, status bar
 
-	// NC action bar (row 0) — uses secondary palette (like NC menu bar)
-	ncBar := m.overlay.renderNCBar(m.width, m.consoleMenus(), secondary)
+	buf := NewCellBuffer(m.width, m.height)
 
-	// NC panel with log + input (rows 1 through height-2) — primary palette
+	// NC action bar (row 0) — PaintANSI the string into the buffer.
+	menus := m.consoleMenus()
+	ncBar := m.overlay.renderNCBar(m.width, menus, secondary)
+	buf.PaintANSI(0, 0, m.width, 1, ncBar, secondary.FgC(), secondary.BgC())
+
+	// NC panel with log + input (rows 1 through height-2) — render directly.
 	panelH := m.height - 2 // subtract NC bar and status bar
-	panelContent := m.window.Render(0, 1, m.width, panelH, primary)
+	m.window.RenderToBuf(buf, 0, 1, m.width, panelH, primary)
 
-	// Status bar (bottom row)
+	// Status bar (bottom row).
 	m.app.state.mu.RLock()
 	gameName := m.app.state.GameName
 	phase := m.app.state.GamePhase
@@ -402,34 +405,39 @@ func (m *consoleModel) View() tea.View {
 		}
 	}
 	statusText := fmt.Sprintf("game: %s | players: %d | uptime %s | %s", gameLabel, m.app.state.PlayerCount(), m.app.uptime(), time.Now().Format("15:04:05"))
-	statusBar := secondary.BaseStyle().Width(m.width).Render(truncateStyled(statusText, m.width))
+	sbFg := secondary.FgC()
+	sbBg := secondary.BgC()
+	buf.Fill(0, m.height-1, m.width, 1, ' ', sbFg, sbBg, AttrNone)
+	// Right-align status text.
+	statusRow := m.height - 1
+	startX := m.width - len(statusText)
+	if startX < 0 {
+		startX = 0
+	}
+	buf.WriteString(startX, statusRow, statusText, sbFg, sbBg, AttrNone)
 
-	content := lipgloss.JoinVertical(lipgloss.Left, ncBar, panelContent, statusBar)
-
-	// Overlay layers (dropdown menus, dialogs) with drop shadows.
-	// Split once, composite all overlays on lines, join once.
-	menus := m.consoleMenus()
-	ss := t.ShadowStyle()
-	lines := strings.Split(content, "\n")
+	// Overlay layers: render to sub-buffers, blit, then recolor for shadow.
+	shadowFg := t.ShadowFgC()
+	shadowBg := t.ShadowBgC()
 	if m.overlay.openMenu >= 0 {
 		if dd := m.overlay.renderDropdown(menus, 0, secondary); dd.content != "" {
-			overLines := strings.Split(dd.content, "\n")
-			placeOverlayLines(dd.col, dd.row, overLines, lines)
-			sh := shadowFor(dd.col, dd.row, dd.width, dd.height)
-			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
+			sub := NewCellBuffer(dd.width, dd.height)
+			sub.PaintANSI(0, 0, dd.width, dd.height, dd.content, secondary.FgC(), secondary.BgC())
+			buf.Blit(dd.col, dd.row, sub)
+			blitShadow(buf, dd.col, dd.row, dd.width, dd.height, shadowFg, shadowBg)
 		}
 	}
 	if m.overlay.hasDialog() {
 		if dlg := m.overlay.renderDialog(m.width, m.height, t.LayerAt(2)); dlg.content != "" {
-			overLines := strings.Split(dlg.content, "\n")
-			placeOverlayLines(dlg.col, dlg.row, overLines, lines)
-			sh := shadowFor(dlg.col, dlg.row, dlg.width, dlg.height)
-			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
+			sub := NewCellBuffer(dlg.width, dlg.height)
+			dlgLayer := t.LayerAt(2)
+			sub.PaintANSI(0, 0, dlg.width, dlg.height, dlg.content, dlgLayer.FgC(), dlgLayer.BgC())
+			buf.Blit(dlg.col, dlg.row, sub)
+			blitShadow(buf, dlg.col, dlg.row, dlg.width, dlg.height, shadowFg, shadowBg)
 		}
 	}
-	content = strings.Join(lines, "\n")
 
-	view.SetContent(content)
+	view.SetContent(buf.ToString())
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 

@@ -798,43 +798,45 @@ func (m chromeModel) View() tea.View {
 	// Build menus once per frame — passed to sub-views and overlay rendering.
 	menus := m.cachedMenus()
 
-	var content string
+	buf := NewCellBuffer(m.width, m.height)
 
+	var content string
 	if !m.inActiveGame || phase == common.PhaseNone {
-		// === LOBBY LAYOUT (with team panel) ===
 		content = m.viewLobby(menus, mbStyle, chStyle, ciStyle, defaultChatBg)
 	} else if phase == common.PhaseSplash {
 		content = m.viewSplash(menus, game, gameName, mbStyle, chStyle, ciStyle)
 	} else if phase == common.PhaseGameOver {
 		content = m.viewGameOver(menus, game, gameName, mbStyle, chStyle, ciStyle)
 	} else {
-		// === PLAYING LAYOUT ===
 		content = m.viewPlaying(menus, game, gameName, mbStyle, chStyle, ciStyle, defaultChatBg)
 	}
 
-	// Apply overlay layers on top of the base content.
-	// Split once, composite all overlays on lines, join once.
-	ss := m.theme.ShadowStyle()
-	lines := strings.Split(content, "\n")
+	// Paint the sub-view string into the buffer.
+	buf.PaintANSI(0, 0, m.width, m.height, content, nil, nil)
+
+	// Overlay layers: render to sub-buffers, blit, then shadow via RecolorRect.
+	shadowFg := m.theme.ShadowFgC()
+	shadowBg := m.theme.ShadowBgC()
 	if m.overlay.openMenu >= 0 {
-		if dd := m.overlay.renderDropdown(menus, 1, m.theme.LayerAt(1)); dd.content != "" {
-			overLines := strings.Split(dd.content, "\n")
-			placeOverlayLines(dd.col, dd.row, overLines, lines)
-			sh := shadowFor(dd.col, dd.row, dd.width, dd.height)
-			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
+		menuLayer := m.theme.LayerAt(1)
+		if dd := m.overlay.renderDropdown(menus, 1, menuLayer); dd.content != "" {
+			sub := NewCellBuffer(dd.width, dd.height)
+			sub.PaintANSI(0, 0, dd.width, dd.height, dd.content, menuLayer.FgC(), menuLayer.BgC())
+			buf.Blit(dd.col, dd.row, sub)
+			blitShadow(buf, dd.col, dd.row, dd.width, dd.height, shadowFg, shadowBg)
 		}
 	}
 	if m.overlay.hasDialog() {
-		if dlg := m.overlay.renderDialog(m.width, m.height, m.theme.LayerAt(2)); dlg.content != "" {
-			overLines := strings.Split(dlg.content, "\n")
-			placeOverlayLines(dlg.col, dlg.row, overLines, lines)
-			sh := shadowFor(dlg.col, dlg.row, dlg.width, dlg.height)
-			applyShadowLines(sh.col, sh.row, sh.width, sh.height, lines, ss)
+		dlgLayer := m.theme.LayerAt(2)
+		if dlg := m.overlay.renderDialog(m.width, m.height, dlgLayer); dlg.content != "" {
+			sub := NewCellBuffer(dlg.width, dlg.height)
+			sub.PaintANSI(0, 0, dlg.width, dlg.height, dlg.content, dlgLayer.FgC(), dlgLayer.BgC())
+			buf.Blit(dlg.col, dlg.row, sub)
+			blitShadow(buf, dlg.col, dlg.row, dlg.width, dlg.height, shadowFg, shadowBg)
 		}
 	}
-	content = strings.Join(lines, "\n")
 
-	view.SetContent(content)
+	view.SetContent(buf.ToString())
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 	if m.mode == modeInput {
