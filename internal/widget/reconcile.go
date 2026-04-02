@@ -60,10 +60,11 @@ func ReconcileGameWindow(
 	}
 
 	// Build the root control from the tree.
-	root, children := gw.buildControl(tree, "0", prevControls)
-	_ = root // root is the top-level control (might be a container, panel, or leaf)
+	root := gw.buildControl(tree, "0", prevControls)
 
 	// Assemble into a Window with a single child that fills everything.
+	// Focus cycling works through nested Containers/Panels which implement
+	// TabWanter and route focus internally.
 	gw.Window = &Window{
 		Children: []GridChild{
 			{
@@ -71,20 +72,6 @@ func ReconcileGameWindow(
 				Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth},
 			},
 		},
-	}
-
-	// Collect all focusable controls from the tree and add them as window
-	// children so they participate in focus cycling. The root control handles
-	// layout; focusable leaf controls need to be visible to the window's
-	// focus management.
-	if len(children) > 0 {
-		// Replace the simple single-child approach: the window gets all
-		// leaf focusable controls as direct children for focus routing,
-		// while the root control handles visual layout.
-		// For now, keep it simple: the root is the only child,
-		// and focus cycling works if the root is a Container whose
-		// children are focusable.
-		// TODO: deep focus cycling through nested containers
 	}
 
 	// Preserve focus index from previous window.
@@ -96,17 +83,15 @@ func ReconcileGameWindow(
 }
 
 // buildControl creates a Control from a WidgetNode, reusing prev controls
-// where the type matches. Returns the control and a flat list of all focusable
-// descendants (for focus management).
+// where the type matches.
 //
 // Per-node caching: if the node's Hash() is non-zero (no interactive/gameview
 // descendants) and matches the cached hash at the same path, the entire subtree
 // is reused without rebuilding. This means only dynamic subtrees (containing
 // gameview or interactive nodes) are rebuilt each frame.
-func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev map[string]CachedControl) (Control, []Control) {
+func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev map[string]CachedControl) Control {
 	if node == nil {
-		label := &Label{Text: ""}
-		return label, nil
+		return &Label{Text: ""}
 	}
 
 	// Fast path: if the node's hash is non-zero and matches the previous
@@ -114,22 +99,19 @@ func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev ma
 	hash := node.Hash()
 	if hash != 0 {
 		if cached, ok := prev[path]; ok && cached.Hash == hash {
-			// Subtree unchanged — reuse control and propagate all cached
-			// descendants (they were stored during the previous build).
 			gw.Controls[path] = cached
 			gw.reuseCachedSubtree(path, prev)
-			return cached.Control, nil
+			return cached.Control
 		}
 	}
 
 	var ctrl Control
-	var focusable []Control
 
 	switch node.Type {
 	case "label":
 		ctrl = gw.buildLabel(node)
 	case "panel":
-		ctrl, focusable = gw.buildPanel(node, path, prev)
+		ctrl = gw.buildPanel(node, path, prev)
 	case "divider":
 		ctrl = &HDivider{Connected: false}
 	case "table":
@@ -145,21 +127,15 @@ func (gw *GameWindow) buildControl(node *common.WidgetNode, path string, prev ma
 	case "gameview":
 		ctrl = gw.buildGameView(node)
 	case "hsplit":
-		ctrl, focusable = gw.buildContainer(node, path, true, prev)
+		ctrl = gw.buildContainer(node, path, true, prev)
 	case "vsplit":
-		ctrl, focusable = gw.buildContainer(node, path, false, prev)
+		ctrl = gw.buildContainer(node, path, false, prev)
 	default:
-		// Unknown type: treat as gameview fallback.
 		ctrl = gw.buildGameView(node)
 	}
 
 	gw.Controls[path] = CachedControl{NodeType: node.Type, Control: ctrl, Hash: hash}
-
-	if ctrl.Focusable() {
-		focusable = append(focusable, ctrl)
-	}
-
-	return ctrl, focusable
+	return ctrl
 }
 
 // reuseCachedSubtree copies all descendants of the given path from prev into
@@ -177,14 +153,12 @@ func (gw *GameWindow) buildLabel(node *common.WidgetNode) *Label {
 	return &Label{Text: node.Text, Align: node.Align}
 }
 
-func (gw *GameWindow) buildPanel(node *common.WidgetNode, path string, prev map[string]CachedControl) (*Panel, []Control) {
+func (gw *GameWindow) buildPanel(node *common.WidgetNode, path string, prev map[string]CachedControl) *Panel {
 	panel := &Panel{Title: node.Title}
-	var allFocusable []Control
 
 	for i, child := range node.Children {
 		childPath := fmt.Sprintf("%s.%d", path, i)
-		ctrl, focusable := gw.buildControl(child, childPath, prev)
-		allFocusable = append(allFocusable, focusable...)
+		ctrl := gw.buildControl(child, childPath, prev)
 
 		constraint := GridConstraint{
 			Col: 0, Row: i,
@@ -200,7 +174,7 @@ func (gw *GameWindow) buildPanel(node *common.WidgetNode, path string, prev map[
 			TabIndex:   child.TabIndex,
 		})
 	}
-	return panel, allFocusable
+	return panel
 }
 
 func (gw *GameWindow) buildButton(node *common.WidgetNode, path string, prev map[string]CachedControl) *Button {
@@ -291,14 +265,12 @@ func (gw *GameWindow) buildGameView(node *common.WidgetNode) *GameView {
 	}
 }
 
-func (gw *GameWindow) buildContainer(node *common.WidgetNode, path string, horizontal bool, prev map[string]CachedControl) (*Container, []Control) {
+func (gw *GameWindow) buildContainer(node *common.WidgetNode, path string, horizontal bool, prev map[string]CachedControl) *Container {
 	container := &Container{Horizontal: horizontal}
-	var allFocusable []Control
 
 	for i, child := range node.Children {
 		childPath := fmt.Sprintf("%s.%d", path, i)
-		ctrl, focusable := gw.buildControl(child, childPath, prev)
-		allFocusable = append(allFocusable, focusable...)
+		ctrl := gw.buildControl(child, childPath, prev)
 
 		container.Children = append(container.Children, ContainerChild{
 			Control: ctrl,
@@ -311,7 +283,7 @@ func (gw *GameWindow) buildContainer(node *common.WidgetNode, path string, horiz
 			}(),
 		})
 	}
-	return container, allFocusable
+	return container
 }
 
 // ─── Label alignment support ───────────────────────────────────────────────
