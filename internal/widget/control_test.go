@@ -30,6 +30,13 @@ func renderControl(ctrl Control, w, h int, focused bool, layer *theme.Layer) str
 	return buf.ToString()
 }
 
+// renderWindow is a test helper that renders a window to a string.
+func renderWindow(w *Window, x, y, width, height int, layer *theme.Layer) string {
+	buf := render.NewImageBuffer(width, height)
+	w.RenderToBuf(buf, x, y, width, height, layer)
+	return buf.ToString()
+}
+
 // ─── TextInput tests ─────────────────────────────────────────────────────────
 
 func TestNCTextInputRender(t *testing.T) {
@@ -282,7 +289,7 @@ func TestNCWindowRenderBasic(t *testing.T) {
 		},
 	}
 
-	output := win.Render(0, 0, 30, 5, testLayer())
+	output := renderWindow(win, 0, 0, 30, 5, testLayer())
 	lines := strings.Split(output, "\n")
 
 	if len(lines) != 5 {
@@ -307,7 +314,7 @@ func TestNCWindowNoTitle(t *testing.T) {
 			{Control: &Label{Text: "X"}, Constraint: GridConstraint{Col: 0, Row: 0}},
 		},
 	}
-	output := win.Render(0, 0, 20, 4, testLayer())
+	output := renderWindow(win, 0, 0, 20, 4, testLayer())
 	stripped := stripANSI(strings.Split(output, "\n")[0])
 
 	// Should be plain top border without title.
@@ -361,7 +368,7 @@ func TestNCWindowCursorPosition(t *testing.T) {
 	win.FocusFirst()
 
 	// Render to compute positions and trigger Focus().
-	win.Render(5, 10, 30, 4, testLayer())
+	renderWindow(win, 5, 10, 30, 4, testLayer())
 
 	cx, cy, visible := win.CursorPosition()
 	if !visible {
@@ -387,7 +394,7 @@ func TestNCWindowGridLayout(t *testing.T) {
 			{Control: tv, Constraint: GridConstraint{Col: 0, Row: 1, WeightY: 1, Fill: FillBoth}},
 		},
 	}
-	win.Render(0, 0, 20, 10, testLayer())
+	renderWindow(win, 0, 0, 20, 10, testLayer())
 
 	// Label gets row 0 (height 1), textview gets the rest.
 	_, _, _, labelH := win.ChildRect(0)
@@ -448,7 +455,7 @@ func TestNCWindowIntegration(t *testing.T) {
 	}
 
 	// Render should produce output.
-	output := win.Render(0, 0, 40, 10, testLayer())
+	output := renderWindow(win, 0, 0, 40, 10, testLayer())
 	if output == "" {
 		t.Error("expected non-empty render output")
 	}
@@ -471,7 +478,7 @@ func TestNCWindowRenderAssertScreen(t *testing.T) {
 			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
-	output := win.Render(0, 0, 12, 4, testLayer())
+	output := renderWindow(win, 0, 0, 12, 4, testLayer())
 	s := newScreen(output)
 
 	// Verify structure line by line.
@@ -510,7 +517,7 @@ func TestRegionExtractionFromNCWindow(t *testing.T) {
 			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
-	output := win.Render(0, 0, 14, 4, testLayer())
+	output := renderWindow(win, 0, 0, 14, 4, testLayer())
 
 	// Extract just the content area (inside borders).
 	s := newScreen(output)

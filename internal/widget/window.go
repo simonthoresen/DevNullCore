@@ -32,15 +32,6 @@ type Window struct {
 	scratchRowWeight []float64
 }
 
-// Render draws the window at (x, y) with the given dimensions into buf.
-// Returns the string representation for backward compatibility with callers
-// that have not yet been migrated to use ImageBuffer directly.
-func (w *Window) Render(x, y, width, height int, layer *theme.Layer) string {
-	buf := render.NewImageBuffer(width, height)
-	w.RenderToBuf(buf, x, y, width, height, layer)
-	return buf.ToString()
-}
-
 // RenderToBuf draws the window into the given buffer at absolute position (x, y).
 func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, layer *theme.Layer) {
 	w.screenX = x

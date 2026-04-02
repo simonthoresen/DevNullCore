@@ -57,7 +57,7 @@ func TestNCWindowBordersDefaultTheme(t *testing.T) {
 		},
 	}
 	th := theme.Default()
-	output := win.Render(0, 0, 10, 3, th.LayerAt(0))
+	output := renderWindow(win,0, 0, 10, 3, th.LayerAt(0))
 	s := newScreen(output)
 
 	// Default theme uses double-line borders.
@@ -83,7 +83,7 @@ func TestNCWindowBordersSingleLineTheme(t *testing.T) {
 		},
 	}
 	th := singleLineTheme()
-	output := win.Render(0, 0, 10, 3, th.LayerAt(0))
+	output := renderWindow(win,0, 0, 10, 3, th.LayerAt(0))
 	s := newScreen(output)
 
 	assertRegion(t, output, 0, 0, 1, 3, `
@@ -111,7 +111,7 @@ func TestNCWindowBordersASCIITheme(t *testing.T) {
 		},
 	}
 	th := asciiTheme()
-	output := win.Render(0, 0, 10, 3, th.LayerAt(0))
+	output := renderWindow(win,0, 0, 10, 3, th.LayerAt(0))
 	s := newScreen(output)
 
 	assertRegion(t, output, 0, 0, 1, 3, `
@@ -235,7 +235,7 @@ func TestSameLayoutDifferentThemeBorders(t *testing.T) {
 
 	for i, th := range themes {
 		win := makeWin()
-		output := win.Render(0, 0, 12, 3, th.LayerAt(0))
+		output := renderWindow(win,0, 0, 12, 3, th.LayerAt(0))
 		s := newScreen(output)
 
 		tl := s.region(0, 0, 1, 1)
@@ -280,15 +280,15 @@ func TestPaletteDepthOnNCWindow(t *testing.T) {
 	}
 
 	// Depth 0 → Primary.
-	output0 := win.Render(0, 0, 20, 4, th.LayerAt(0))
+	output0 := renderWindow(win,0, 0, 20, 4, th.LayerAt(0))
 	assertHasANSI(t, output0, "#110000", "depth 0 (Primary)")
 
 	// Depth 1 → Secondary.
-	output1 := win.Render(0, 0, 20, 4, th.LayerAt(1))
+	output1 := renderWindow(win,0, 0, 20, 4, th.LayerAt(1))
 	assertHasANSI(t, output1, "#002200", "depth 1 (Secondary)")
 
 	// Depth 2 → Tertiary.
-	output2 := win.Render(0, 0, 20, 4, th.LayerAt(2))
+	output2 := renderWindow(win,0, 0, 20, 4, th.LayerAt(2))
 	assertHasANSI(t, output2, "#000033", "depth 2 (Tertiary)")
 }
 
@@ -303,7 +303,7 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
-	layer0 := win.Render(0, 0, 40, 12, th.LayerAt(0))
+	layer0 := renderWindow(win,0, 0, 40, 12, th.LayerAt(0))
 	assertHasANSI(t, layer0, "#110000", "layer 0 (Primary)")
 
 	s0 := newScreen(layer0)
@@ -463,30 +463,30 @@ func TestPerLayerBordersOnNCWindow(t *testing.T) {
 
 	// Depth 0 → Primary → double-line borders.
 	win0 := makeWin()
-	out0 := win0.Render(0, 0, 10, 3, th.LayerAt(0))
+	out0 := renderWindow(win0,0, 0, 10, 3, th.LayerAt(0))
 	assertRegion(t, out0, 0, 0, 1, 3, "╔\n║\n╚")
 	assertRegion(t, out0, 9, 0, 1, 3, "╗\n║\n╝")
 
 	// Depth 1 → Secondary → single-line borders.
 	win1 := makeWin()
-	out1 := win1.Render(0, 0, 10, 3, th.LayerAt(1))
+	out1 := renderWindow(win1,0, 0, 10, 3, th.LayerAt(1))
 	assertRegion(t, out1, 0, 0, 1, 3, "┌\n│\n└")
 	assertRegion(t, out1, 9, 0, 1, 3, "┐\n│\n┘")
 
 	// Depth 2 → Tertiary → ASCII borders.
 	win2 := makeWin()
-	out2 := win2.Render(0, 0, 10, 3, th.LayerAt(2))
+	out2 := renderWindow(win2,0, 0, 10, 3, th.LayerAt(2))
 	assertRegion(t, out2, 0, 0, 1, 3, "+\n|\n+")
 	assertRegion(t, out2, 9, 0, 1, 3, "+\n|\n+")
 
 	// Depth 3 → Secondary again (single-line).
 	win3 := makeWin()
-	out3 := win3.Render(0, 0, 10, 3, th.LayerAt(3))
+	out3 := renderWindow(win3,0, 0, 10, 3, th.LayerAt(3))
 	assertRegion(t, out3, 0, 0, 1, 3, "┌\n│\n└")
 
 	// Depth 4 → Tertiary again (ASCII).
 	win4 := makeWin()
-	out4 := win4.Render(0, 0, 10, 3, th.LayerAt(4))
+	out4 := renderWindow(win4,0, 0, 10, 3, th.LayerAt(4))
 	assertRegion(t, out4, 0, 0, 1, 3, "+\n|\n+")
 }
 
@@ -590,7 +590,7 @@ func TestPerLayerBordersCompositedStack(t *testing.T) {
 			{Control: label, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, Fill: FillHorizontal}},
 		},
 	}
-	layer0 := win.Render(0, 0, 30, 10, th.LayerAt(0))
+	layer0 := renderWindow(win,0, 0, 30, 10, th.LayerAt(0))
 	s0 := newScreen(layer0)
 	if !strings.HasPrefix(s0.lines[0], "╔") {
 		t.Fatalf("depth 0 window should use ╔, got %q", s0.lines[0])

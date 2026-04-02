@@ -15,7 +15,7 @@ func TestReconcileLabel(t *testing.T) {
 	if gw == nil || gw.Window == nil {
 		t.Fatal("expected non-nil GameWindow")
 	}
-	output := gw.Window.Render(0, 0, 20, 3, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 20, 3, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	// The label should appear somewhere in the rendered output.
 	found := false
@@ -39,7 +39,7 @@ func TestReconcilePanel(t *testing.T) {
 		},
 	}
 	gw := ReconcileGameWindow(nil, tree, nil, nil)
-	output := gw.Window.Render(0, 0, 20, 5, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 20, 5, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	// Panel is inside the Window wrapper, so look for title anywhere.
 	if !strings.Contains(s.String(), "Info") {
@@ -59,7 +59,7 @@ func TestReconcileHSplit(t *testing.T) {
 		},
 	}
 	gw := ReconcileGameWindow(nil, tree, nil, nil)
-	output := gw.Window.Render(0, 0, 20, 3, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 20, 3, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	// Both labels should appear on the same row.
 	found := false
@@ -83,7 +83,7 @@ func TestReconcileVSplit(t *testing.T) {
 		},
 	}
 	gw := ReconcileGameWindow(nil, tree, nil, nil)
-	output := gw.Window.Render(0, 0, 20, 4, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 20, 4, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	if !strings.Contains(s.String(), "TOP") {
 		t.Errorf("TOP not found:\n%s", s.String())
@@ -101,7 +101,7 @@ func TestReconcileGameView(t *testing.T) {
 			called = true
 			buf.WriteString(x, y, "GAME OUTPUT", nil, nil, render.AttrNone)
 		}, nil)
-	output := gw.Window.Render(0, 0, 20, 3, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 20, 3, theme.Default().LayerAt(0))
 	if !called {
 		t.Error("viewFn was not called")
 	}
@@ -121,7 +121,7 @@ func TestReconcileButton(t *testing.T) {
 	gw := ReconcileGameWindow(nil, tree, nil, func(action string) {
 		received = action
 	})
-	output := gw.Window.Render(0, 0, 20, 3, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 20, 3, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	if !strings.Contains(s.String(), "Fold") {
 		t.Errorf("button label 'Fold' not found:\n%s", s.String())
@@ -190,7 +190,7 @@ func TestReconcileTable(t *testing.T) {
 		},
 	}
 	gw := ReconcileGameWindow(nil, tree, nil, nil)
-	output := gw.Window.Render(0, 0, 30, 5, theme.Default().LayerAt(0))
+	output := renderWindow(gw.Window,0, 0, 30, 5, theme.Default().LayerAt(0))
 	s := newScreen(output)
 	if !strings.Contains(s.String(), "Alice") || !strings.Contains(s.String(), "Score") {
 		t.Errorf("table content missing:\n%s", s.String())
@@ -215,7 +215,7 @@ func TestReconcileCacheSkipsStaticSubtree(t *testing.T) {
 	}
 
 	gw1 := ReconcileGameWindow(nil, tree, viewFn, nil)
-	_ = gw1.Window.Render(0, 0, 30, 5, theme.Default().LayerAt(0))
+	_ = renderWindow(gw1.Window,0, 0, 30, 5, theme.Default().LayerAt(0))
 	if viewCallCount != 1 {
 		t.Fatalf("expected 1 viewFn call, got %d", viewCallCount)
 	}
@@ -238,7 +238,7 @@ func TestReconcileCacheSkipsStaticSubtree(t *testing.T) {
 	}
 
 	gw2 := ReconcileGameWindow(gw1, tree2, viewFn, nil)
-	_ = gw2.Window.Render(0, 0, 30, 5, theme.Default().LayerAt(0))
+	_ = renderWindow(gw2.Window,0, 0, 30, 5, theme.Default().LayerAt(0))
 
 	// viewFn should be called again (gameview always rebuilds).
 	if viewCallCount != 2 {
