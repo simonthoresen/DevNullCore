@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -85,8 +84,6 @@ type Model struct {
 	// Late joiners (connected after GameLoadedMsg) stay in lobby mode.
 	inActiveGame bool
 
-	chat viewport.Model
-
 	chatLines        []string // buffered chat lines visible to this player (max 200)
 	chatScrollOffset int      // lines scrolled up from bottom (0 = bottom)
 	chatH            int      // current chat panel height (updated in resizeViewports)
@@ -146,16 +143,6 @@ type Model struct {
 }
 
 func NewModel(api ServerAPI, playerID string) Model {
-	chat := viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
-	chat.MouseWheelEnabled = false
-	chat.SoftWrap = true
-
-	input := textinput.New()
-	input.Prompt = "> "
-	input.Placeholder = ""
-	input.CharLimit = 256
-	input.SetWidth(78)
-
 	teamInput := textinput.New()
 	teamInput.Prompt = ""
 	teamInput.CharLimit = 20
@@ -248,7 +235,6 @@ func NewModel(api ServerAPI, playerID string) Model {
 	m := Model{
 		api:           api,
 		playerID:      playerID,
-		chat:          chat,
 		teamEditInput: teamInput,
 		theme:         theme.Default(),
 		overlay:        widget.OverlayState{OpenMenu: -1},
@@ -385,8 +371,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.chatLines) > 200 {
 			m.chatLines = m.chatLines[len(m.chatLines)-200:]
 		}
-		m.chat.SetContent(strings.Join(m.chatLines, "\n"))
-		m.chat.GotoBottom()
 
 		// Run per-player plugins on this message.
 		// Skip messages from this player (avoid echo loops) and command replies.
@@ -1118,8 +1102,6 @@ func (m *Model) syncChat() {
 		lines = lines[len(lines)-200:]
 	}
 	m.chatLines = lines
-	m.chat.SetContent(strings.Join(lines, "\n"))
-	m.chat.GotoBottom()
 }
 
 func (m *Model) resizeViewports() {
@@ -1609,31 +1591,6 @@ func headerWithSpinner(text string, width int, spinner string) string {
 		spaces = 1
 	}
 	return left + strings.Repeat(" ", spaces) + spinner
-}
-
-func renderChatLines(lines []string, width, height, scrollOffset int, style lipgloss.Style) string {
-	end := len(lines) - scrollOffset
-	if end < 0 {
-		end = 0
-	}
-	start := end - height
-	if start < 0 {
-		start = 0
-	}
-	visible := lines[start:end]
-	result := make([]string, height)
-	// visible may be shorter than height (near top of buffer); blank-pad the top
-	offset := height - len(visible)
-	blank := strings.Repeat(" ", width)
-	for i := 0; i < height; i++ {
-		vi := i - offset
-		if vi >= 0 && vi < len(visible) {
-			result[i] = style.Width(width).Render(truncateStyled(visible[vi], width))
-		} else {
-			result[i] = style.Width(width).Render(blank)
-		}
-	}
-	return strings.Join(result, "\n")
 }
 
 func fitBlock(content string, width, height int) string {

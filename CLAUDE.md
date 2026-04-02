@@ -87,49 +87,54 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 
 ### UI Layout
 
-**Lobby (no game loaded):**
+All three views (console, lobby, playing) share a unified `Screen` layout:
+
 ```
-│ File  Edit  View  Help              │  NC menu bar (overlay, row 0)
-╞════════════════════╤════════════════╡
-│                    │  ██ Unassigned │  NCWindow (NoTopBorder) with grid:
-│  [chat messages]   │    alice       │    Row 0: NCTextView(chat) │ NCVDivider │ NCTeamPanel
-│                    │  ██ Red Team   │    Row 1: NCHDivider (connected)
-│                    │     bob        │    Row 2: NCLabel (command bar)
-│                    │  ██ Blue Team  │
-│                    │     charlie    │  Chat: weight=1, Teams: fixed 32 cols
-╞════════════════════╧════════════════╡  [Tab] toggles chat/teams focus
-│ [Enter] Chat  /help      [Tab] Teams│  In teams: [↑↓] move, [←→] color, [Enter] rename
-╘═════════════════════════════════════╛
-│ null-space (local) | 3 players | .. │  Status bar (outside window, bottom row)
+Row 0: MenuBar      (fixed 1)   ← File Edit View Help — navigation only
+Row 1: Window        (fill)      ← bordered NCWindow, content varies per view
+Row 2: StatusBar    (fixed 1)   ← left text + right-aligned time
 ```
 
-**In-game:**
+`Screen` (`internal/widget/screen.go`) renders the MenuBar at the secondary theme layer (depth 1), the Window at the primary layer (depth 0), and the StatusBar at the secondary layer. Focus management and cursor position are delegated to the content Window.
+
+**Lobby:**
 ```
-┌─────────────────────────────────────┐
-│ Menu bar (1 row) — framework        │  game name
-├─────────────────────────────────────┤
-│ Status bar (1 row) — game-owned     │  Game.StatusBar(playerID) → "HP: 100  Score: 4200"
-├─────────────────────────────────────┤
-│                                     │
-│ Game viewport (W × W*9/16 rows)     │  Game.Render(playerID, W, H)
-│                                     │
-├─────────────────────────────────────┤
-│                                     │
-│ Chat (remaining rows, min 5)        │  shared chat history
-│                                     │
-├─────────────────────────────────────┤
-│ Command bar (1 row) — dual-purpose  │  idle: Game.CommandBar(playerID) → "[↑↓] Move"
-├─────────────────────────────────────┤
-│ Status bar (1 row) — framework      │  server time right-aligned              always
-└─────────────────────────────────────┘  on Enter: text input; submit/Esc: reverts
+│ File  Edit  View  Help              │  MenuBar (row 0)
+╔═══════════════════╤════════════════╗
+║                   │ ██ Unassigned  ║  NCWindow (NoTopBorder) with grid:
+║  [chat messages]  │   alice        ║    Row 0: NCTextView(chat) │ NCVDivider │ NCTeamPanel
+║                   │ ██ Red Team    ║    Row 1: NCHDivider (connected)
+║                   │    bob         ║    Row 2: NCCommandInput
+║                   │ ██ Blue Team   ║
+║                   │    charlie     ║  Chat: weight=1, Teams: fixed 32 cols
+╟───────────────────┴────────────────╢  [Tab] cycles: input → chat → teams
+║ [·····]                            ║  NCCommandInput: Enter=submit, Tab=cycle
+╚════════════════════════════════════╝
+│ null-space (local) | 3 players | ..│  StatusBar (row 2)
 ```
 
+**Playing:**
+```
+│ File  Edit  View  Help              │  MenuBar (row 0)
+╔════════════════════════════════════╗
+║                                    ║  GameView (aspect-ratio: W×W*9/16)
+║  Game viewport                     ║    Enter → focus command input
+║                                    ║    all other keys → game.OnInput
+╟────────────────────────────────────╢
+║  [chat messages]                   ║  NCTextView (chat, fills remaining)
+╟────────────────────────────────────╢
+║ [·····]                            ║  NCCommandInput: submit/Esc → refocus GameView
+╚════════════════════════════════════╝
+│ HP: 100  Score: 42    15:04:05     │  StatusBar: game.StatusBar() left, time right
+```
 
-**Viewport sizing:** Ideal `gameH = W * 9 / 16`. Chat gets the remaining rows. `minChatH = max(5, (H-4)/3)` — chat always gets at least ⅓ of content rows (4 overhead rows: menu bar + game status bar + command bar + status bar). Command bar is always 1 row.
+**Viewport sizing:** Ideal `gameH = W * 9 / 16`. Chat gets the remaining rows. `minChatH = max(5, interiorH/3)` — chat always gets at least ⅓ of interior rows. Interior = window height minus borders, dividers, and command input.
 
-**Chat scroll buffer:** 200 lines per player. `PgUp`/`PgDn` scroll the chat panel in both idle and input modes. Multi-line command replies (e.g. `/help`) are split into individual lines before storage.
+**Focus model:** NCWindow owns all focus management. Tab cycles between focusable controls. In the playing view, GameView has focus by default — Enter moves focus to the command input, submit/Esc returns it to GameView. For NC-tree games (renderNC), game controls participate in the Tab cycle alongside chat and command input.
 
-**Command history:** 50 entries per player. In input mode, `↑`/`↓` browse history. `↓` past the newest entry restores the draft that was in the input box when browsing started. History does not rotate.
+**Chat scroll buffer:** 200 lines per player. `PgUp`/`PgDn` scroll the chat panel. Multi-line command replies (e.g. `/help`) are split into individual lines before storage.
+
+**Command history:** 50 entries per NCCommandInput. `↑`/`↓` browse history. `↓` past the newest entry restores the draft. History is managed by the NCCommandInput widget.
 
 ### Key Packages
 
@@ -146,7 +151,10 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `internal/state/teams.go` | Team management helpers |
 | `internal/state/persist.go` | Game state JSON save/load |
 | `internal/widget/` | NC widget toolkit: Window, Label, TextInput, Button, etc. |
-| `internal/widget/menu.go` | Menu bar, dropdown, dialog overlay system |
+| `internal/widget/screen.go` | Screen: unified 3-row chrome (MenuBar + Window + StatusBar) |
+| `internal/widget/menubar.go` | MenuBar control: renders menu titles with shortcut highlighting |
+| `internal/widget/statusbar.go` | StatusBar control: left/right text on a single row |
+| `internal/widget/menu.go` | Overlay state, dropdown/dialog rendering, key handling |
 | `internal/widget/reconcile.go` | Widget tree reconciler for game viewports |
 | `internal/theme/theme.go` | Theme system: palettes, borders, depth layers |
 | `internal/engine/runtime.go` | JS game runtime (goja): loads games, implements Game |
@@ -307,7 +315,7 @@ Themes use a 4-layer depth model matching the original Norton Commander. Each la
 
 **Color fields** (per layer): `bg/fg`, `accent`, `highlightBg/Fg`, `activeBg/Fg`, `inputBg/Fg`, `disabledFg`. **Border fields** (per layer): outer frame (`outerTL/TR/BL/BR/H/V`), inner dividers (`innerH/V`), intersections (`crossL/R/T/B/X`), bar separator (`barSep`). Defaults: double-line outer (`╔═╗║╚╝`), single-line inner (`─│`), intersections (`╟╢╤╧`). Any omitted field falls back to hardcoded defaults. Different layers can use different border styles (e.g., double-line for desktop, single-line for menus).
 
-**Render signatures:** `Control.Render(buf, x, y, w, h, focused, layer)` writes directly into a `*ImageBuffer`. `Window.Render(x, y, w, h, layer) string` creates a buffer internally and returns `ToString()`. `Window.RenderToBuf(buf, x, y, w, h, layer)` writes into a caller-provided buffer. Menu/dialog renderers (`RenderMenuBar`, `RenderDropdown`, `RenderDialog`) still return strings — their output is painted into the buffer via `PaintANSI` + `Blit`.
+**Render signatures:** `Control.Render(buf, x, y, w, h, focused, layer)` writes directly into a `*ImageBuffer`. `Window.RenderToBuf(buf, x, y, w, h, layer)` writes into a caller-provided buffer. `Screen.RenderToBuf(buf, x, y, w, h, theme)` renders the full chrome (MenuBar at secondary layer, Window at primary, StatusBar at secondary). `MenuBar` renders directly into the buffer using `SetChar`/`WriteString` (no lipgloss). Dropdown/dialog renderers still return strings painted via `PaintANSI` + `Blit`.
 
 **Widget tree reconciler** (`internal/widget/reconcile.go`): `ReconcileGameWindow()` builds real `Control` instances from a `WidgetNode` tree, reusing controls by tree path to preserve state (focus, cursor, scroll) across frames. Supports interactive nodes: `button` (action via OnInput), `textinput` (submit via OnInput), `checkbox` (toggle via OnInput), `textview` (scrollable), `gameview` (optionally focusable). NC framework owns focus — Tab cycles controls, Esc blurs all, unfocused keys fall through to `game.OnInput()`.
 
@@ -365,19 +373,19 @@ Shutting down network ...................................... [ SKIP ]  ← Go
 
 ### Phase 2 — Console UI
 
+Uses the same Screen layout as all views (MenuBar + Window + StatusBar):
+
 ```
-┌─────────────────────────────────────┐
-│ Menu bar (1 row, with spinner)      │  "null-space | game: none | teams: 0 | uptime 00:42 ⠹"
-├─────────────────────────────────────┤
-│                                     │
-│ Log (scrollable, fills height)      │  slog lines + all chat (global + private)
-│                                     │  PgUp/PgDn to scroll
-│                                     │
-├─────────────────────────────────────┤
-│ Command bar (1 row)                 │  '/' = command; plain text = chat as [admin]
-├─────────────────────────────────────┤
-│ Status bar (1 row)                  │  server time right-aligned
-└─────────────────────────────────────┘
+│ File  View  Help                    │  MenuBar (row 0)
+╔════════════════════════════════════╗
+║                                    ║
+║ Log (scrollable, fills height)     ║  NCTextView: slog lines + all chat
+║                                    ║  PgUp/PgDn to scroll
+║                                    ║
+╟────────────────────────────────────╢
+║ [·····]                            ║  NCCommandInput: '/' = command; plain text = chat
+╚════════════════════════════════════╝
+│ game: none | players: 0 | 15:04:05│  StatusBar (row 2)
 ```
 
 The server console is always admin. SSH clients elevate via `/admin <password>`. Password set via `--password`; changeable at runtime via `/password <new>` (admin only).
