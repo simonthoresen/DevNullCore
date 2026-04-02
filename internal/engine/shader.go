@@ -22,6 +22,7 @@ type JSShader struct {
 	mu        sync.Mutex
 	vm        *goja.Runtime
 	name      string
+	thisObj   goja.Value    // the Shader JS object, used as `this` in all calls
 	processFn goja.Callable // Shader.process(buf)
 	updateFn  goja.Callable // Shader.update(dt) — optional
 	unloadFn  goja.Callable // Shader.unload() — optional
@@ -67,6 +68,7 @@ func LoadShader(path string, clock common.Clock) (*JSShader, error) {
 	if obj == nil {
 		return nil, fmt.Errorf("Shader is not an object")
 	}
+	s.thisObj = shaderVal
 
 	if fn, ok := goja.AssertFunction(obj.Get("process")); ok {
 		s.processFn = fn
@@ -86,7 +88,7 @@ func LoadShader(path string, clock common.Clock) (*JSShader, error) {
 	if fn, ok := goja.AssertFunction(obj.Get("init")); ok {
 		cancel := WatchdogJS(s.vm, "Shader.init")
 		defer cancel()
-		if _, err := fn(goja.Undefined()); err != nil {
+		if _, err := fn(s.thisObj); err != nil {
 			slog.Warn("shader init error", "shader", s.name, "error", err)
 		}
 	}
@@ -114,7 +116,7 @@ func (s *JSShader) Update(dt float64) {
 	cancel := WatchdogJS(s.vm, "Shader.update")
 	defer cancel()
 
-	if _, err := s.updateFn(goja.Undefined(), s.vm.ToValue(dt)); err != nil {
+	if _, err := s.updateFn(s.thisObj, s.vm.ToValue(dt)); err != nil {
 		slog.Error("shader update error", "shader", s.name, "error", err)
 	}
 }
@@ -137,7 +139,7 @@ func (s *JSShader) Process(buf *common.ImageBuffer) {
 	defer cancel()
 
 	jsBuf := newJSShaderBuffer(s.vm, buf)
-	_, err := s.processFn(goja.Undefined(), s.vm.ToValue(jsBuf))
+	_, err := s.processFn(s.thisObj, s.vm.ToValue(jsBuf))
 	if err != nil {
 		slog.Error("shader process error", "shader", s.name, "error", err)
 	}
@@ -154,7 +156,7 @@ func (s *JSShader) Unload() {
 					slog.Warn("shader unload panic", "shader", s.name, "panic", r)
 				}
 			}()
-			s.unloadFn(goja.Undefined())
+			s.unloadFn(s.thisObj)
 		}()
 		cancel()
 		s.mu.Unlock()
