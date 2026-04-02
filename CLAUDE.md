@@ -146,7 +146,7 @@ Games persist state by passing it as the second argument to `gameOver(results, s
 | `server/console.go` | Local server management terminal (not for playing) |
 | `server/runtime.go` | JS game runtime (goja): loads `dist/games/*.js`, implements `common.Game` |
 | `server/plugin.go` | Per-player JS plugin runtime: loads `dist/plugins/*.js`, calls `onMessage` hook |
-| `server/cellbuf.go` | `ImageBuffer`: 2D grid of styled cells. All rendering writes chars+colors into the buffer; `ToString()` serializes with RLE escape codes. `PaintANSI()` parses ANSI strings into cells. `Blit()` composites overlays. `blitShadow()` renders drop shadows. |
+| `common/cellbuf.go` | `ImageBuffer`: 2D grid of styled `Pixel` cells. All rendering writes chars+colors into the buffer; `ToString()` serializes with RLE escape codes. `PaintANSI()` parses ANSI strings into cells. `Blit()` composites overlays. `BlitShadow()` renders drop shadows. Lives in `common` so `Game.Render` can reference it. |
 | `server/ncwidget.go` | NC widget core: `NCWindow` (grid bag layout, border/title), `NCControl` interface (`Render` writes to `*ImageBuffer`), focus/cursor/click management |
 | `server/nccontrols.go` | NC controls: `NCLabel`, `NCTextInput`, `NCTextArea`, `NCTextView`, `NCButton`, `NCCheckbox`, `NCHDivider`, `NCVDivider`, `NCPanel` (bordered sub-container). All `Render` methods write directly to `ImageBuffer`. |
 | `server/theme.go` | Theme system: loads JSON color palettes from `dist/themes/`, applies to NC chrome |
@@ -172,8 +172,8 @@ type Game interface {
     Update(dt float64)                     // called once per tick with seconds since last update
     OnPlayerLeave(playerID string)
     OnInput(playerID, key string)
-    Render(playerID string, width, height int) string
-    RenderNC(playerID string, width, height int) *WidgetNode // declarative NC layout (nil = use Render)
+    Render(buf *ImageBuffer, playerID string, x, y, width, height int) // write game viewport into buffer
+    RenderNC(playerID string, width, height int) *WidgetNode           // declarative NC layout (nil = use Render)
     StatusBar(playerID string) string      // game status bar (2nd row, below menu bar)
     CommandBar(playerID string) string     // command bar (above framework status bar)
     Commands() []Command
