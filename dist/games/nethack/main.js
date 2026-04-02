@@ -178,16 +178,14 @@ var Game = {
 
     render: function(buf, playerID, ox, oy, width, height) {
         var player = state.players[playerID];
-        var content;
         if (!player) {
-            content = renderSpectatorView(width, height);
+            renderSpectatorView(buf, width, height);
         } else if (state.inventoryOpen[playerID]) {
-            content = renderInventory(player, width, height);
+            renderInventory(buf, player, width, height);
         } else {
             var level = getOrCreateLevel(player.depth);
-            content = renderView(player, level, state.players, width, height);
+            renderView(buf, player, level, state.players, width, height);
         }
-        buf.paintANSI(0, 0, width, height, content, null, null);
     },
 
     statusBar: function(playerID) {
@@ -421,25 +419,14 @@ function handleScroll(player, item, index) {
     player.inventory.splice(index, 1);
 }
 
-function renderSpectatorView(width, height) {
-    var lines = [];
-    for (var i = 0; i < height; i++) {
-        var empty = '';
-        for (var j = 0; j < width; j++) empty += ' ';
-        lines.push(empty);
-    }
+function renderSpectatorView(buf, width, height) {
     var center = Math.floor(height / 2);
     var text = '--- Spectating ---';
     var pad = Math.floor((width - text.length) / 2);
     if (pad < 0) pad = 0;
-    var line = '';
-    for (var j = 0; j < pad; j++) line += ' ';
-    line += text;
-    while (line.length < width) line += ' ';
     if (center >= 0 && center < height) {
-        lines[center] = line;
+        buf.writeString(pad, center, text, null, null);
     }
-    return lines.join('\n');
 }
 
 // ─── Register Commands ─────────────────────────────────────────────────────

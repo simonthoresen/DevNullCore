@@ -2,9 +2,10 @@
 
 // ─── Main View Renderer ───────────────────────────────────────────────────
 
-function renderView(player, level, players, width, height) {
+function renderView(buf, player, level, players, width, height) {
     if (player.dead) {
-        return renderDeathScreen(player, width, height);
+        renderDeathScreen(buf, player, width, height);
+        return;
     }
 
     // Compute FOV from player position
@@ -24,24 +25,20 @@ function renderView(player, level, players, width, height) {
     if (camX + vpw > level.width) camX = Math.max(0, level.width - vpw);
     if (camY + vph > level.height) camY = Math.max(0, level.height - vph);
 
-    var lines = [];
     for (var vy = 0; vy < vph; vy++) {
-        var line = '';
         var gy = camY + vy;
         for (var vx = 0; vx < vpw; vx++) {
             var gx = camX + vx;
 
             if (gx < 0 || gx >= level.width || gy < 0 || gy >= level.height) {
-                line += ' ';
-                continue;
+                continue; // buffer is pre-filled with spaces
             }
 
             var isVisible = visible[gy][gx];
             var isExplored = player.explored[gy][gx];
 
             if (!isVisible && !isExplored) {
-                line += ' ';
-                continue;
+                continue; // buffer is pre-filled with spaces
             }
 
             // Check for entities (only if visible)
@@ -94,15 +91,13 @@ function renderView(player, level, players, width, height) {
                 }
             }
 
-            line += ch;
+            buf.setChar(vx, vy, ch, null, null);
         }
-        lines.push(line);
     }
 
     // Add message log at bottom
     var msgLines = Math.min(3, height - vph);
     if (msgLines > 0) {
-        // Pad messages area
         var msgs = player.messages.slice(-msgLines);
         while (msgs.length < msgLines) {
             msgs.unshift('');
@@ -110,34 +105,14 @@ function renderView(player, level, players, width, height) {
         for (var i = 0; i < msgs.length; i++) {
             var msg = msgs[i];
             if (msg.length > width) msg = msg.substring(0, width);
-            while (msg.length < width) msg += ' ';
-            lines.push(msg);
+            buf.writeString(0, vph + i, msg, null, null);
         }
     }
-
-    // Ensure exactly height lines
-    while (lines.length < height) {
-        var empty = '';
-        for (var i = 0; i < width; i++) empty += ' ';
-        lines.push(empty);
-    }
-    while (lines.length > height) {
-        lines.pop();
-    }
-
-    return lines.join('\n');
 }
 
 // ─── Death Screen ──────────────────────────────────────────────────────────
 
-function renderDeathScreen(player, width, height) {
-    var lines = [];
-    for (var i = 0; i < height; i++) {
-        var empty = '';
-        for (var j = 0; j < width; j++) empty += ' ';
-        lines.push(empty);
-    }
-
+function renderDeathScreen(buf, player, width, height) {
     var center = Math.floor(height / 2);
     var texts = [
         '--- REST IN PEACE ---',
@@ -154,30 +129,17 @@ function renderDeathScreen(player, width, height) {
 
     for (var i = 0; i < texts.length; i++) {
         var row = center - Math.floor(texts.length / 2) + i;
-        if (row >= 0 && row < height) {
+        if (row >= 0 && row < height && texts[i].length > 0) {
             var pad = Math.floor((width - texts[i].length) / 2);
             if (pad < 0) pad = 0;
-            var line = '';
-            for (var j = 0; j < pad; j++) line += ' ';
-            line += texts[i];
-            while (line.length < width) line += ' ';
-            lines[row] = line;
+            buf.writeString(pad, row, texts[i], null, null);
         }
     }
-
-    return lines.join('\n');
 }
 
 // ─── Inventory View ────────────────────────────────────────────────────────
 
-function renderInventory(player, width, height) {
-    var lines = [];
-    for (var i = 0; i < height; i++) {
-        var empty = '';
-        for (var j = 0; j < width; j++) empty += ' ';
-        lines.push(empty);
-    }
-
+function renderInventory(buf, player, width, height) {
     var items = [];
     items.push('--- Inventory ---');
     items.push('');
@@ -211,16 +173,11 @@ function renderInventory(player, width, height) {
     for (var i = 0; i < items.length; i++) {
         var row = startRow + i;
         if (row >= height) break;
+        if (items[i].length === 0) continue;
         var pad = Math.floor((width - items[i].length) / 2);
         if (pad < 0) pad = 0;
-        var line = '';
-        for (var j = 0; j < pad; j++) line += ' ';
-        line += items[i];
-        while (line.length < width) line += ' ';
-        lines[row] = line;
+        buf.writeString(pad, row, items[i], null, null);
     }
-
-    return lines.join('\n');
 }
 
 // ─── Status Bar ────────────────────────────────────────────────────────────
