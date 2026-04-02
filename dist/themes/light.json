@@ -6,7 +6,10 @@
         "highlightBg": "#4A90D9", "highlightFg": "#FFFFFF",
         "activeBg": "#0066CC", "activeFg": "#FFFFFF",
         "inputBg": "#FFFFFF", "inputFg": "#222222",
-        "disabledFg": "#999999"
+        "disabledFg": "#999999",
+        "outerTL": "┌", "outerTR": "┐", "outerBL": "└", "outerBR": "┘",
+        "outerH": "─", "outerV": "│",
+        "crossL": "├", "crossR": "┤", "crossT": "┬", "crossB": "┴"
     },
     "secondary": {
         "bg": "#F5F5F5", "fg": "#333333",
@@ -14,7 +17,10 @@
         "highlightBg": "#4A90D9", "highlightFg": "#FFFFFF",
         "activeBg": "#0066CC", "activeFg": "#FFFFFF",
         "inputBg": "#FFFFFF", "inputFg": "#222222",
-        "disabledFg": "#999999"
+        "disabledFg": "#999999",
+        "outerTL": "┌", "outerTR": "┐", "outerBL": "└", "outerBR": "┘",
+        "outerH": "─", "outerV": "│",
+        "crossL": "├", "crossR": "┤", "crossT": "┬", "crossB": "┴"
     },
     "tertiary": {
         "bg": "#FFFFFF", "fg": "#222222",
@@ -22,7 +28,10 @@
         "highlightBg": "#4A90D9", "highlightFg": "#FFFFFF",
         "activeBg": "#0066CC", "activeFg": "#FFFFFF",
         "inputBg": "#F0F0F0", "inputFg": "#222222",
-        "disabledFg": "#999999"
+        "disabledFg": "#999999",
+        "outerTL": "┌", "outerTR": "┐", "outerBL": "└", "outerBR": "┘",
+        "outerH": "─", "outerV": "│",
+        "crossL": "├", "crossR": "┤", "crossT": "┬", "crossB": "┴"
     },
     "warning": {
         "bg": "#FFF0F0", "fg": "#CC0000",
@@ -30,10 +39,10 @@
         "highlightBg": "#CC0000", "highlightFg": "#FFFFFF",
         "activeBg": "#CC0000", "activeFg": "#FFFFFF",
         "inputBg": "#FFFFFF", "inputFg": "#222222",
-        "disabledFg": "#999999"
+        "disabledFg": "#999999",
+        "outerTL": "┌", "outerTR": "┐", "outerBL": "└", "outerBR": "┘",
+        "outerH": "─", "outerV": "│",
+        "crossL": "├", "crossR": "┤", "crossT": "┬", "crossB": "┴"
     },
-    "shadowBg": "#AAAAAA",
-    "outerTL": "┌", "outerTR": "┐", "outerBL": "└", "outerBR": "┘",
-    "outerH":  "─", "outerV":  "│",
-    "crossL":  "├", "crossR":  "┤", "crossT": "┬", "crossB": "┴"
+    "shadowBg": "#AAAAAA"
 }

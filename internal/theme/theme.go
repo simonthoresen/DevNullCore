@@ -140,24 +140,6 @@ type Theme struct {
 	// Drop shadow (bg = shadow area, fg = half-block foreground for depth effect)
 	ShadowBg string `json:"shadowBg"`
 	ShadowFg string `json:"shadowFg"`
-
-	// Deprecated: global border fields for JSON backwards compatibility.
-	// resolveDefaults() copies these into any layer that has empty borders.
-	// New themes should define borders per-layer instead.
-	LegacyOuterTL string `json:"outerTL,omitempty"`
-	LegacyOuterTR string `json:"outerTR,omitempty"`
-	LegacyOuterBL string `json:"outerBL,omitempty"`
-	LegacyOuterBR string `json:"outerBR,omitempty"`
-	LegacyOuterH  string `json:"outerH,omitempty"`
-	LegacyOuterV  string `json:"outerV,omitempty"`
-	LegacyInnerH  string `json:"innerH,omitempty"`
-	LegacyInnerV  string `json:"innerV,omitempty"`
-	LegacyCrossL  string `json:"crossL,omitempty"`
-	LegacyCrossR  string `json:"crossR,omitempty"`
-	LegacyCrossT  string `json:"crossT,omitempty"`
-	LegacyCrossB  string `json:"crossB,omitempty"`
-	LegacyCrossX  string `json:"crossX,omitempty"`
-	LegacyBarSep  string `json:"barSep,omitempty"`
 }
 
 // LayerAt returns the theme layer for the given depth level.
@@ -193,33 +175,6 @@ func ts(s, fallback string) string {
 	return s
 }
 
-// resolveDefaults copies global (legacy) border fields into any layer
-// that has empty border fields, providing JSON backwards compatibility.
-func (t *Theme) resolveDefaults() {
-	for _, layer := range []*Layer{&t.Primary, &t.Secondary, &t.Tertiary, &t.Warning} {
-		copyIfEmpty(&layer.OuterTL, t.LegacyOuterTL)
-		copyIfEmpty(&layer.OuterTR, t.LegacyOuterTR)
-		copyIfEmpty(&layer.OuterBL, t.LegacyOuterBL)
-		copyIfEmpty(&layer.OuterBR, t.LegacyOuterBR)
-		copyIfEmpty(&layer.OuterH, t.LegacyOuterH)
-		copyIfEmpty(&layer.OuterV, t.LegacyOuterV)
-		copyIfEmpty(&layer.InnerH, t.LegacyInnerH)
-		copyIfEmpty(&layer.InnerV, t.LegacyInnerV)
-		copyIfEmpty(&layer.CrossL, t.LegacyCrossL)
-		copyIfEmpty(&layer.CrossR, t.LegacyCrossR)
-		copyIfEmpty(&layer.CrossT, t.LegacyCrossT)
-		copyIfEmpty(&layer.CrossB, t.LegacyCrossB)
-		copyIfEmpty(&layer.CrossX, t.LegacyCrossX)
-		copyIfEmpty(&layer.BarSep, t.LegacyBarSep)
-	}
-}
-
-func copyIfEmpty(dst *string, src string) {
-	if *dst == "" && src != "" {
-		*dst = src
-	}
-}
-
 // Load reads a theme JSON file and returns the parsed Theme.
 func Load(path string) (*Theme, error) {
 	data, err := os.ReadFile(path)
@@ -233,7 +188,6 @@ func Load(path string) (*Theme, error) {
 	if t.Name == "" {
 		t.Name = strings.TrimSuffix(filepath.Base(path), ".json")
 	}
-	t.resolveDefaults()
 	return &t, nil
 }
 

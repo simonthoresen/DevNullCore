@@ -458,7 +458,7 @@ Themes use a 4-layer depth model matching the original Norton Commander. Each la
 
 **Widget tree reconciler** (`internal/widget/reconcile.go`): `ReconcileGameWindow()` builds real `Control` instances from a `WidgetNode` tree, reusing controls by tree path to preserve state (focus, cursor, scroll) across frames. Supports interactive nodes: `button` (action via OnInput), `textinput` (submit via OnInput), `checkbox` (toggle via OnInput), `textview` (scrollable), `gameview` (optionally focusable). NC framework owns focus — Tab cycles controls, Esc blurs all, unfocused keys fall through to `game.OnInput()`.
 
-**JSON backwards compat**: Global border fields at the theme root are copied into any layer that has empty borders via `resolveDefaults()`. New themes should define borders per-layer.
+Themes define borders per-layer. Each layer can have its own border character set.
 
 ---
 
