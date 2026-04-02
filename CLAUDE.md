@@ -164,13 +164,24 @@ Row 2: StatusBar    (fixed 1)   ← left text + right-aligned time
 
 | Package | Role |
 |---------|------|
-| `server/server.go` | SSH server setup, session lifecycle, tick broadcast, game lifecycle |
-| `server/commands.go` | Slash command registry and dispatch |
-| `server/local.go` | Local (non-SSH) single-player mode |
-| `server/pinggy.go` | Pinggy tunnel status polling bridge |
-| `internal/chrome/chrome.go` | Per-player TUI model: lobby, game, splash, game-over |
-| `internal/console/console.go` | Server console TUI with log filtering |
+| `internal/server/server.go` | SSH server setup, session lifecycle, tick broadcast |
+| `internal/server/lifecycle.go` | Game load/unload, phase transitions, teams cache |
+| `internal/server/commands.go` | Slash command registry and dispatch |
+| `internal/server/local.go` | Local (non-SSH) single-player mode |
+| `internal/server/pinggy.go` | Pinggy tunnel status polling bridge |
+| `internal/chrome/model.go` | Per-player TUI model: struct, constructor, Init, Update |
+| `internal/chrome/view.go` | Per-player rendering: lobby, playing, splash, game-over |
+| `internal/chrome/input.go` | Key/mouse handling: lobby, game, team editing |
+| `internal/chrome/commands.go` | Per-player command dispatch: /plugin, /theme, /shader |
+| `internal/chrome/menus.go` | Menu tree construction and dialog helpers |
+| `internal/console/console.go` | Server console TUI: model, view, log filtering |
+| `internal/console/commands.go` | Console command dispatch: /plugin, /theme, /shader |
 | `internal/console/sloghandler.go` | Console slog handler with render-path guard |
+| `internal/domain/types.go` | Player, Message, GamePhase, Team, WidgetNode, tea messages |
+| `internal/domain/interfaces.go` | Game, Command, Shader, MenuDef, DialogRequest interfaces |
+| `internal/domain/clock.go` | Clock abstraction (RealClock, MockClock) |
+| `internal/render/buffer.go` | ImageBuffer: 2D cell grid, ANSI parsing/serialization |
+| `internal/render/charmap.go` | Charmap format: PUA codepoints, CharMapDef/Entry, loader |
 | `internal/state/state.go` | `CentralState`: players, chat, game phase |
 | `internal/state/teams.go` | Team management helpers |
 | `internal/state/persist.go` | Game state JSON save/load |
@@ -181,24 +192,23 @@ Row 2: StatusBar    (fixed 1)   ← left text + right-aligned time
 | `internal/widget/menu.go` | Overlay state, dropdown/dialog rendering, key handling |
 | `internal/widget/reconcile.go` | Widget tree reconciler for game viewports |
 | `internal/theme/theme.go` | Theme system: palettes, borders, depth layers |
-| `internal/engine/runtime.go` | JS game runtime (goja): loads games, implements Game |
+| `internal/engine/runtime.go` | JS game runtime (goja): lifecycle, Game interface impl |
+| `internal/engine/bindings.go` | JS global functions: log, chat, teams, gameOver, etc. |
 | `internal/engine/shader.go` | Per-player JS shader post-processing |
 | `internal/engine/plugin.go` | Per-player JS plugin system |
 | `internal/engine/figlet.go` | Figlet ASCII art rendering |
-| `internal/engine/game_list.go` | Game discovery, path resolution, team range probing |
+| `internal/engine/gamelist.go` | Game discovery, path resolution, team range probing |
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
-| `common/` | Game interface, types, ImageBuffer, Clock |
 | `cmd/null-space-server/` | Server entry point: boot sequence, console setup, signal handling |
 | `cmd/null-space-client/` | Graphical client: SSH + Ebitengine sprite rendering for charmap games |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
 | `internal/client/` | Client internals: SSH transport, ANSI parser, charmap atlas, Ebitengine renderer |
-| `common/charmap.go` | Charmap format: PUA codepoint range, CharMapDef/CharMapEntry types, loader |
 | `dist/charmaps/` | Charmap assets: per-game subdirectories with charmap.json + atlas PNG |
 | `dist/start.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then null-space-server.exe |
 | `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
 | `.github/workflows/release.yml` | CI: builds binaries and publishes rolling `latest` release on every push to main |
 
-### The `Game` Interface (`common/interfaces.go`)
+### The `Game` Interface (`internal/domain/interfaces.go`)
 ```go
 type Game interface {
     GameName() string                      // display name (fallback: filename stem)
@@ -229,14 +239,14 @@ type Game interface {
 ```
 `jsRuntime` implements `Game`. `init()` is mandatory; all other JS hooks are optional. `teams()` global returns game team snapshot during init/start/playing.
 
-### Central Clock (`common/clock.go`)
+### Central Clock (`internal/domain/clock.go`)
 The framework provides a central `Clock` interface (`Now() time.Time`) used for all time-related operations. Games access it via the `now()` JS global (epoch milliseconds). In tests, inject a `MockClock` to control time. `Update(dt)` receives the real elapsed seconds between ticks.
 
 ### Game Over
 
 Games call `gameOver(results, state)` where `results` is an array of `{ name, result }` in ranked order and `state` is an optional object to persist for the next run. The framework renders the game-over screen — games don't need to provide their own. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). Both arguments are optional. State is received via `config.savedState` in `init()` on the next load.
 
-### Commands (`common/interfaces.go`)
+### Commands (`internal/domain/interfaces.go`)
 ```go
 type Command struct {
     Name             string
@@ -252,7 +262,7 @@ type Command struct {
 
 `GameName` in `CentralState` stores the bare name (e.g. `example`), not the full file path. `loadGame` strips the directory and `.js` extension. Commands that broadcast game load/unload events should use the bare name too — `loadGame` already broadcasts `"Game loaded: <name>"` to chat, so command handlers must not send a redundant reply.
 
-### `Message` Type (`common/types.go`)
+### `Message` Type (`internal/domain/types.go`)
 ```go
 type Message struct {
     Author       string
@@ -547,7 +557,7 @@ Two primary mutexes protect shared state:
 - **Teams:** Server builds a cache (`buildTeamsCache`) and pushes it via `SetTeamsCache()`. JS `teams()` reads the local cache.
 - **Chat:** JS `chat()`/`chatPlayer()` send on a buffered channel; a server goroutine drains it and calls `broadcastChat()`.
 
-**Callers** (`server/server.go`, `internal/chrome/chrome.go`) must release `state.mu` **before** calling any `jsRuntime` Game method (`Init`, `Start`, `Update`, `Render`, `OnInput`, etc.). All existing call sites follow this pattern — verify any new ones do too.
+**Callers** (`internal/server/server.go`, `internal/chrome/model.go`) must release `state.mu` **before** calling any `jsRuntime` Game method (`Init`, `Start`, `Update`, `Render`, `OnInput`, etc.). All existing call sites follow this pattern — verify any new ones do too.
 
 Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.mu`) are leaf locks — they don't call into JS or acquire `state.mu`.
 
@@ -574,8 +584,8 @@ The `consoleSlogHandler` has a runtime guard (`isRenderPath()`) that inspects th
 
 ## SSH Input Handling (Windows gotcha)
 
-Use `ssh.EmulatePty()` — **not** `ssh.AllocatePty()` — in all three call sites in `server/server.go`.
+Use `ssh.EmulatePty()` — **not** `ssh.AllocatePty()` — in all three call sites in `internal/server/server.go`.
 
 On Windows, `AllocatePty` creates a real ConPTY. The `charmbracelet/ssh` library then spawns `go io.Copy(sess.pty, sess)` internally. When Bubble Tea also reads from the session, two goroutines alternate consuming bytes and **every other keystroke is dropped**.
 
-`EmulatePty` stores PTY metadata (term type, window size) without spawning a ConPTY, so there is only one reader. Search for `EmulatePty` in `server/server.go` to find all three call sites.
+`EmulatePty` stores PTY metadata (term type, window size) without spawning a ConPTY, so there is only one reader. Search for `EmulatePty` in `internal/server/server.go` to find all three call sites.
