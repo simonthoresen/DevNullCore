@@ -199,7 +199,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.initCommands = nil
 		}
-		engine.UpdateShaders(m.shaders, 0.1)
 		return m, nil
 
 	case slogLineMsg:
@@ -498,7 +497,10 @@ func (m *Model) View() tea.View {
 	m.screen.RenderToBuf(buf, 0, 0, m.width, m.height, t)
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
-	engine.ApplyShaders(m.shaders, buf)
+	m.api.State().RLock()
+	shaderElapsed := float64(m.api.State().TickN) * 0.1
+	m.api.State().RUnlock()
+	engine.ApplyShaders(m.shaders, buf, shaderElapsed)
 
 	// Overlay layers: render to sub-buffers, blit, then recolor for shadow.
 	shadowFg := t.ShadowFgC()

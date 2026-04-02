@@ -57,8 +57,11 @@ type DialogRequest struct {
 // dist/shaders/). Multiple shaders run in sequence per player.
 type Shader interface {
 	Name() string
-	Update(dt float64)
-	Process(buf *render.ImageBuffer)
+	// Process applies the shader effect to the buffer. elapsed is the total
+	// seconds since the server started — shaders derive all time-based effects
+	// from this value (no mutable state). This makes shaders pure functions of
+	// (buffer × time), replicable on the client for local rendering.
+	Process(buf *render.ImageBuffer, elapsed float64)
 	Unload()
 }
 

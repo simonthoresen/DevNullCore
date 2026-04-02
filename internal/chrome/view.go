@@ -49,7 +49,11 @@ func (m Model) View() tea.View {
 	}
 
 	// Post-processing shaders: run in sequence on the fully-rendered buffer.
-	engine.ApplyShaders(m.shaders, buf)
+	// Elapsed time is derived from the tick counter (deterministic, replicable on client).
+	m.api.State().RLock()
+	shaderElapsed := float64(m.api.State().TickN) * 0.1
+	m.api.State().RUnlock()
+	engine.ApplyShaders(m.shaders, buf, shaderElapsed)
 
 	// Overlay layers: render to sub-buffers, blit, then shadow via RecolorRect.
 	shadowFg := m.theme.ShadowFgC()

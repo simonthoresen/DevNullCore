@@ -1,13 +1,7 @@
 // Rainbow shader — cycles border characters through a shifting rainbow palette.
 const Shader = {
-    time: 0,
-
-    update(dt) {
-        this.time += dt;
-    },
-
-    process(buf) {
-        var t = this.time;
+    process(buf, time) {
+        var t = time;
         for (var y = 0; y < buf.height; y++) {
             for (var x = 0; x < buf.width; x++) {
                 var p = buf.getPixel(x, y);

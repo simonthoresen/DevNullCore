@@ -24,8 +24,7 @@ type JSShader struct {
 	vm        *goja.Runtime
 	name      string
 	thisObj   goja.Value    // the Shader JS object, used as `this` in all calls
-	processFn goja.Callable // Shader.process(buf)
-	updateFn  goja.Callable // Shader.update(dt) — optional
+	processFn goja.Callable // Shader.process(buf, time)
 	unloadFn  goja.Callable // Shader.unload() — optional
 }
 
@@ -77,10 +76,6 @@ func LoadShader(path string, clock domain.Clock) (*JSShader, error) {
 		return nil, fmt.Errorf("Shader.process is required and must be a function")
 	}
 
-	if fn, ok := goja.AssertFunction(obj.Get("update")); ok {
-		s.updateFn = fn
-	}
-
 	if fn, ok := goja.AssertFunction(obj.Get("unload")); ok {
 		s.unloadFn = fn
 	}
@@ -100,30 +95,10 @@ func LoadShader(path string, clock domain.Clock) (*JSShader, error) {
 // Name returns the shader's display name (filename stem).
 func (s *JSShader) Name() string { return s.name }
 
-// Update calls the optional JS update(dt) hook so the shader can evolve over time.
-func (s *JSShader) Update(dt float64) {
-	if s.updateFn == nil {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	defer func() {
-		if r := recover(); r != nil {
-			slog.Error("shader update panic", "shader", s.name, "panic", r)
-		}
-	}()
-
-	cancel := WatchdogJS(s.vm, "Shader.update")
-	defer cancel()
-
-	if _, err := s.updateFn(s.thisObj, s.vm.ToValue(dt)); err != nil {
-		slog.Error("shader update error", "shader", s.name, "error", err)
-	}
-}
-
-// Process calls the JS process(buf) hook with a buffer wrapper.
-func (s *JSShader) Process(buf *render.ImageBuffer) {
+// Process calls the JS process(buf, time) hook with a buffer wrapper.
+// elapsed is total seconds since server start — shaders derive all
+// time-based effects from this value.
+func (s *JSShader) Process(buf *render.ImageBuffer, elapsed float64) {
 	if s.processFn == nil {
 		return
 	}
@@ -140,7 +115,7 @@ func (s *JSShader) Process(buf *render.ImageBuffer) {
 	defer cancel()
 
 	jsBuf := newJSShaderBuffer(s.vm, buf)
-	_, err := s.processFn(s.thisObj, s.vm.ToValue(jsBuf))
+	_, err := s.processFn(s.thisObj, s.vm.ToValue(jsBuf), s.vm.ToValue(elapsed))
 	if err != nil {
 		slog.Error("shader process error", "shader", s.name, "error", err)
 	}
@@ -268,17 +243,11 @@ func ResolveShaderPath(nameOrURL, dataDir string) (name, path string, err error)
 	return nameOrURL, filepath.Join(dataDir, "shaders", nameOrURL+".js"), nil
 }
 
-// UpdateShaders calls Update(dt) on all shaders so they can evolve over time.
-func UpdateShaders(shaders []domain.Shader, dt float64) {
-	for _, s := range shaders {
-		s.Update(dt)
-	}
-}
-
 // ApplyShaders runs all shaders in sequence on the given buffer.
-func ApplyShaders(shaders []domain.Shader, buf *render.ImageBuffer) {
+// elapsed is total seconds since server start.
+func ApplyShaders(shaders []domain.Shader, buf *render.ImageBuffer, elapsed float64) {
 	for _, s := range shaders {
-		s.Process(buf)
+		s.Process(buf, elapsed)
 	}
 }
 

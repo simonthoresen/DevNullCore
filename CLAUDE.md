@@ -305,7 +305,7 @@ A plugin exports a `Plugin` object with an `onMessage(author, text, isSystem)` h
 
 Per-player (or per-console) post-processing scripts in `dist/shaders/`. Loaded with `/shader load <name|url>`. Each player/console maintains their own ordered shader list. Shaders run in sequence on the fully-rendered `ImageBuffer` **after** the screen is composed but **before** overlays (menus, dialogs) and `ToString()`.
 
-A JS shader exports a `Shader` object with a required `process(buf)` method. `buf` exposes:
+A JS shader exports a `Shader` object with a required `process(buf, time)` method. `time` is total elapsed seconds since server start (deterministic, same value on server and client for local rendering). `buf` exposes:
 - `width`, `height` — buffer dimensions
 - `getPixel(x, y)` → `{char, fg, bg, attr}` or `null` — read a cell
 - `setChar(x, y, ch, fg, bg, attr)` — write a cell
@@ -313,9 +313,9 @@ A JS shader exports a `Shader` object with a required `process(buf)` method. `bu
 - `fill(x, y, w, h, ch, fg, bg, attr)` — fill rectangle
 - `recolor(x, y, w, h, fg, bg, attr)` — change colors without changing characters
 
-Optional hooks: `init()` (called once on load), `update(dt)` (called every tick with elapsed seconds — for animated effects), `unload()` (called on removal).
+Optional hooks: `init()` (called once on load), `unload()` (called on removal). **Shaders must be stateless** — all time-based effects must derive from the `time` parameter passed to `process()`. This ensures shaders are pure functions of (buffer × time), replicable on the client for local rendering.
 
-**Go shaders** implement `common.Shader` interface: `Name() string`, `Update(dt float64)`, `Process(buf *ImageBuffer)`, `Unload()`. Compiled into the binary.
+**Go shaders** implement `domain.Shader` interface: `Name() string`, `Process(buf *ImageBuffer, elapsed float64)`, `Unload()`. Compiled into the binary.
 
 **Commands:** `/shader` (list), `/shader load <name>`, `/shader unload <name>`, `/shader list`, `/shader up <name>`, `/shader down <name>`.
 
