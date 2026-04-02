@@ -23,6 +23,7 @@ type JSShader struct {
 	vm        *goja.Runtime
 	name      string
 	processFn goja.Callable // Shader.process(buf)
+	updateFn  goja.Callable // Shader.update(dt) — optional
 	unloadFn  goja.Callable // Shader.unload() — optional
 }
 
@@ -73,6 +74,10 @@ func LoadShader(path string, clock common.Clock) (*JSShader, error) {
 		return nil, fmt.Errorf("Shader.process is required and must be a function")
 	}
 
+	if fn, ok := goja.AssertFunction(obj.Get("update")); ok {
+		s.updateFn = fn
+	}
+
 	if fn, ok := goja.AssertFunction(obj.Get("unload")); ok {
 		s.unloadFn = fn
 	}
@@ -91,6 +96,28 @@ func LoadShader(path string, clock common.Clock) (*JSShader, error) {
 
 // Name returns the shader's display name (filename stem).
 func (s *JSShader) Name() string { return s.name }
+
+// Update calls the optional JS update(dt) hook so the shader can evolve over time.
+func (s *JSShader) Update(dt float64) {
+	if s.updateFn == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("shader update panic", "shader", s.name, "panic", r)
+		}
+	}()
+
+	cancel := WatchdogJS(s.vm, "Shader.update")
+	defer cancel()
+
+	if _, err := s.updateFn(goja.Undefined(), s.vm.ToValue(dt)); err != nil {
+		slog.Error("shader update error", "shader", s.name, "error", err)
+	}
+}
 
 // Process calls the JS process(buf) hook with a buffer wrapper.
 func (s *JSShader) Process(buf *common.ImageBuffer) {
@@ -236,6 +263,13 @@ func ResolveShaderPath(nameOrURL, dataDir string) (name, path string, err error)
 		return strings.TrimSuffix(filepath.Base(local), ".js"), local, nil
 	}
 	return nameOrURL, filepath.Join(dataDir, "shaders", nameOrURL+".js"), nil
+}
+
+// UpdateShaders calls Update(dt) on all shaders so they can evolve over time.
+func UpdateShaders(shaders []common.Shader, dt float64) {
+	for _, s := range shaders {
+		s.Update(dt)
+	}
 }
 
 // ApplyShaders runs all shaders in sequence on the given buffer.

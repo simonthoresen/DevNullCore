@@ -55,6 +55,7 @@ type DialogRequest struct {
 // dist/shaders/). Multiple shaders run in sequence per player.
 type Shader interface {
 	Name() string
+	Update(dt float64)
 	Process(buf *ImageBuffer)
 	Unload()
 }

@@ -643,6 +643,10 @@ const Shader = {
     // Optional: called once when the shader is loaded.
     init() { },
 
+    // Optional: called every tick (~100ms) with elapsed seconds.
+    // Use this to animate shader effects over time.
+    update(dt) { },
+
     // Required: called every frame with the full screen buffer.
     process(buf) {
         for (var y = 0; y < buf.height; y++) {
@@ -698,8 +702,9 @@ The `buf` object passed to `process()` provides:
 | Shader | Effect |
 |--------|--------|
 | `invert` | Swaps foreground and background colors |
-| `scanlines` | Dims every other row (CRT scanline effect) |
+| `scanlines` | Animated scrolling scanlines (CRT effect) |
 | `crt` | Green-on-black retro terminal look |
+| `rainbow` | Cycles border/box-drawing characters through a flowing rainbow |
 
 ### Execution order
 

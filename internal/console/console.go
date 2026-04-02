@@ -198,6 +198,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.initCommands = nil
 		}
+		engine.UpdateShaders(m.shaders, 0.1)
 		return m, nil
 
 	case slogLineMsg:

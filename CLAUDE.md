@@ -293,15 +293,15 @@ A JS shader exports a `Shader` object with a required `process(buf)` method. `bu
 - `fill(x, y, w, h, ch, fg, bg, attr)` — fill rectangle
 - `recolor(x, y, w, h, fg, bg, attr)` — change colors without changing characters
 
-Optional hooks: `init()` (called once on load), `unload()` (called on removal).
+Optional hooks: `init()` (called once on load), `update(dt)` (called every tick with elapsed seconds — for animated effects), `unload()` (called on removal).
 
-**Go shaders** implement `common.Shader` interface: `Name() string`, `Process(buf *ImageBuffer)`, `Unload()`. Compiled into the binary.
+**Go shaders** implement `common.Shader` interface: `Name() string`, `Update(dt float64)`, `Process(buf *ImageBuffer)`, `Unload()`. Compiled into the binary.
 
 **Commands:** `/shader` (list), `/shader load <name>`, `/shader unload <name>`, `/shader list`, `/shader up <name>`, `/shader down <name>`.
 
 **Menu:** File → Shaders... shows active shaders with order and available shaders.
 
-**Bundled shaders:** `invert` (swap fg/bg), `scanlines` (dim alternating rows), `crt` (green-on-black retro terminal).
+**Bundled shaders:** `invert` (swap fg/bg), `scanlines` (animated scrolling scanlines), `crt` (green-on-black retro terminal), `rainbow` (flowing rainbow on box-drawing borders).
 
 | Package | Role |
 |---------|------|
