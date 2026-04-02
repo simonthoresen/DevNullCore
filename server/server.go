@@ -26,10 +26,11 @@ import (
 
 	"null-space/common"
 	"null-space/internal/network"
+	"null-space/internal/state"
 )
 
 type Server struct {
-	state    *CentralState
+	state    *state.CentralState
 	registry *commandRegistry
 	dataDir  string // root of games/, logs/
 	port     string // SSH listen port, e.g. "23234"
@@ -64,7 +65,7 @@ type Server struct {
 
 func New(address, password, dataDir string) (*Server, error) {
 	app := &Server{
-		state:    newState(password),
+		state:    state.New(password),
 		registry: newCommandRegistry(),
 		dataDir:  dataDir,
 		clock:    common.RealClock{},
@@ -153,9 +154,9 @@ func (a *Server) shutdown() error {
 func (a *Server) SetupUPnP(port string) bool {
 	mapping, mapped := network.TryUPnP(port)
 	a.upnpMapping = mapping
-	a.state.mu.Lock()
+	a.state.Lock()
 	a.state.Net.UPnPMapped = mapped
-	a.state.mu.Unlock()
+	a.state.Unlock()
 	return mapped
 }
 
@@ -164,9 +165,9 @@ func (a *Server) SetupUPnP(port string) bool {
 func (a *Server) SetupPublicIP() string {
 	publicIP := network.DetectPublicIP()
 	if publicIP != "" {
-		a.state.mu.Lock()
+		a.state.Lock()
 		a.state.Net.PublicIP = publicIP
-		a.state.mu.Unlock()
+		a.state.Unlock()
 	}
 	return publicIP
 }
@@ -216,9 +217,9 @@ func (a *Server) CloseChatLog() {
 // join.ps1 always tries localhost first (not encoded). Field presence is
 // determined by token length: ≥6 → LAN, ≥10 → public IP, ≥12 → Pinggy.
 func (a *Server) inviteToken() string {
-	a.state.mu.RLock()
+	a.state.RLock()
 	n := a.state.Net
-	a.state.mu.RUnlock()
+	a.state.RUnlock()
 
 	// Parse SSH port.
 	var sshPort uint16
@@ -417,19 +418,19 @@ func (a *Server) registerSession(sess ssh.Session) *common.Player {
 	a.broadcastMsg(common.TeamUpdatedMsg{})
 
 	// Check if this player was disconnected from a running game.
-	a.state.mu.Lock()
+	a.state.Lock()
 	if oldID, ok := a.state.GameDisconnected[player.Name]; ok {
-		a.state.replaceGamePlayerIDLocked(oldID, player.ID)
+		a.state.ReplaceGamePlayerID(oldID, player.ID)
 		delete(a.state.GameDisconnected, player.Name)
 		game := a.state.ActiveGame
-		a.state.mu.Unlock()
+		a.state.Unlock()
 		a.serverLog(fmt.Sprintf("player %s rejoined game (was %s, now %s)", player.Name, oldID, player.ID))
 		// Refresh the teams cache so JS sees the updated player ID.
 		if jrt, ok := game.(*jsRuntime); ok {
 			jrt.SetTeamsCache(a.buildTeamsCache())
 		}
 	} else {
-		a.state.mu.Unlock()
+		a.state.Unlock()
 	}
 
 	return player
@@ -448,9 +449,9 @@ func (a *Server) unregisterSession(playerID string) {
 	if a.state.ActiveGame != nil && a.state.IsGamePlayer(playerID) {
 		a.state.ActiveGame.OnPlayerLeave(playerID)
 		if player != nil {
-			a.state.mu.Lock()
+			a.state.Lock()
 			a.state.GameDisconnected[player.Name] = playerID
-			a.state.mu.Unlock()
+			a.state.Unlock()
 		}
 	}
 
@@ -479,12 +480,12 @@ func (a *Server) runTicker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			a.state.mu.Lock()
+			a.state.Lock()
 			a.state.TickN++
 			n := a.state.TickN
 			game := a.state.ActiveGame
 			phase := a.state.GamePhase
-			a.state.mu.Unlock()
+			a.state.Unlock()
 
 			// Call Update(dt) once per tick — before broadcast so game
 			// state is fresh when players render.
@@ -505,10 +506,10 @@ func (a *Server) runTicker(ctx context.Context) {
 
 // checkGameOver detects if the JS runtime signaled game over and initiates the transition.
 func (a *Server) checkGameOver() {
-	a.state.mu.RLock()
+	a.state.RLock()
 	game := a.state.ActiveGame
 	phase := a.state.GamePhase
-	a.state.mu.RUnlock()
+	a.state.RUnlock()
 
 	if game == nil || phase != common.PhasePlaying {
 		return
@@ -521,12 +522,12 @@ func (a *Server) checkGameOver() {
 	// Save state if the game passed one as the second arg to gameOver().
 	gameOverState := rt.GameOverStateExport()
 
-	a.state.mu.RLock()
+	a.state.RLock()
 	gameName := a.state.GameName
-	a.state.mu.RUnlock()
+	a.state.RUnlock()
 
 	if gameOverState != nil {
-		if err := saveGameState(a.dataDir, gameName, gameOverState); err != nil {
+		if err := state.SaveGameState(a.dataDir, gameName, gameOverState); err != nil {
 			a.serverLog(fmt.Sprintf("warning: could not save game state: %v", err))
 		} else {
 			a.serverLog(fmt.Sprintf("game state saved: %s", gameName))
@@ -534,9 +535,9 @@ func (a *Server) checkGameOver() {
 	}
 
 	a.state.SetGamePhase(common.PhaseGameOver)
-	a.state.mu.Lock()
+	a.state.Lock()
 	a.state.GameOverResults = rt.GameOverResults()
-	a.state.mu.Unlock()
+	a.state.Unlock()
 
 	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhaseGameOver})
 	a.broadcastChat(common.Message{Text: "Game over!"})
@@ -674,9 +675,9 @@ func (a *Server) uniqueName(raw string) string {
 	base = strings.ReplaceAll(base, " ", "-")
 
 	// If this name belongs to a disconnected game player, let them reclaim it.
-	a.state.mu.RLock()
+	a.state.RLock()
 	_, isReconnect := a.state.GameDisconnected[base]
-	a.state.mu.RUnlock()
+	a.state.RUnlock()
 	if isReconnect {
 		return base
 	}
@@ -748,14 +749,14 @@ func (a *Server) loadGame(path string) error {
 		return fmt.Errorf("game supports at most %d teams (have %d)", tr.Max, teamCount)
 	}
 
-	a.state.mu.Lock()
+	a.state.Lock()
 	// Snapshot teams for the game — lobby teams stay independent.
 	a.state.GameTeams = teams
 	a.state.GameDisconnected = make(map[string]string)
 	a.state.ActiveGame = rt
 	a.state.GameName = name
 	a.state.GamePhase = common.PhaseSplash
-	a.state.mu.Unlock()
+	a.state.Unlock()
 
 	// Populate the teams cache so JS teams() returns correct data.
 	if jrt, ok := rt.(*jsRuntime); ok {
@@ -770,7 +771,7 @@ func (a *Server) loadGame(path string) error {
 	}()
 
 	// Call init — teams() now returns game participants via cached snapshot.
-	savedState, err := loadGameState(a.dataDir, name)
+	savedState, err := state.LoadGameState(a.dataDir, name)
 	if err != nil {
 		a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
 	}
@@ -799,15 +800,15 @@ func (a *Server) splashTimer() {
 	case <-a.splashDone:
 	}
 	// Only transition if still in splash phase.
-	a.state.mu.Lock()
+	a.state.Lock()
 	if a.state.GamePhase != common.PhaseSplash {
-		a.state.mu.Unlock()
+		a.state.Unlock()
 		return
 	}
 
 	a.state.GamePhase = common.PhasePlaying
 	game := a.state.ActiveGame
-	a.state.mu.Unlock()
+	a.state.Unlock()
 
 	a.lastUpdate = a.clock.Now()
 	a.broadcastMsg(common.GamePhaseMsg{Phase: common.PhasePlaying})
@@ -845,17 +846,17 @@ func (a *Server) unloadGame() {
 		}
 	}
 
-	a.state.mu.Lock()
+	a.state.Lock()
 	game := a.state.ActiveGame
 	if game == nil {
-		a.state.mu.Unlock()
+		a.state.Unlock()
 		return // already unloaded
 	}
 	a.state.ActiveGame = nil
 	a.state.GameName = ""
 	a.state.GamePhase = common.PhaseNone
 	a.state.GameOverReady = nil
-	a.state.mu.Unlock()
+	a.state.Unlock()
 
 	for _, cmd := range game.Commands() {
 		a.registry.Unregister(cmd.Name)
@@ -998,9 +999,9 @@ func (a *Server) registerBuiltins() {
 				ctx.Reply("Usage: /admin <password>")
 				return
 			}
-			a.state.mu.RLock()
+			a.state.RLock()
 			pw := a.state.AdminPassword
-			a.state.mu.RUnlock()
+			a.state.RUnlock()
 			if pw == "" {
 				ctx.Reply("No admin password set. Ask the server operator to set one with /password.")
 				return
@@ -1025,9 +1026,9 @@ func (a *Server) registerBuiltins() {
 				ctx.Reply("Usage: /password <new>")
 				return
 			}
-			a.state.mu.Lock()
+			a.state.Lock()
 			a.state.AdminPassword = args[0]
-			a.state.mu.Unlock()
+			a.state.Unlock()
 			ctx.Reply("Admin password changed.")
 		},
 	})
@@ -1067,9 +1068,9 @@ func (a *Server) registerBuiltins() {
 				case "load":
 					return listGames(filepath.Join(a.dataDir, "games"))
 				case "unload":
-					a.state.mu.RLock()
+					a.state.RLock()
 					name := a.state.GameName
-					a.state.mu.RUnlock()
+					a.state.RUnlock()
 					if name != "" {
 						return []string{strings.TrimSuffix(filepath.Base(name), ".js")}
 					}
@@ -1120,9 +1121,9 @@ func (a *Server) registerBuiltins() {
 					ctx.Reply("Permission denied (admin only)")
 					return
 				}
-				a.state.mu.RLock()
+				a.state.RLock()
 				active := a.state.GameName
-				a.state.mu.RUnlock()
+				a.state.RUnlock()
 				if active == "" {
 					ctx.Reply("No game is currently loaded.")
 					return
@@ -1266,9 +1267,9 @@ func probeGameTeamRange(path string) common.TeamRange {
 
 // formatGameList builds the game list output with team range info and compatibility markers.
 func (a *Server) formatGameList(gamesDir string, available []string) string {
-	a.state.mu.RLock()
+	a.state.RLock()
 	active := a.state.GameName
-	a.state.mu.RUnlock()
+	a.state.RUnlock()
 
 	teamCount := a.state.TeamCount()
 

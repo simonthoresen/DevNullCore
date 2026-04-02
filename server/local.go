@@ -12,13 +12,14 @@ import (
 
 	"null-space/common"
 	"null-space/internal/network"
+	"null-space/internal/state"
 )
 
 // NewLocal creates a Server for local (non-SSH) use: a single player on the
 // local terminal. No SSH server, no networking, no host key file.
 func NewLocal(dataDir string) *Server {
 	app := &Server{
-		state:    newState(""),
+		state:    state.New(""),
 		registry: newCommandRegistry(),
 		dataDir:  dataDir,
 		programs: make(map[string]*tea.Program),

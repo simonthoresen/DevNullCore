@@ -486,9 +486,9 @@ func (m chromeModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		default:
 			// route to game
-			m.app.state.mu.RLock()
+			m.app.state.RLock()
 			game := m.app.state.ActiveGame
-			m.app.state.mu.RUnlock()
+			m.app.state.RUnlock()
 			if game != nil {
 				// Bubble Tea v2 returns "space" for spacebar; normalize to " "
 				// so game scripts can use the intuitive key === " " check.
@@ -787,11 +787,11 @@ func (m chromeModel) View() tea.View {
 		return view
 	}
 
-	m.app.state.mu.RLock()
+	m.app.state.RLock()
 	game := m.app.state.ActiveGame
 	gameName := m.app.state.GameName
 	phase := m.app.state.GamePhase
-	m.app.state.mu.RUnlock()
+	m.app.state.RUnlock()
 
 	barLayer := m.theme.LayerAt(1) // secondary: menu bar, status bar, command bar
 	bodyLayer := m.theme.LayerAt(0) // primary: content areas
@@ -1033,9 +1033,9 @@ func (m chromeModel) viewGameOver(menus []common.MenuDef, game common.Game, game
 		viewportH = 1
 	}
 
-	m.app.state.mu.RLock()
+	m.app.state.RLock()
 	results := m.app.state.GameOverResults
-	m.app.state.mu.RUnlock()
+	m.app.state.RUnlock()
 
 	goContent := m.defaultGameOverScreen(results, m.width, viewportH)
 	viewport := fitBlock(goContent, m.width, viewportH)
@@ -1295,9 +1295,9 @@ func (m *chromeModel) invalidateMenuCache() {
 
 // cachedMenus returns the menu tree, rebuilding only when the active game has changed.
 func (m *chromeModel) cachedMenus() []common.MenuDef {
-	m.app.state.mu.RLock()
+	m.app.state.RLock()
 	game := m.app.state.ActiveGame
-	m.app.state.mu.RUnlock()
+	m.app.state.RUnlock()
 
 	if m.menuCache != nil && m.menuCacheGame == game {
 		return m.menuCache

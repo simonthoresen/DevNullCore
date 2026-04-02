@@ -1,4 +1,4 @@
-package server
+package state
 
 import (
 	"encoding/json"
@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 )
 
-// loadGameState reads the saved state for a game from dist/state/<gameName>.json.
+// LoadGameState reads the saved state for a game from dist/state/<gameName>.json.
 // Returns nil (no error) if the file does not exist.
-func loadGameState(dataDir, gameName string) (any, error) {
+func LoadGameState(dataDir, gameName string) (any, error) {
 	path := filepath.Join(dataDir, "state", gameName+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -18,24 +18,24 @@ func loadGameState(dataDir, gameName string) (any, error) {
 		}
 		return nil, fmt.Errorf("read game state: %w", err)
 	}
-	var state any
-	if err := json.Unmarshal(data, &state); err != nil {
+	var s any
+	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("parse game state: %w", err)
 	}
-	return state, nil
+	return s, nil
 }
 
-// saveGameState writes game state to dist/state/<gameName>.json.
+// SaveGameState writes game state to dist/state/<gameName>.json.
 // Creates the state/ directory if it does not exist. Does nothing if state is nil.
-func saveGameState(dataDir, gameName string, state any) error {
-	if state == nil {
+func SaveGameState(dataDir, gameName string, s any) error {
+	if s == nil {
 		return nil
 	}
 	dir := filepath.Join(dataDir, "state")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create state directory: %w", err)
 	}
-	data, err := json.MarshalIndent(state, "", "  ")
+	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal game state: %w", err)
 	}

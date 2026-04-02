@@ -431,10 +431,10 @@ func (m *consoleModel) View() tea.View {
 	m.window.RenderToBuf(buf, 0, 1, m.width, panelH, primary)
 
 	// Status bar (bottom row).
-	m.app.state.mu.RLock()
+	m.app.state.RLock()
 	gameName := m.app.state.GameName
 	phase := m.app.state.GamePhase
-	m.app.state.mu.RUnlock()
+	m.app.state.RUnlock()
 	gameLabel := "none"
 	if gameName != "" {
 		gameLabel = gameName
