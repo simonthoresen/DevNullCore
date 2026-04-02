@@ -490,18 +490,7 @@ func prevSelectable(items []common.MenuItemDef, cur int) int {
 	return cur
 }
 
-// ─── Drop shadow ──────────────────────────────────────────────────────────────
-
-// shadowBox holds the position and size of a box for drop shadow rendering.
-type shadowBox struct {
-	col, row      int
-	width, height int
-}
-
-// shadowFor returns the box descriptor for ApplyShadow.
-func shadowFor(col, row, boxW, boxH int) shadowBox {
-	return shadowBox{col: col, row: row, width: boxW, height: boxH}
-}
+// ─── Overlay box ─────────────────────────────────────────────────────────────
 
 // overlayBox bundles an overlay's rendered content with its position and
 // pre-computed dimensions so callers don't need to split the string.
