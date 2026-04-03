@@ -75,6 +75,15 @@ func TruncateStyled(text string, width int) string {
 
 // ─── Overlay state ─────────────────────────────────────────────────────────────
 
+// DialogFocusZone identifies which part of the dialog has keyboard focus.
+type DialogFocusZone int
+
+const (
+	DialogFocusButtons DialogFocusZone = iota // default: buttons
+	DialogFocusList                           // list items (when ListItems is set)
+	DialogFocusInput                          // text input (when InputPrompt is set)
+)
+
 // OverlayState holds all per-player NC overlay UI state.
 type OverlayState struct {
 	MenuFocused bool // F10 was pressed; action bar is focused
@@ -84,6 +93,17 @@ type OverlayState struct {
 
 	Dialogs     []domain.DialogRequest
 	DialogFocus int // focused button in top dialog
+
+	// List dialog state (when top dialog has ListItems).
+	DialogListCursor int // selected item index
+	DialogListScroll int // scroll offset (0 = top visible)
+
+	// Input dialog state (when top dialog has InputPrompt).
+	DialogInputValue  string
+	DialogInputCursor int
+
+	// Which zone of the dialog has focus.
+	DialogZone DialogFocusZone
 }
 
 // ShowDialogMsg is sent to a player's Bubble Tea program to push a dialog.
@@ -101,12 +121,40 @@ func (o *OverlayState) TopDialog() *domain.DialogRequest {
 func (o *OverlayState) PushDialog(d domain.DialogRequest) {
 	o.Dialogs = append(o.Dialogs, d)
 	o.DialogFocus = 0
+	o.DialogListCursor = 0
+	o.DialogListScroll = 0
+	o.DialogInputValue = ""
+	o.DialogInputCursor = 0
+	// Default focus: list if present, then input, then buttons.
+	if len(d.ListItems) > 0 {
+		o.DialogZone = DialogFocusList
+	} else if d.InputPrompt != "" {
+		o.DialogZone = DialogFocusInput
+	} else {
+		o.DialogZone = DialogFocusButtons
+	}
 }
 
 func (o *OverlayState) PopDialog() {
 	if len(o.Dialogs) > 0 {
 		o.Dialogs = o.Dialogs[:len(o.Dialogs)-1]
 		o.DialogFocus = 0
+		o.DialogListCursor = 0
+		o.DialogListScroll = 0
+		o.DialogInputValue = ""
+		o.DialogInputCursor = 0
+		// Reset zone for the next dialog on the stack.
+		if d := o.TopDialog(); d != nil {
+			if len(d.ListItems) > 0 {
+				o.DialogZone = DialogFocusList
+			} else if d.InputPrompt != "" {
+				o.DialogZone = DialogFocusInput
+			} else {
+				o.DialogZone = DialogFocusButtons
+			}
+		} else {
+			o.DialogZone = DialogFocusButtons
+		}
 	}
 }
 
@@ -268,9 +316,145 @@ func (o *OverlayState) HandleDialogKey(key string) bool {
 	if len(btns) == 0 {
 		btns = []string{"OK"}
 	}
+	hasList := len(d.ListItems) > 0
+	hasInput := d.InputPrompt != ""
+
+	// Tab cycles focus zones: list → input → buttons → list ...
+	// When only buttons exist (no list/input), Tab cycles button focus instead.
+	if key == "tab" || key == "shift+tab" {
+		zones := []DialogFocusZone{}
+		if hasList {
+			zones = append(zones, DialogFocusList)
+		}
+		if hasInput {
+			zones = append(zones, DialogFocusInput)
+		}
+		zones = append(zones, DialogFocusButtons)
+
+		if len(zones) == 1 {
+			// Only buttons — Tab cycles button focus (original behavior).
+			if key == "tab" {
+				o.DialogFocus = (o.DialogFocus + 1) % len(btns)
+			} else {
+				o.DialogFocus = (o.DialogFocus - 1 + len(btns)) % len(btns)
+			}
+			return true
+		}
+		cur := 0
+		for i, z := range zones {
+			if z == o.DialogZone {
+				cur = i
+				break
+			}
+		}
+		if key == "tab" {
+			cur = (cur + 1) % len(zones)
+		} else {
+			cur = (cur - 1 + len(zones)) % len(zones)
+		}
+		o.DialogZone = zones[cur]
+		return true
+	}
+
+	// Esc always dismisses.
+	if key == "esc" {
+		o.fireDialogClose(d, "")
+		return true
+	}
+
+	// Route to the focused zone.
+	switch o.DialogZone {
+	case DialogFocusList:
+		return o.handleDialogListKey(key, d, btns)
+	case DialogFocusInput:
+		return o.handleDialogInputKey(key, d, btns)
+	default:
+		return o.handleDialogButtonKey(key, d, btns)
+	}
+}
+
+func (o *OverlayState) handleDialogListKey(key string, d *domain.DialogRequest, btns []string) bool {
+	n := len(d.ListItems)
 	switch key {
-	case "tab":
-		o.DialogFocus = (o.DialogFocus + 1) % len(btns)
+	case "up":
+		if o.DialogListCursor > 0 {
+			o.DialogListCursor--
+			o.ensureListVisible(d)
+		}
+	case "down":
+		if o.DialogListCursor < n-1 {
+			o.DialogListCursor++
+			o.ensureListVisible(d)
+		}
+	case "pgup":
+		o.DialogListCursor -= o.dialogListVisibleHeight(d)
+		if o.DialogListCursor < 0 {
+			o.DialogListCursor = 0
+		}
+		o.ensureListVisible(d)
+	case "pgdown":
+		o.DialogListCursor += o.dialogListVisibleHeight(d)
+		if o.DialogListCursor >= n {
+			o.DialogListCursor = n - 1
+		}
+		o.ensureListVisible(d)
+	case "home":
+		o.DialogListCursor = 0
+		o.ensureListVisible(d)
+	case "end":
+		o.DialogListCursor = n - 1
+		o.ensureListVisible(d)
+	case "enter", " ":
+		// Activate the focused button with the selected list item.
+		o.fireDialogClose(d, btns[o.DialogFocus])
+	default:
+		// Left/right navigate buttons even while list is focused.
+		if key == "left" && o.DialogFocus > 0 {
+			o.DialogFocus--
+		} else if key == "right" && o.DialogFocus < len(btns)-1 {
+			o.DialogFocus++
+		}
+	}
+	return true
+}
+
+func (o *OverlayState) handleDialogInputKey(key string, d *domain.DialogRequest, btns []string) bool {
+	switch key {
+	case "enter":
+		o.fireDialogClose(d, btns[o.DialogFocus])
+	case "backspace":
+		if o.DialogInputCursor > 0 {
+			o.DialogInputValue = o.DialogInputValue[:o.DialogInputCursor-1] + o.DialogInputValue[o.DialogInputCursor:]
+			o.DialogInputCursor--
+		}
+	case "delete":
+		if o.DialogInputCursor < len(o.DialogInputValue) {
+			o.DialogInputValue = o.DialogInputValue[:o.DialogInputCursor] + o.DialogInputValue[o.DialogInputCursor+1:]
+		}
+	case "left":
+		if o.DialogInputCursor > 0 {
+			o.DialogInputCursor--
+		}
+	case "right":
+		if o.DialogInputCursor < len(o.DialogInputValue) {
+			o.DialogInputCursor++
+		}
+	case "home":
+		o.DialogInputCursor = 0
+	case "end":
+		o.DialogInputCursor = len(o.DialogInputValue)
+	default:
+		// Insert printable characters.
+		if len(key) == 1 && key[0] >= ' ' && key[0] < 0x7f {
+			o.DialogInputValue = o.DialogInputValue[:o.DialogInputCursor] + key + o.DialogInputValue[o.DialogInputCursor:]
+			o.DialogInputCursor++
+		}
+	}
+	return true
+}
+
+func (o *OverlayState) handleDialogButtonKey(key string, d *domain.DialogRequest, btns []string) bool {
+	switch key {
 	case "left":
 		if o.DialogFocus > 0 {
 			o.DialogFocus--
@@ -279,21 +463,57 @@ func (o *OverlayState) HandleDialogKey(key string) bool {
 		if o.DialogFocus < len(btns)-1 {
 			o.DialogFocus++
 		}
+	case "up":
+		// Move focus back to list or input if available.
+		if d.InputPrompt != "" {
+			o.DialogZone = DialogFocusInput
+		} else if len(d.ListItems) > 0 {
+			o.DialogZone = DialogFocusList
+		}
 	case "enter", " ":
-		label := btns[o.DialogFocus]
-		cb := d.OnClose
-		o.PopDialog()
-		if cb != nil {
-			cb(label)
-		}
-	case "esc":
-		cb := d.OnClose
-		o.PopDialog()
-		if cb != nil {
-			cb("")
-		}
+		o.fireDialogClose(d, btns[o.DialogFocus])
 	}
 	return true
+}
+
+// fireDialogClose invokes the appropriate callback and pops the dialog.
+func (o *OverlayState) fireDialogClose(d *domain.DialogRequest, button string) {
+	listIdx := o.DialogListCursor
+	inputVal := o.DialogInputValue
+	cbList := d.OnListAction
+	cbInput := d.OnInputClose
+	cbClose := d.OnClose
+	o.PopDialog()
+	switch {
+	case cbList != nil && len(d.ListItems) > 0:
+		cbList(button, listIdx)
+	case cbInput != nil && d.InputPrompt != "":
+		cbInput(button, inputVal)
+	case cbClose != nil:
+		cbClose(button)
+	}
+}
+
+// dialogListVisibleHeight returns the number of visible list rows in the dialog.
+const dialogMaxListH = 12
+
+func (o *OverlayState) dialogListVisibleHeight(d *domain.DialogRequest) int {
+	h := len(d.ListItems)
+	if h > dialogMaxListH {
+		h = dialogMaxListH
+	}
+	return h
+}
+
+// ensureListVisible adjusts scroll so the cursor is visible.
+func (o *OverlayState) ensureListVisible(d *domain.DialogRequest) {
+	visH := o.dialogListVisibleHeight(d)
+	if o.DialogListCursor < o.DialogListScroll {
+		o.DialogListScroll = o.DialogListCursor
+	}
+	if o.DialogListCursor >= o.DialogListScroll+visH {
+		o.DialogListScroll = o.DialogListCursor - visH + 1
+	}
 }
 
 // ─── Mouse handling ───────────────────────────────────────────────────────────
@@ -395,17 +615,20 @@ func (o *OverlayState) handleDropdownClick(x, y, ncBarRow int, menus []domain.Me
 	return relY <= lineIdx+1 // consumed if inside box area
 }
 
-func (o *OverlayState) HandleDialogClick(x, y, screenW, screenH int) bool {
+// dialogLayout computes the inner width, total dimensions, and position
+// for the current top dialog. Mirrors the logic in RenderDialog.
+func (o *OverlayState) dialogLayout(screenW, screenH int) (innerW, totalW, totalH, col, row int) {
 	d := o.TopDialog()
 	if d == nil {
-		return false
+		return
 	}
 	btns := d.Buttons
 	if len(btns) == 0 {
 		btns = []string{"OK"}
 	}
+	hasList := len(d.ListItems) > 0
+	hasInput := d.InputPrompt != ""
 
-	// Recalculate dialog dimensions (mirrors RenderDialog logic)
 	bodyLines := strings.Split(d.Body, "\n")
 	maxBodyW := 0
 	for _, l := range bodyLines {
@@ -414,13 +637,35 @@ func (o *OverlayState) HandleDialogClick(x, y, screenW, screenH int) bool {
 			maxBodyW = w
 		}
 	}
+	maxListW := 0
+	if hasList {
+		for i, item := range d.ListItems {
+			w := ansi.StringWidth(item) + 5
+			if i < len(d.ListTags) && d.ListTags[i] != "" {
+				w += 2 + ansi.StringWidth(d.ListTags[i])
+			}
+			if w > maxListW {
+				maxListW = w
+			}
+		}
+	}
+	inputLabelW := 0
+	if hasInput {
+		inputLabelW = ansi.StringWidth(d.InputPrompt) + 2
+	}
 	btnW := 0
 	for _, b := range btns {
-		btnW += len(b) + 4 // "[ b ]"
+		btnW += len(b) + 4
 	}
 	btnW += (len(btns) - 1) * 2
 
-	innerW := maxBodyW + 2
+	innerW = maxBodyW + 2
+	if maxListW+2 > innerW {
+		innerW = maxListW + 2
+	}
+	if inputLabelW+12 > innerW {
+		innerW = inputLabelW + 12
+	}
 	if ansi.StringWidth(d.Title)+2 > innerW {
 		innerW = ansi.StringWidth(d.Title) + 2
 	}
@@ -431,40 +676,73 @@ func (o *OverlayState) HandleDialogClick(x, y, screenW, screenH int) bool {
 		innerW = 22
 	}
 
-	// Must match RenderDialog's calculation exactly (no shadow offset).
-	totalW := innerW + 2
-	totalH := 3 + len(bodyLines) + 3 // top + title + sep + body + sep + buttons + bottom
-	col := (screenW - totalW) / 2
-	row := (screenH - totalH) / 2
-	if row < 2 {
-		row = 2
+	contentRows := len(bodyLines)
+	if hasList {
+		contentRows = o.dialogListVisibleHeight(d)
 	}
 
-	// Check if click is on the button row
-	// Button row is: top(1) + title(1) + sep(1) + body(len) + sep(1) = 4 + len(bodyLines)
-	btnRow := row + 4 + len(bodyLines)
-	if y == btnRow {
-		// Calculate button positions within the row
-		lpad := (innerW - btnW) / 2
-		bx := col + 1 + lpad // col + left border + left padding
-		for i, b := range btns {
-			bw := len(b) + 4 // "[ b ]"
-			if x >= bx && x < bx+bw {
-				label := btns[i]
-				cb := d.OnClose
-				o.PopDialog()
-				if cb != nil {
-					cb(label)
-				}
-				return true
+	totalLines := 3 + contentRows + 2 + 1 // top+title+sep + content + sep+buttons + bottom
+	if hasInput {
+		totalLines += 2
+	}
+	totalW = innerW + 2
+	totalH = totalLines
+	col = max(0, (screenW-totalW)/2)
+	row = max(2, (screenH-totalH)/2)
+	return
+}
+
+func (o *OverlayState) HandleDialogClick(x, y, screenW, screenH int) bool {
+	d := o.TopDialog()
+	if d == nil {
+		return false
+	}
+	btns := d.Buttons
+	if len(btns) == 0 {
+		btns = []string{"OK"}
+	}
+	hasList := len(d.ListItems) > 0
+
+	innerW, totalW, totalH, col, row := o.dialogLayout(screenW, screenH)
+
+	relX := x - col
+	relY := y - row
+
+	// Click on a list item?
+	if hasList {
+		contentRows := o.dialogListVisibleHeight(d)
+		listStartRow := 3 // after top + title + sep
+		listEndRow := listStartRow + contentRows
+		if relY >= listStartRow && relY < listEndRow && relX >= 0 && relX < totalW {
+			clickedIdx := o.DialogListScroll + (relY - listStartRow)
+			if clickedIdx >= 0 && clickedIdx < len(d.ListItems) {
+				o.DialogListCursor = clickedIdx
+				o.DialogZone = DialogFocusList
 			}
-			bx += bw + 2 // button width + gap
+			return true
 		}
 	}
 
-	// Any click inside the dialog area (including shadow) consumes the event.
-	relX := x - col
-	relY := y - row
+	// Click on a button?
+	btnW := 0
+	for _, b := range btns {
+		btnW += len(b) + 4
+	}
+	btnW += (len(btns) - 1) * 2
+	btnRowY := row + totalH - 2
+	if y == btnRowY {
+		lpad := max(0, (innerW-btnW)/2)
+		bx := col + 1 + lpad
+		for i, b := range btns {
+			bw := len(b) + 4
+			if x >= bx && x < bx+bw {
+				o.fireDialogClose(d, btns[i])
+				return true
+			}
+			bx += bw + 2
+		}
+	}
+
 	return relX >= 0 && relX < totalW+1 && relY >= 0 && relY < totalH+1
 }
 

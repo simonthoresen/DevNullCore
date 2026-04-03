@@ -49,6 +49,19 @@ type DialogRequest struct {
 	Buttons []string // button labels; if empty, defaults to ["OK"]
 	// OnClose is called with the pressed button label, or "" if dismissed with Esc.
 	OnClose func(button string)
+
+	// List support — when ListItems is non-nil, the dialog renders a selectable,
+	// scrollable list instead of the Body text. The list cursor is tracked by
+	// OverlayState and passed to OnListAction when a button is pressed.
+	ListItems    []string
+	ListTags     []string                       // optional right-aligned tags per item (e.g. "[active]")
+	OnListAction func(button string, idx int)   // called instead of OnClose when ListItems is set
+
+	// Input support — when InputPrompt is non-empty, the dialog shows a single-line
+	// text input field above the buttons. OnInputClose receives the button label
+	// and the current input value.
+	InputPrompt  string
+	OnInputClose func(button string, value string) // called instead of OnClose when InputPrompt is set
 }
 
 // Shader is a post-processing pass that runs on the rendered ImageBuffer
