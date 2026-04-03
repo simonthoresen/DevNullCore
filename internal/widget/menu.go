@@ -232,8 +232,10 @@ func (o *OverlayState) handleDropdownKey(key string, menus []domain.MenuDef, pla
 		if o.DropCursor >= 0 && o.DropCursor < len(items) {
 			item := items[o.DropCursor]
 			if !item.Disabled && item.Handler != nil {
-				o.OpenMenu = -1
-				o.MenuFocused = false
+				if !item.Toggle {
+					o.OpenMenu = -1
+					o.MenuFocused = false
+				}
 				item.Handler(playerID)
 			}
 		}
@@ -247,8 +249,10 @@ func (o *OverlayState) handleDropdownKey(key string, menus []domain.MenuDef, pla
 			for i, it := range items {
 				if !it.Disabled && !IsSeparator(it) && ItemShortcut(it) == letter {
 					if it.Handler != nil {
-						o.OpenMenu = -1
-						o.MenuFocused = false
+						if !it.Toggle {
+							o.OpenMenu = -1
+							o.MenuFocused = false
+						}
 						it.Handler(playerID)
 					}
 					_ = i
@@ -349,8 +353,10 @@ func (o *OverlayState) handleDropdownClick(x, y, ncBarRow int, menus []domain.Me
 		if relY == lineIdx && !IsSeparator(it) && !it.Disabled {
 			if it.Handler != nil {
 				o.DropCursor = i
-				o.OpenMenu = -1
-				o.MenuFocused = false
+				if !it.Toggle {
+					o.OpenMenu = -1
+					o.MenuFocused = false
+				}
 				it.Handler(playerID)
 			}
 			return true
