@@ -262,7 +262,7 @@ var Game = {
 
     state: {
         elapsed: 0,
-        gameDuration: 30
+        gameDuration: 30,
         angleX: 0,
         angleY: 0,
         angleZ: 0
