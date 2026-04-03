@@ -72,7 +72,7 @@ func (m Model) View() tea.View {
 		}
 	}
 	if m.overlay.HasDialog() {
-		dlgLayer := m.theme.LayerAt(2)
+		dlgLayer := m.theme.LayerAt(m.overlay.DialogLayer())
 		if sub, col, row := m.overlay.RenderDialogBuf(m.width, m.height, dlgLayer); sub != nil {
 			buf.Blit(col, row, sub)
 			render.BlitShadow(buf, col, row, sub.Width, sub.Height, shadowFg, shadowBg)

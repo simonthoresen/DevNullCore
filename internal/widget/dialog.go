@@ -282,6 +282,12 @@ func (o *OverlayState) HandleDialogClick(x, y, screenW, screenH int) bool {
 	return true
 }
 
+// DialogLayer returns the theme layer index for the top dialog.
+// Layer 0 = main window, layer 1 = first dialog, layer 2 = dialog-on-dialog, etc.
+func (o *OverlayState) DialogLayer() int {
+	return len(o.dialogs)
+}
+
 // topEntry returns the top dialog entry, or nil.
 func (o *OverlayState) topEntry() *dialogEntry {
 	if len(o.dialogs) == 0 {

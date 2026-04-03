@@ -101,6 +101,8 @@ go run ./cmd/null-space-server --local --data-dir dist --game example --player a
 
 **All UI must build on the NC widget system** (`internal/widget/`). Never hand-draw ANSI strings for dialogs, overlays, or modals. Use `Window` + child Controls (`Label`, `Button`, `ListBox`, `TextInput`, `TextView`, etc.) and render via `RenderToBuf`. If a control doesn't exist, add it to `internal/widget/` — that extends the system rather than creating a parallel one. Dialogs are NC Windows rendered into a sub-buffer and blitted as overlays.
 
+**Theme layer depth:** Layer 0 = main window (lobby/playing). Menus can only open from layer 0, so they always render at layer 1. Dialogs render at `1 + stackIndex` — the first dialog is layer 1 (same as menus, which close when a dialog opens), a dialog opened from a dialog is layer 2, etc. Use `OverlayState.DialogLayer()` to get the current layer.
+
 ## Concurrency — Lock Ordering
 
 Two primary mutexes protect shared state:
