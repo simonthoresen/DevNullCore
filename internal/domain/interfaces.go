@@ -1,6 +1,10 @@
 package domain
 
-import "null-space/internal/render"
+import (
+	"image"
+
+	"null-space/internal/render"
+)
 
 // Command is a registered slash command.
 type Command struct {
@@ -111,6 +115,9 @@ type Game interface {
 	// Returns the rendered image as PNG bytes, or nil if the game has no canvas hook.
 	// The canvas dimensions are viewport cells × canvasScale pixels per cell.
 	RenderCanvas(playerID string, width, height int) []byte
+	// RenderCanvasImage is like RenderCanvas but returns the raw *image.RGBA
+	// instead of PNG bytes. Used by quadrant rendering to avoid encode/decode overhead.
+	RenderCanvasImage(playerID string, width, height int) *image.RGBA
 	HasCanvasMode() bool // true if game defines renderCanvas hook
 	Unload()
 

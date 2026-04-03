@@ -290,6 +290,24 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 		}
 	}
 
+	// Quadrant canvas: render canvas games as Unicode quadrant block characters
+	// (2x2 pixels per cell, doubling effective resolution). This provides a text
+	// fallback for regular SSH clients and enhanced clients with canvas scale off.
+	if game.HasCanvasMode() && phase == domain.PhasePlaying {
+		inner := m.playingGameView.RenderFn
+		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
+			// First render the normal text layer (HUD overlays, etc.).
+			if inner != nil {
+				inner(gbuf, x, y, w, h)
+			}
+			// Then render canvas at 2x resolution and convert to quadrant chars.
+			img := game.RenderCanvasImage(m.playerID, w*2, h*2)
+			if img != nil {
+				render.ImageToQuadrants(img, gbuf, x, y, w, h)
+			}
+		}
+	}
+
 	// Update chat view.
 	m.playingChatView.Lines = m.chatLines
 	m.playingChatView.ScrollOffset = m.chatScrollOffset

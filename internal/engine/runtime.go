@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"image"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -457,6 +458,27 @@ func (r *JSRuntime) RenderCanvas(playerID string, width, height int) []byte {
 		return nil
 	}
 	return data
+}
+
+func (r *JSRuntime) RenderCanvasImage(playerID string, width, height int) *image.RGBA {
+	if r.renderCanvasFn == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer r.recoverJS("RenderCanvasImage")
+	defer TraceJS(r.vm, "RenderCanvasImage")()
+	cancel := WatchdogJS(r.vm, "RenderCanvasImage")
+	defer cancel()
+
+	canvas := NewJSCanvas(width, height)
+	ctx := canvas.ToJSObject(r.vm)
+	_, err := r.renderCanvasFn(goja.Undefined(), r.vm.ToValue(ctx), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(height))
+	if err != nil {
+		slog.Error("JS RenderCanvasImage error", "error", err)
+		return nil
+	}
+	return canvas.ToRGBA()
 }
 
 func (r *JSRuntime) RenderSplash(buf *render.ImageBuffer, playerID string, x, y, width, height int) bool {
