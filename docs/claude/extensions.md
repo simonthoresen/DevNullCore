@@ -125,6 +125,8 @@ var Game = {
 
 On game load, `bestRenderMode()` auto-selects the highest-fidelity mode the client supports. Modes not supported by the client or game are shown disabled in the View menu. The quadrant renderer (`internal/render/quadrant.go`) partitions each 2×2 pixel block into optimal fg/bg color groups using exhaustive 2-means clustering.
 
+**Local rendering:** The View menu also has a **Local** toggle (enhanced clients only). When enabled (default for enhanced clients), the server sends game JS source and state deltas via OSC, and the client runs the game locally in its own goja VM — no dependency on the server's ANSI stream. When disabled, the server sends `mode=remote` via `EncodeModeOSC` and stops sending game source/state. The client falls back to the ANSI stream. Per-player state: `Model.localRendering` bool + `Model.localModeSent` flag. Client-side: `renderer.go` checks `renderMode != "remote"` before entering `drawLocal()`.
+
 | Package | Role |
 |---------|------|
 | `common/charmap.go` | CharMapDef/CharMapEntry types, PUA constants, JSON loader |

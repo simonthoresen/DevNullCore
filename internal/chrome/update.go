@@ -125,6 +125,8 @@ func (m Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.charmapSent = false
 	m.gameSrcSent = false
 	m.lastStateJSON = ""
+	m.localModeSent = false
+	m.localRendering = m.IsEnhancedClient // default on for enhanced clients
 	m.renderMode = m.bestRenderMode()
 	m.invalidateMenuCache()
 	m.lobbyInput.Model.Blur()

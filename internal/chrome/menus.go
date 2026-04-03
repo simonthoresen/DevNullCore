@@ -51,8 +51,8 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
 
-	// View menu — rendering mode selection.
-	viewItems := make([]domain.MenuItemDef, 0, 3)
+	// View menu — rendering mode + local rendering toggle.
+	viewItems := make([]domain.MenuItemDef, 0, 5)
 	for _, mode := range []domain.RenderMode{domain.RenderModeText, domain.RenderModeQuadrant, domain.RenderModeCanvas} {
 		mode := mode // capture
 		viewItems = append(viewItems, domain.MenuItemDef{
@@ -65,6 +65,23 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 			},
 		})
 	}
+	viewItems = append(viewItems,
+		domain.MenuItemDef{Label: "---"},
+		domain.MenuItemDef{
+			Label:    "&Local",
+			Toggle:   true,
+			Disabled: !m.IsEnhancedClient,
+			Checked:  func() bool { return m.localRendering },
+			Handler: func(_ string) {
+				m.localRendering = !m.localRendering
+				m.localModeSent = false // re-send mode OSC next frame
+				if !m.localRendering {
+					m.gameSrcSent = false   // allow re-send if toggled back on
+					m.lastStateJSON = ""
+				}
+			},
+		},
+	)
 	menus = append(menus, domain.MenuDef{Label: "&View", Items: viewItems})
 
 	if game != nil {

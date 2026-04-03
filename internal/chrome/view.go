@@ -82,8 +82,18 @@ func (m Model) View() tea.View {
 	// Enhanced client OSC protocol: send charmap data, game source, state, and viewport bounds.
 	var oscPrefix string
 	if m.IsEnhancedClient && m.inActiveGame && game != nil {
+		// Send local/remote mode OSC once on game load or when toggled.
+		if !m.localModeSent {
+			if m.localRendering {
+				oscPrefix += render.EncodeModeOSC("local")
+			} else {
+				oscPrefix += render.EncodeModeOSC("remote")
+			}
+			m.localModeSent = true
+		}
+
 		// Send game source files once on game load (for client-side local rendering).
-		if !m.gameSrcSent {
+		if m.localRendering && !m.gameSrcSent {
 			for _, sf := range game.GameSource() {
 				oscPrefix += render.EncodeGameSourceOSC(sf.Name, sf.Content)
 			}
@@ -103,7 +113,7 @@ func (m Model) View() tea.View {
 			oscPrefix += render.EncodeViewportOSC(m.viewportX, m.viewportY, m.viewportW, m.viewportH)
 
 			// Send Game.state if it changed since last frame (for local rendering).
-			if phase == domain.PhasePlaying {
+			if m.localRendering && phase == domain.PhasePlaying {
 				if stateJSON := render.EncodeStateOSC(game.State()); stateJSON != "" && stateJSON != m.lastStateJSON {
 					oscPrefix += stateJSON
 					m.lastStateJSON = stateJSON

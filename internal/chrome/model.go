@@ -120,6 +120,8 @@ type Model struct {
 
 	// Enhanced client protocol (null-space-client with charmap/canvas/local-render support).
 	IsEnhancedClient bool
+	localRendering   bool   // true = send game JS + state for client-side rendering
+	localModeSent    bool   // true after the initial mode OSC has been sent
 	charmapSent      bool   // true after charmap+atlas OSC have been sent for the current game
 	gameSrcSent      bool   // true after game source files have been sent
 	lastStateJSON    string // JSON of last sent Game.state (for delta detection)

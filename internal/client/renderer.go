@@ -256,9 +256,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Full local rendering: if we have game JS + state, render the entire UI
-	// locally (NC chrome + game viewport) — no dependency on ANSI stream.
-	if g.localRenderer.IsLoaded() && g.gameStateJSON != nil && g.clientScreen != nil {
+	// Full local rendering: if we have game JS + state and mode is not "remote",
+	// render the entire UI locally (NC chrome + game viewport) — no dependency on ANSI stream.
+	if g.localRenderer.IsLoaded() && g.gameStateJSON != nil && g.clientScreen != nil && g.renderMode != "remote" {
 		g.drawLocal(screen)
 		return
 	}
