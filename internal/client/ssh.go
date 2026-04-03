@@ -21,7 +21,9 @@ type SSHConn struct {
 
 // Dial connects to the server and sets up a PTY session.
 // It sends NULL_SPACE_CLIENT=enhanced so the server knows we support charmaps.
-func Dial(host string, port int, player string) (*SSHConn, error) {
+// If terminalMode is true, it sends NULL_SPACE_CLIENT=terminal instead (local
+// rendering in a terminal, no charmap/canvas support).
+func Dial(host string, port int, player string, terminalMode bool) (*SSHConn, error) {
 	addr := fmt.Sprintf("%s:%d", host, port)
 
 	config := &ssh.ClientConfig{
@@ -50,8 +52,12 @@ func Dial(host string, port int, player string) (*SSHConn, error) {
 		return nil, fmt.Errorf("new session: %w", err)
 	}
 
-	// Tell the server we're an enhanced client.
-	if err := session.Setenv("NULL_SPACE_CLIENT", "enhanced"); err != nil {
+	// Tell the server what kind of client we are.
+	clientType := "enhanced"
+	if terminalMode {
+		clientType = "terminal"
+	}
+	if err := session.Setenv("NULL_SPACE_CLIENT", clientType); err != nil {
 		// Setenv may fail if the server doesn't accept this env var.
 		// Fall back silently — we'll still work, just without charmap support.
 		_ = err

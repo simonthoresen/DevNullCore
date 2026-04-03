@@ -51,6 +51,10 @@ func (a *Server) programHandler(sess ssh.Session) *tea.Program {
 		if e == "NULL_SPACE_CLIENT=enhanced" {
 			model.IsEnhancedClient = true
 		}
+		if e == "NULL_SPACE_CLIENT=terminal" {
+			model.IsEnhancedClient = true
+			model.IsTerminalClient = true
+		}
 	}
 
 	program := tea.NewProgram(model, a.sessionProgramOptions(sess)...)

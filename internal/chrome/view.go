@@ -99,7 +99,7 @@ func (m Model) View() tea.View {
 			}
 			m.gameSrcSent = true
 		}
-		if !m.charmapSent {
+		if !m.charmapSent && !m.IsTerminalClient {
 			if cm := game.CharMap(); cm != nil {
 				oscPrefix += render.EncodeCharmapOSC(cm)
 				if cm.Atlas != "" {
@@ -120,8 +120,8 @@ func (m Model) View() tea.View {
 				}
 			}
 
-			// Canvas frame: send PNG via OSC when render mode is Canvas.
-			if m.renderMode == domain.RenderModeCanvas && phase == domain.PhasePlaying {
+			// Canvas frame: send PNG via OSC when render mode is Canvas (not for terminal clients).
+			if m.renderMode == domain.RenderModeCanvas && phase == domain.PhasePlaying && !m.IsTerminalClient {
 				m.api.State().RLock()
 				canvasScale := m.api.State().CanvasScale
 				m.api.State().RUnlock()
@@ -339,7 +339,7 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 	}
 	m.playingStatusBar.RightText = time.Now().Format(domain.TimeFormatDateTime) + " "
 
-	// Capture viewport bounds for enhanced client OSC (wraps the render function).
+	// Capture viewport bounds for enhanced/terminal client OSC (wraps the render function).
 	if m.IsEnhancedClient && m.playingGameView.RenderFn != nil {
 		inner := m.playingGameView.RenderFn
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
