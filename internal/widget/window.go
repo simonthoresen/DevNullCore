@@ -15,8 +15,6 @@ type Window struct {
 	Title       string
 	Children    []GridChild
 	FocusIdx    int  // index into Children; -1 = none
-	NoTopBorder bool // skip top border row (e.g. when menu bar sits above)
-
 	// Computed during Render.
 	screenX, screenY int
 	width, height    int
@@ -39,11 +37,7 @@ func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, l
 	w.width = width
 	w.height = height
 	w.innerW = max(1, width-2)
-	topRows := 1
-	if w.NoTopBorder {
-		topRows = 0
-	}
-	w.innerH = max(1, height-1-topRows) // bottom border + optional top border
+	w.innerH = max(1, height-2) // top border + bottom border
 
 	fg := layer.Fg
 	bg := layer.Bg
@@ -53,21 +47,19 @@ func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, l
 	// Fill inner area with base bg.
 	buf.Fill(x, y, width, height, ' ', fg, bg, render.AttrNone)
 
-	// Top border row (skipped when NoTopBorder).
-	if !w.NoTopBorder {
-		buf.SetChar(x, y, render.RuneOf(layer.OuterTL), fg, bg, render.AttrNone)
-		buf.SetChar(x+width-1, y, render.RuneOf(layer.OuterTR), fg, bg, render.AttrNone)
-		if w.Title != "" {
-			titleText := " " + w.Title + " "
-			buf.SetChar(x+1, y, render.RuneOf(layer.OuterH), fg, bg, render.AttrNone)
-			n := buf.WriteString(x+2, y, titleText, hlFg, hlBg, render.AttrBold)
-			for col := x + 2 + n; col < x+width-1; col++ {
-				buf.SetChar(col, y, render.RuneOf(layer.OuterH), fg, bg, render.AttrNone)
-			}
-		} else {
-			for col := x + 1; col < x+width-1; col++ {
-				buf.SetChar(col, y, render.RuneOf(layer.OuterH), fg, bg, render.AttrNone)
-			}
+	// Top border row.
+	buf.SetChar(x, y, render.RuneOf(layer.OuterTL), fg, bg, render.AttrNone)
+	buf.SetChar(x+width-1, y, render.RuneOf(layer.OuterTR), fg, bg, render.AttrNone)
+	if w.Title != "" {
+		titleText := " " + w.Title + " "
+		buf.SetChar(x+1, y, render.RuneOf(layer.OuterH), fg, bg, render.AttrNone)
+		n := buf.WriteString(x+2, y, titleText, hlFg, hlBg, render.AttrBold)
+		for col := x + 2 + n; col < x+width-1; col++ {
+			buf.SetChar(col, y, render.RuneOf(layer.OuterH), fg, bg, render.AttrNone)
+		}
+	} else {
+		for col := x + 1; col < x+width-1; col++ {
+			buf.SetChar(col, y, render.RuneOf(layer.OuterH), fg, bg, render.AttrNone)
 		}
 	}
 
@@ -81,7 +73,7 @@ func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, l
 
 	// Left and right border columns.
 	vr := render.RuneOf(layer.OuterV)
-	startRow := y + topRows
+	startRow := y + 1
 	for row := startRow; row < boty; row++ {
 		buf.SetChar(x, row, vr, fg, bg, render.AttrNone)
 		buf.SetChar(x+width-1, row, vr, fg, bg, render.AttrNone)
@@ -114,9 +106,7 @@ func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, l
 			}
 		case *VDivider:
 			if child.Control.(*VDivider).Connected {
-				if !w.NoTopBorder {
-					buf.SetChar(cx, y, render.RuneOf(layer.CrossT), fg, bg, render.AttrNone)
-				}
+				buf.SetChar(cx, y, render.RuneOf(layer.CrossT), fg, bg, render.AttrNone)
 				buf.SetChar(cx, boty, render.RuneOf(layer.CrossB), fg, bg, render.AttrNone)
 			}
 		}
@@ -190,11 +180,7 @@ func (w *Window) computeGrid() {
 		w.cellX[i] = cx
 		cx += w.cellW[i]
 	}
-	topRows := 1
-	if w.NoTopBorder {
-		topRows = 0
-	}
-	cy := w.screenY + topRows // +1 for top border (0 if NoTopBorder)
+	cy := w.screenY + 1 // +1 for top border
 	for i := range w.cellY {
 		w.cellY[i] = cy
 		cy += w.cellH[i]

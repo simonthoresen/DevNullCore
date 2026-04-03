@@ -3,103 +3,96 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
-	"time"
+	"sync"
 
-	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/colorprofile"
+	xterm "github.com/charmbracelet/x/term"
 
-	"null-space/internal/domain"
-	"null-space/internal/chrome"
-	"null-space/internal/console"
-	"null-space/internal/engine"
+	"null-space/internal/client"
 	"null-space/internal/network"
-	"null-space/internal/state"
 )
 
-// NewLocal creates a Server for local (non-SSH) use: a single player on the
-// local terminal. No SSH server, no networking, no host key file.
-func NewLocal(dataDir string, tickInterval time.Duration) *Server {
-	if tickInterval <= 0 {
-		tickInterval = 100 * time.Millisecond
+// PreloadGame loads a game by name before any players connect.
+// The name is resolved to a path under the data directory, or treated as a URL.
+func (a *Server) PreloadGame(name string) error {
+	var path string
+	if network.IsURL(name) {
+		path = name
+	} else {
+		path = filepath.Join(a.dataDir, "games", name+".js")
 	}
-	app := &Server{
-		state:        state.New(""),
-		registry:     newCommandRegistry(),
-		dataDir:      dataDir,
-		tickInterval: tickInterval,
-		programs:     make(map[string]*tea.Program),
-		// sessions left nil — SSH middleware never runs in local mode;
-		// map reads against a nil map are safe (return zero value).
-		logCh:  make(chan string, 256),
-		slogCh: make(chan console.SlogLine, 256),
-		chatCh: make(chan domain.Message, 256),
-	}
-	app.registerBuiltins()
-	engine.LoadFigletFonts(dataDir)
-	return app
+	return a.loadGame(path)
 }
 
-// RunLocal registers a local player (as admin), optionally pre-loads a game
-// and plugins, then runs the full client TUI on stdin/stdout. This is the
-// entry point for both the local single-player mode and the render test-bed.
-func (a *Server) RunLocal(ctx context.Context, playerName, gameName string) error {
-	const playerID = "local"
+// PreloadResume resumes a saved game before any players connect.
+func (a *Server) PreloadResume(gameName, saveName string) error {
+	return a.resumeGame(gameName, saveName)
+}
 
-	player := &domain.Player{
-		ID:      playerID,
-		Name:    playerName,
-		IsAdmin: true,
-	}
-	a.state.AddPlayer(player)
-
-	if gameName != "" {
-		var path string
-		if network.IsURL(gameName) {
-			path = gameName
-		} else {
-			path = filepath.Join(a.dataDir, "games", gameName+".js")
-		}
-		if err := a.loadGame(path); err != nil {
-			return fmt.Errorf("load game %s: %w", gameName, err)
-		}
-	}
-
-	model := chrome.NewModel(a, playerID)
-	model.IsLocal = true
-
-	// Load init commands from ~/.null-space/client.txt if it exists.
-	if home, err := os.UserHomeDir(); err == nil {
-		if data, err := os.ReadFile(filepath.Join(home, ".null-space", "client.txt")); err == nil {
-			for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
-				line = strings.TrimSpace(line)
-				if line != "" && !strings.HasPrefix(line, "#") {
-					model.InitCommands = append(model.InitCommands, line)
-				}
-			}
-		}
-	}
-	program := tea.NewProgram(
-		model,
-		tea.WithInput(os.Stdin),
-		tea.WithOutput(os.Stdout),
-		tea.WithFPS(60),
-		tea.WithColorProfile(colorprofile.Env(os.Environ())),
-	)
-
-	a.programsMu.Lock()
-	a.programs[playerID] = program
-	a.programsMu.Unlock()
-
-	go a.runTicker(ctx)
-
+// RunLocalSSH starts the full SSH server, then connects back to it via a real
+// SSH client and pipes the session to the local terminal. The user sees exactly
+// what a remote player would see when running `ssh -p <port> localhost`.
+// This exercises the entire network pipeline (SSH transport, session middleware,
+// PTY, KittyStripWriter, etc.) without needing a separate SSH client.
+func (a *Server) RunLocalSSH(ctx context.Context, playerName string, port int) error {
+	// Start SSH server and wait for it to be ready.
+	ready := make(chan struct{})
+	serverErr := make(chan error, 1)
 	go func() {
-		<-ctx.Done()
-		program.Quit()
+		serverErr <- a.StartWithReady(ctx, ready)
 	}()
 
-	_, err := program.Run()
-	return err
+	select {
+	case <-ready:
+		// Server is listening.
+	case err := <-serverErr:
+		return fmt.Errorf("server failed to start: %w", err)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// Get initial terminal size.
+	w, h, err := xterm.GetSize(os.Stdin.Fd())
+	if err != nil {
+		w, h = 120, 50
+	}
+
+	// Connect via SSH.
+	conn, err := client.Dial("127.0.0.1", port, playerName, false)
+	if err != nil {
+		return fmt.Errorf("local SSH dial: %w", err)
+	}
+	defer conn.Close()
+
+	// Send initial window size.
+	conn.SendWindowChange(w, h)
+
+	// Put the local terminal in raw mode so ANSI sequences pass through.
+	oldState, err := xterm.MakeRaw(os.Stdin.Fd())
+	if err != nil {
+		return fmt.Errorf("make raw: %w", err)
+	}
+	defer xterm.Restore(os.Stdin.Fd(), oldState)
+
+	// Forward terminal resize events (platform-specific).
+	stopResize := watchTerminalResize(conn)
+	defer stopResize()
+
+	// Bidirectional pipe: SSH ↔ terminal.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		io.Copy(os.Stdout, conn)
+	}()
+	go func() {
+		defer wg.Done()
+		io.Copy(conn, os.Stdin)
+	}()
+
+	// Wait for either direction to finish (e.g. server closes session, or user quits).
+	wg.Wait()
+	return nil
 }

@@ -15,9 +15,13 @@ Games are written in JavaScript (goja) and loaded at runtime from `dist/games/`.
 ## Commands
 
 ```bash
-make build          # compile to dist/null-space-{server,client}.exe + dist/pinggy-helper.exe
-make run            # go run with --data-dir dist (dev shortcut)
-make clean          # remove compiled binaries from dist/
+make build              # compile to dist/null-space-{server,client}.exe + dist/pinggy-helper.exe
+make run-server         # server: SSH server + console TUI
+make run-server-lan     # server: LAN-only (no UPnP, no public IP, no Pinggy)
+make run-server-local   # server: headless SSH server + terminal client
+make run-client         # client: connect to a running server
+make run-client-local   # client: headless SSH server + graphical client
+make clean              # remove compiled binaries from dist/
 
 go run ./cmd/null-space-server --data-dir dist   # equivalent to make run, add --password etc.
 go test ./...
@@ -28,10 +32,17 @@ ssh -p 23234 localhost   # connect via plain SSH (host plays this way too)
 go run ./cmd/null-space-client
 go run ./cmd/null-space-client --host example.com --port 23234 --player alice
 
-# Local mode — no SSH, runs full client TUI directly in the terminal.
+# Local mode (server) — headless SSH server + terminal client in one process.
+# Exercises the full SSH pipeline; you see what `ssh -p 23234 localhost` would show.
 go run ./cmd/null-space-server --local --data-dir dist
-go run ./cmd/null-space-server --local --data-dir dist --game example
-go run ./cmd/null-space-server --local --data-dir dist --game example --player alice
+go run ./cmd/null-space-server --local --data-dir dist --player alice
+go run ./cmd/null-space-server --local --data-dir dist --game orbits
+go run ./cmd/null-space-server --local --data-dir dist --resume orbits/autosave
+
+# Local mode (client) — headless SSH server + graphical client in one process.
+# Exercises the full SSH pipeline with the Ebitengine renderer.
+go run ./cmd/null-space-client --local --data-dir dist
+go run ./cmd/null-space-client --local --data-dir dist --player alice --game orbits
 ```
 
 **Environment variables:**
@@ -56,7 +67,7 @@ go run ./cmd/null-space-server --local --data-dir dist --game example --player a
 | `internal/server/server.go` | SSH server setup, session lifecycle, tick broadcast |
 | `internal/server/lifecycle.go` | Game load/unload, phase transitions, teams cache |
 | `internal/server/commands.go` | Slash command registry and dispatch |
-| `internal/server/local.go` | Local (non-SSH) single-player mode |
+| `internal/server/local.go` | `--local` mode: headless SSH server + terminal SSH pipe to stdin/stdout |
 | `internal/server/pinggy.go` | Pinggy tunnel status polling bridge |
 | `internal/chrome/model.go` | Per-player TUI model: struct, constructor, Init, Update |
 | `internal/chrome/view.go` | Per-player rendering: lobby, playing, splash, game-over |

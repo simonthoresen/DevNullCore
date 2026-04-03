@@ -16,7 +16,7 @@ Row 2: StatusBar    (fixed 1)   <- left text + right-aligned time
 ```
 | File  Edit  View  Help              |  MenuBar (row 0)
 +=====================+==============+
-|                     | ## Unassigned|  NCWindow (NoTopBorder) with grid:
+|                     | ## Unassigned|  NCWindow with grid:
 |  [chat messages]    |   alice      |    Row 0: NCTextView(chat) | NCVDivider | NCTeamPanel
 |                     | ## Red Team  |    Row 1: NCHDivider (connected)
 |                     |    bob       |    Row 2: NCCommandInput

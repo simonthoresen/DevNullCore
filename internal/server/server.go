@@ -141,6 +141,13 @@ func (a *Server) DispatchCommand(input string, ctx domain.CommandContext) {
 func (a *Server) SetConsoleWidth(w int) { a.consoleWidth = w }
 
 func (a *Server) Start(ctx context.Context) error {
+	return a.StartWithReady(ctx, nil)
+}
+
+// StartWithReady starts the SSH server. If ready is non-nil, it is closed once
+// the listener is accepting connections. This allows callers to wait for the
+// server to be ready before connecting.
+func (a *Server) StartWithReady(ctx context.Context, ready chan<- struct{}) error {
 	go a.runTicker(ctx)
 
 	errCh := make(chan error, 1)
@@ -151,6 +158,9 @@ func (a *Server) Start(ctx context.Context) error {
 			return
 		}
 		slog.Info("TCP_NODELAY listener ready", "address", a.sshServer.Addr)
+		if ready != nil {
+			close(ready)
+		}
 		err = a.sshServer.Serve(ln)
 		if err != nil && !errors.Is(err, ssh.ErrServerClosed) {
 			errCh <- err

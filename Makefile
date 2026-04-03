@@ -1,28 +1,34 @@
-.PHONY: build build-server build-client build-pinggy run run-lan run-local test clean
+.PHONY: build build-server build-client run-server run-server-lan run-server-local run-client run-client-local test clean
 
 # Build all binaries into dist/ (strip debug info for smaller binaries)
-build: build-server build-client build-pinggy
+build: build-server build-client
 
 build-server:
 	go build -ldflags="-s -w" -o dist/null-space-server.exe ./cmd/null-space-server
+	go build -ldflags="-s -w" -o dist/pinggy-helper.exe ./cmd/pinggy-helper
 
 build-client:
 	go build -ldflags="-s -w" -o dist/null-space-client.exe ./cmd/null-space-client
 
-build-pinggy:
-	go build -ldflags="-s -w" -o dist/pinggy-helper.exe ./cmd/pinggy-helper
-
-# Run directly from source, using dist/ as the data directory
-run: build-server build-pinggy
+# Server: normal mode (SSH server + console TUI)
+run-server: build-server
 	./dist/null-space-server.exe --data-dir dist
 
-# Run in LAN-only mode (no UPnP, no public IP, no Pinggy)
-run-lan: build-server
+# Server: LAN-only mode (no UPnP, no public IP, no Pinggy)
+run-server-lan: build-server
 	./dist/null-space-server.exe --data-dir dist --lan
 
-# Run in local mode (no SSH, single-player TUI)
-run-local: build-server
+# Server: local mode (headless SSH server + terminal client)
+run-server-local: build-server
 	./dist/null-space-server.exe --data-dir dist --local
+
+# Client: connect to a running server
+run-client: build-client
+	./dist/null-space-client.exe
+
+# Client: local mode (headless SSH server + graphical client)
+run-client-local: build-client
+	./dist/null-space-client.exe --data-dir dist --local
 
 # Run all tests
 test:

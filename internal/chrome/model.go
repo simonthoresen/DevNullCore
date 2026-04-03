@@ -77,7 +77,6 @@ func SetInputStyle(input *textinput.Model, bg, fg color.Color) {
 type Model struct {
 	api      ServerAPI
 	playerID string
-	IsLocal  bool // true for local mode, false for SSH
 	width  int
 	height int
 
@@ -184,8 +183,7 @@ func NewModel(api ServerAPI, playerID string) Model {
 	lobbyInputModel.SetWidth(78)
 	lobbyInputCtrl := &widget.CommandInput{TextInput: widget.TextInput{Model: lobbyInputModel}}
 	lobbyWindow := &widget.Window{
-		NoTopBorder: true,
-		FocusIdx:    2, // lobbyInput focused by default
+		FocusIdx: 2, // lobbyInput focused by default
 		Children: []widget.GridChild{
 			{Control: lobbyChatView, TabIndex: 1, Constraint: widget.GridConstraint{
 				Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: widget.FillBoth,

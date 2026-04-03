@@ -33,21 +33,9 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Plugins...", Handler: func(_ string) { m.showPlayerListDialog("Plugins", "plugins", ".js") }},
 		{Label: "&Shaders...", Handler: func(_ string) { m.showShaderDialog() }},
 		{Label: "---"},
-	}
-	if m.IsLocal {
-		fileItems = append(fileItems, domain.MenuItemDef{
-			Label: "&Quit",
-			Handler: func(_ string) {
-				// Ctrl+C is the reliable quit path in local mode.
-			},
-		})
-	} else {
-		fileItems = append(fileItems, domain.MenuItemDef{
-			Label: "&Disconnect",
-			Handler: func(playerID string) {
-				go m.api.KickPlayer(playerID)
-			},
-		})
+		{Label: "&Disconnect", Handler: func(playerID string) {
+			go m.api.KickPlayer(playerID)
+		}},
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
 

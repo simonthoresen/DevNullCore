@@ -208,11 +208,7 @@ func (m Model) renderLobby(buf *render.ImageBuffer, menus []domain.MenuDef) {
 	m.lobbyTeamPanel.ShowCreate = !m.api.State().IsSoleMemberOfTeam(m.playerID)
 
 	// Update status bar.
-	modeLabel := "remote"
-	if m.IsLocal {
-		modeLabel = "local"
-	}
-	statusLeft := fmt.Sprintf(" null-space (%s) | %d players | uptime %s", modeLabel, m.api.State().PlayerCount(), m.api.Uptime())
+	statusLeft := fmt.Sprintf(" null-space | %d players | uptime %s", m.api.State().PlayerCount(), m.api.Uptime())
 	m.api.State().RLock()
 	suspPhase := m.api.State().GamePhase
 	suspName := m.api.State().GameName
