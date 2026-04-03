@@ -224,6 +224,25 @@ func TestNCTextViewScrollClamp(t *testing.T) {
 	}
 }
 
+func TestTextViewMinSize(t *testing.T) {
+	tv := &TextView{Lines: []string{"short", "a longer line", "mid"}}
+	w, h := tv.MinSize()
+	if w != 13 {
+		t.Errorf("expected width 13 (longest line), got %d", w)
+	}
+	if h != 3 {
+		t.Errorf("expected height 3 (line count), got %d", h)
+	}
+}
+
+func TestTextViewMinSizeEmpty(t *testing.T) {
+	tv := &TextView{}
+	w, h := tv.MinSize()
+	if w != 1 || h != 1 {
+		t.Errorf("expected (1,1) for empty TextView, got (%d,%d)", w, h)
+	}
+}
+
 // ─── Button tests ────────────────────────────────────────────────────────────
 
 func TestNCButtonRender(t *testing.T) {

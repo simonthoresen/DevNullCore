@@ -418,6 +418,69 @@ func TestRenderDialogCentered(t *testing.T) {
 	}
 }
 
+func TestShutdownDialogRendersFullBody(t *testing.T) {
+	o := OverlayState{OpenMenu: -1}
+	o.PushDialog(domain.DialogRequest{
+		Title:   "Shutdown",
+		Body:    "Are you sure you want to shut down the server?",
+		Buttons: []string{"Yes", "No"},
+	})
+	w, h := o.DialogSize(80, 24)
+	t.Logf("DialogSize: %dx%d", w, h)
+	bodyLen := len("Are you sure you want to shut down the server?")
+	if w < bodyLen+2 { // +2 for borders
+		t.Errorf("dialog width %d too narrow for body (%d chars + 2 borders)", w, bodyLen)
+	}
+	pal := testTheme().WarningLayer()
+	buf, _, _ := o.RenderDialogBuf(80, 24, pal)
+	if buf == nil {
+		t.Fatal("expected non-nil buffer")
+	}
+	content := stripANSI(buf.ToString())
+	if !strings.Contains(content, "Are you sure you want to shut down the server?") {
+		t.Errorf("full body text not visible in dialog.\nDialog size: %dx%d\nContent:\n%s", w, h, content)
+	}
+	if !strings.Contains(content, "Yes") || !strings.Contains(content, "No") {
+		t.Errorf("buttons not visible in dialog content:\n%s", content)
+	}
+}
+
+func TestDialogSizeFitsBody(t *testing.T) {
+	o := OverlayState{OpenMenu: -1}
+	o.PushDialog(domain.DialogRequest{
+		Title: "About",
+		Body:  "This is a fairly long line that should determine dialog width",
+	})
+	w, h := o.DialogSize(100, 40)
+	// Width should accommodate the long body line + borders.
+	bodyLen := len("This is a fairly long line that should determine dialog width")
+	if w < bodyLen {
+		t.Errorf("dialog width %d too narrow for body of length %d", w, bodyLen)
+	}
+	// Height should fit: body (1 line) + divider (1) + button row (1) + borders (2).
+	if h < 5 {
+		t.Errorf("dialog height %d too short, expected at least 5", h)
+	}
+}
+
+func TestDialogSizeFitsButtons(t *testing.T) {
+	o := OverlayState{OpenMenu: -1}
+	o.PushDialog(domain.DialogRequest{
+		Title:   "Shaders",
+		Body:    "Hi",
+		Buttons: []string{"Add", "Remove", "Up", "Down", "Close"},
+	})
+	w, _ := o.DialogSize(100, 40)
+	// Each button is len(label)+6. Total: 9+12+8+10+11 = 50
+	minBtnWidth := 0
+	for _, lbl := range []string{"Add", "Remove", "Up", "Down", "Close"} {
+		minBtnWidth += len(lbl) + 6
+	}
+	if w < minBtnWidth {
+		t.Errorf("dialog width %d too narrow for buttons needing %d", w, minBtnWidth)
+	}
+}
+
 // ─── Dialog composited on background ─────────────────────────────────────────
 
 func TestDialogOnBackground(t *testing.T) {

@@ -690,6 +690,40 @@ func TestContainerUpdateCyclesFocus(t *testing.T) {
 	}
 }
 
+func TestContainerMinSizeHorizontal(t *testing.T) {
+	c := &Container{
+		Horizontal: true,
+		Children: []ContainerChild{
+			{Control: &Button{Label: "OK"}, Fixed: 10},
+			{Control: &Button{Label: "Cancel"}, Fixed: 12},
+		},
+	}
+	w, h := c.MinSize()
+	if w != 22 {
+		t.Errorf("expected width 22 (10+12), got %d", w)
+	}
+	if h != 1 {
+		t.Errorf("expected height 1, got %d", h)
+	}
+}
+
+func TestContainerMinSizeVertical(t *testing.T) {
+	c := &Container{
+		Horizontal: false,
+		Children: []ContainerChild{
+			{Control: &Label{Text: "hello world"}},
+			{Control: &Label{Text: "hi"}},
+		},
+	}
+	w, h := c.MinSize()
+	if w != 11 { // "hello world"
+		t.Errorf("expected width 11, got %d", w)
+	}
+	if h != 2 {
+		t.Errorf("expected height 2, got %d", h)
+	}
+}
+
 // ─── TextView scrollbar buf ────────────────────────────────────────────────
 
 func TestRenderScrollbarBuf(t *testing.T) {

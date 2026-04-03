@@ -3,6 +3,8 @@ package widget
 import (
 	"image/color"
 
+	"github.com/charmbracelet/x/ansi"
+
 	tea "charm.land/bubbletea/v2"
 
 	"null-space/internal/render"
@@ -25,7 +27,19 @@ type TextView struct {
 func (v *TextView) TabWant() (bool, bool) { return v.WantTab, v.WantBackTab }
 
 func (v *TextView) Focusable() bool     { return v.Scrollable }
-func (v *TextView) MinSize() (int, int) { return 1, 1 }
+func (v *TextView) MinSize() (int, int) {
+	w := 1
+	for _, line := range v.Lines {
+		if lw := ansi.StringWidth(line); lw > w {
+			w = lw
+		}
+	}
+	h := len(v.Lines)
+	if h < 1 {
+		h = 1
+	}
+	return w, h
+}
 
 // SetHeight sets the internal height (used for scroll clamping in tests).
 func (v *TextView) SetHeight(h int) { v.height = h }

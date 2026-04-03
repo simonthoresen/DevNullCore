@@ -38,7 +38,33 @@ func (c *Container) Focusable() bool {
 	return false
 }
 
-func (c *Container) MinSize() (int, int) { return 1, 1 }
+func (c *Container) MinSize() (int, int) {
+	w, h := 0, 0
+	for _, child := range c.Children {
+		cw, ch := child.Control.MinSize()
+		if child.Fixed > 0 && child.Fixed > cw {
+			cw = child.Fixed
+		}
+		if c.Horizontal {
+			w += cw
+			if ch > h {
+				h = ch
+			}
+		} else {
+			if cw > w {
+				w = cw
+			}
+			h += ch
+		}
+	}
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	return w, h
+}
 
 func (c *Container) TabWant() (bool, bool) {
 	fwd, back := c.wantTab, c.wantBackTab
