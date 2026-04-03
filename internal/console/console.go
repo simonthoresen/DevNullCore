@@ -281,6 +281,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay.HandleKey(msg.String(), m.consoleMenus(), "") {
 			return m, nil
 		}
+		// PgUp/PgDn always scroll the log, regardless of focus.
+		switch msg.String() {
+		case "pgup", "pgdown":
+			m.logView.Update(msg)
+			return m, nil
+		case "enter":
+			// Enter outside the command bar moves focus there.
+			if m.window.FocusIdx != 2 {
+				m.window.FocusIdx = 2
+				return m, m.inputCtrl.Model.Focus()
+			}
+		}
 		// Everything else goes to the focused window control.
 		cmd := m.window.HandleUpdate(msg)
 		return m, cmd
