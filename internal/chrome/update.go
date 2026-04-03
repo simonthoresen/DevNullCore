@@ -125,6 +125,7 @@ func (m Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.charmapSent = false
 	m.gameSrcSent = false
 	m.lastStateJSON = ""
+	m.renderMode = m.bestRenderMode()
 	m.invalidateMenuCache()
 	m.lobbyInput.Model.Blur()
 	m.playingWindow.FocusIdx = 0

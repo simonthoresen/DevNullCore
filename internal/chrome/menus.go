@@ -14,15 +14,17 @@ func (m *Model) invalidateMenuCache() {
 	m.menuCache = nil
 }
 
-// cachedMenus returns the menu tree, rebuilding only when the active game has changed.
+// cachedMenus returns the menu tree, rebuilding when the active game or canvas scale changes.
 func (m *Model) cachedMenus() []domain.MenuDef {
 	m.api.State().RLock()
 	game := m.api.State().ActiveGame
+	canvasScale := m.api.State().CanvasScale
 	m.api.State().RUnlock()
 
-	if m.menuCache != nil && m.menuCacheGame == game {
+	if m.menuCache != nil && m.menuCacheGame == game && m.menuCacheScale == canvasScale {
 		return m.menuCache
 	}
+	m.menuCacheScale = canvasScale
 
 	fileItems := []domain.MenuItemDef{
 		{Label: "&Games...", Handler: func(_ string) { m.showGamesDialog() }},
@@ -48,6 +50,23 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		})
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
+
+	// View menu — rendering mode selection.
+	viewItems := make([]domain.MenuItemDef, 0, 3)
+	for _, mode := range []domain.RenderMode{domain.RenderModeText, domain.RenderModeQuadrant, domain.RenderModeCanvas} {
+		mode := mode // capture
+		viewItems = append(viewItems, domain.MenuItemDef{
+			Label:    mode.Label(),
+			Toggle:   true,
+			Disabled: !m.canUseRenderMode(mode),
+			Checked:  func() bool { return m.renderMode == mode },
+			Handler: func(_ string) {
+				m.renderMode = mode
+			},
+		})
+	}
+	menus = append(menus, domain.MenuDef{Label: "&View", Items: viewItems})
+
 	if game != nil {
 		menus = append(menus, game.Menus()...)
 	}

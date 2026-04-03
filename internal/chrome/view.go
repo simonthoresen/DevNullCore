@@ -110,11 +110,11 @@ func (m Model) View() tea.View {
 				}
 			}
 
-			// Canvas frame: render and send if game has renderCanvas and scale > 0.
-			m.api.State().RLock()
-			canvasScale := m.api.State().CanvasScale
-			m.api.State().RUnlock()
-			if canvasScale > 0 && game.HasCanvasMode() && phase == domain.PhasePlaying {
+			// Canvas frame: send PNG via OSC when render mode is Canvas.
+			if m.renderMode == domain.RenderModeCanvas && phase == domain.PhasePlaying {
+				m.api.State().RLock()
+				canvasScale := m.api.State().CanvasScale
+				m.api.State().RUnlock()
 				pixelW := m.viewportW * canvasScale
 				pixelH := m.viewportH * canvasScale
 				pngData := game.RenderCanvas(m.playerID, pixelW, pixelH)
@@ -288,17 +288,14 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 		}
 	}
 
-	// Quadrant canvas: render canvas games as Unicode quadrant block characters
-	// (2x2 pixels per cell, doubling effective resolution). This provides a text
-	// fallback for regular SSH clients and enhanced clients with canvas scale off.
-	if game.HasCanvasMode() && phase == domain.PhasePlaying {
+	// Quadrant mode: render canvas as Unicode quadrant block characters
+	// (2x2 pixels per cell, doubling effective resolution).
+	if m.renderMode == domain.RenderModeQuadrant && phase == domain.PhasePlaying {
 		inner := m.playingGameView.RenderFn
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
-			// First render the normal text layer (HUD overlays, etc.).
 			if inner != nil {
 				inner(gbuf, x, y, w, h)
 			}
-			// Then render canvas at 2x resolution and convert to quadrant chars.
 			img := game.RenderCanvasImage(m.playerID, w*2, h*2)
 			if img != nil {
 				render.ImageToQuadrants(img, gbuf, x, y, w, h)

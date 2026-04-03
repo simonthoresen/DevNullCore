@@ -154,6 +154,38 @@ const (
 
 	// MaxPlayerNameLen caps the length of sanitized player names.
 	MaxPlayerNameLen = 50
+)
+
+// RenderMode controls how a player's game viewport is rendered.
+type RenderMode int
+
+const (
+	// RenderModeText renders using the game's text-based Render() function only.
+	// Always available for any game.
+	RenderModeText RenderMode = iota
+	// RenderModeQuadrant converts canvas output to Unicode quadrant block characters
+	// (2x2 pixels per terminal cell). Requires the game to define renderCanvas.
+	RenderModeQuadrant
+	// RenderModeCanvas sends PNG frames via OSC to the enhanced graphical client.
+	// Requires the game to define renderCanvas, an enhanced client, and canvasScale > 0.
+	RenderModeCanvas
+)
+
+// RenderModeLabel returns a human-readable name for the mode.
+func (m RenderMode) Label() string {
+	switch m {
+	case RenderModeText:
+		return "Text"
+	case RenderModeQuadrant:
+		return "Quadrant"
+	case RenderModeCanvas:
+		return "Canvas"
+	default:
+		return "Unknown"
+	}
+}
+
+const (
 
 	// MaxConnections is the default cap on concurrent SSH sessions.
 	MaxConnections = 100

@@ -114,6 +114,10 @@ type Model struct {
 	shaders     []domain.Shader
 	shaderNames []string // parallel to shaders; display names
 
+	// Per-player render mode (Text, Quadrant, Canvas).
+	// Auto-selected to the best available mode on game load; changeable via View menu.
+	renderMode domain.RenderMode
+
 	// Enhanced client protocol (null-space-client with charmap/canvas/local-render support).
 	IsEnhancedClient bool
 	charmapSent      bool   // true after charmap+atlas OSC have been sent for the current game
@@ -141,8 +145,9 @@ type Model struct {
 	playingInput     *widget.CommandInput
 
 	// Cached menu tree — rebuilt only on invalidation.
-	menuCache     []domain.MenuDef
-	menuCacheGame domain.Game // game pointer when cache was built (nil = no game)
+	menuCache      []domain.MenuDef
+	menuCacheGame  domain.Game // game pointer when cache was built (nil = no game)
+	menuCacheScale int         // canvasScale when cache was built
 
 	// Game NC window — built from WidgetNode tree via reconciler.
 	// Preserves interactive control state (focus, cursor, scroll) across frames.
@@ -385,4 +390,35 @@ func (m *Model) resizeViewports() {
 	} else {
 		m.chatH = 0
 	}
+}
+
+// canUseRenderMode returns true if the given mode is usable with the current
+// client capabilities and active game.
+func (m *Model) canUseRenderMode(mode domain.RenderMode) bool {
+	m.api.State().RLock()
+	game := m.api.State().ActiveGame
+	canvasScale := m.api.State().CanvasScale
+	m.api.State().RUnlock()
+
+	switch mode {
+	case domain.RenderModeText:
+		return true
+	case domain.RenderModeQuadrant:
+		return game != nil && game.HasCanvasMode()
+	case domain.RenderModeCanvas:
+		return game != nil && game.HasCanvasMode() && m.IsEnhancedClient && canvasScale > 0
+	}
+	return false
+}
+
+// bestRenderMode returns the highest-fidelity render mode available for the
+// current client and game. Called on game load to auto-select the best option.
+func (m *Model) bestRenderMode() domain.RenderMode {
+	// Try from highest to lowest fidelity.
+	for _, mode := range []domain.RenderMode{domain.RenderModeCanvas, domain.RenderModeQuadrant} {
+		if m.canUseRenderMode(mode) {
+			return mode
+		}
+	}
+	return domain.RenderModeText
 }

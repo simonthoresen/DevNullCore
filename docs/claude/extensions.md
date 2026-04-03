@@ -115,6 +115,16 @@ var Game = {
 
 **Canvas scale:** Admin sets the scaling factor with `/canvas scale <n>` (pixels per cell). `/canvas info` shows current scale, pixel dimensions, and estimated bandwidth per user. `/canvas off` disables canvas rendering. Scale is stored in `CentralState.CanvasScale`. Canvas dimensions = viewport cells x scale. The `/canvas` command shows bandwidth estimates at the console's viewport size.
 
+**Render modes:** Each player has a per-player `renderMode` (type `domain.RenderMode`) selectable from the **View** menu. Three modes exist:
+
+| Mode | Description | Requirements |
+|------|-------------|-------------|
+| **Text** | Standard cell-based `game.Render()` only | Always available |
+| **Quadrant** | Canvas → Unicode quadrant block chars (U+2580–U+259F), 2×2 pixels per cell | Game defines `renderCanvas` |
+| **Canvas** | PNG frames via OSC to enhanced graphical client | Game defines `renderCanvas` + enhanced client + canvasScale > 0 |
+
+On game load, `bestRenderMode()` auto-selects the highest-fidelity mode the client supports. Modes not supported by the client or game are shown disabled in the View menu. The quadrant renderer (`internal/render/quadrant.go`) partitions each 2×2 pixel block into optimal fg/bg color groups using exhaustive 2-means clustering.
+
 | Package | Role |
 |---------|------|
 | `common/charmap.go` | CharMapDef/CharMapEntry types, PUA constants, JSON loader |
