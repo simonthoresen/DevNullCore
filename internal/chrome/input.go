@@ -48,6 +48,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Menu overlay intercepts keys when active (F10, menu navigation).
+	m.menuCache = nil // force fresh closures bound to current &m
 	if m.overlay.HandleKey(msg.String(), m.cachedMenus(), m.playerID) {
 		return m, nil
 	}

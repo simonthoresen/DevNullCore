@@ -71,6 +71,9 @@ func (a *Server) RunLocalSSH(ctx context.Context, playerName string, port int, t
 		return fmt.Errorf("local SSH dial: %w", err)
 	}
 	defer conn.Close()
+	// Guarantee alt-screen exit even if the SSH session closes before bubbletea
+	// writes its own \x1b[?1049l cleanup sequence.
+	defer fmt.Fprint(os.Stdout, "\x1b[?1049l\x1b[?25h")
 
 	// Send initial window size.
 	conn.SendWindowChange(w, h)

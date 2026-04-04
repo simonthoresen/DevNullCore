@@ -187,6 +187,7 @@ func (m Model) handleGamePhase(msg domain.GamePhaseMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	if msg.Button == tea.MouseLeft {
+		m.menuCache = nil // force fresh closures bound to current &m
 		if m.overlay.HandleClick(msg.X, msg.Y, 0, m.width, m.height, m.cachedMenus(), m.playerID) {
 			return m, nil
 		}
