@@ -20,7 +20,7 @@ import (
 //	d) client_remote   — server + client.exe (enhanced graphical client)
 func TestChromeRenders(t *testing.T) {
 	for _, sc := range scenarios {
-		if sc.consoleOnly {
+		if len(sc.consoleKeys) > 0 && len(sc.chromeKeys) == 0 {
 			continue
 		}
 		t.Run(sc.name, func(t *testing.T) {
@@ -41,7 +41,7 @@ func TestChromeRenders(t *testing.T) {
 								playerID,
 								sc.inActiveGame,
 								sc.gameName,
-								sc.keys,
+								sc.chromeKeys,
 								variant,
 								cv.profile,
 								termW, termH,

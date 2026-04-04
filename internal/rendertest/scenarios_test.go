@@ -23,19 +23,19 @@ type renderScenario struct {
 	inActiveGame bool
 	// gameName is used in GameLoadedMsg when inActiveGame is true.
 	gameName string
-	// keys is a sequence of key names (e.g. "f10", "alt+h", "enter") sent to
-	// both the console and chrome models after initial setup to drive
-	// overlay/menu state. Both models share the same widget.OverlayState key
-	// handling, so the same sequences work for both.
-	keys []string
+	// chromeKeys is a sequence of key names (e.g. "f10", "alt+h", "enter") sent
+	// only to the chrome model after initial setup, to drive chrome overlay/menu
+	// state. Leave nil for state-only scenarios or console-targeted ones.
+	chromeKeys []string
+	// consoleKeys is a sequence of key names sent only to the console model after
+	// initial setup, to drive console overlay/menu state. Leave nil for
+	// state-only scenarios or chrome-targeted ones.
+	consoleKeys []string
 	// noIntegration skips this scenario in TestChromeRendersIntegration.
 	// Use for scenarios that cannot be reproduced over a real SSH connection:
 	// playing/splash (late joiners stay in lobby) and menu/dialog scenarios
 	// (the integration harness does not send keyboard input).
 	noIntegration bool
-	// consoleOnly skips this scenario in TestChromeRenders. Use for scenarios
-	// that exercise console-specific UI (e.g. the shutdown confirmation dialog).
-	consoleOnly bool
 }
 
 // scenarios is the curated eval set. Edit this list to add, remove, or tweak
@@ -93,7 +93,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_menu_focused",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		keys:    []string{"f10"},
+		chromeKeys:    []string{"f10"},
 		noIntegration: true,
 	},
 	{
@@ -101,7 +101,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_help_menu_open",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		keys:    []string{"alt+h"},
+		chromeKeys:    []string{"alt+h"},
 		noIntegration: true,
 	},
 	{
@@ -109,7 +109,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_about_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		keys:    []string{"alt+h", "enter"},
+		chromeKeys:    []string{"alt+h", "enter"},
 		noIntegration: true,
 	},
 
@@ -159,22 +159,19 @@ var scenarios = []renderScenario{
 
 	// ── Warning dialogs ────────────────────────────────────────────────────────
 	{
-		// Alt+F → down×6 → Enter: navigates File menu to Disconnect and confirms.
+		// Alt+F → down×6 → Enter: navigates chrome File menu to Disconnect.
 		name:          "chrome_disconnect_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		keys:          []string{"alt+f", "down", "down", "down", "down", "down", "down", "enter"},
+		chromeKeys:    []string{"alt+f", "down", "down", "down", "down", "down", "down", "enter"},
 		noIntegration: true,
-		consoleOnly:   false,
 	},
-	// ── Console-only ───────────────────────────────────────────────────────────
 	{
 		// Ctrl+Q triggers the shutdown confirmation dialog in the console.
 		name:          "console_shutdown_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		keys:          []string{"ctrl+q"},
+		consoleKeys:   []string{"ctrl+q"},
 		noIntegration: true,
-		consoleOnly:   true,
 	},
 }

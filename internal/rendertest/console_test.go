@@ -22,6 +22,9 @@ import (
 // too, exercising the console's own overlay/menu system.
 func TestConsoleRenders(t *testing.T) {
 	for _, sc := range scenarios {
+		if len(sc.chromeKeys) > 0 && len(sc.consoleKeys) == 0 {
+			continue
+		}
 		t.Run(sc.name, func(t *testing.T) {
 			for _, cv := range colorVariants {
 				t.Run(cv.name, func(t *testing.T) {
@@ -46,7 +49,7 @@ func TestConsoleRenders(t *testing.T) {
 					st.Unlock()
 
 					api := newMockConsoleAPI(st)
-					got := renderConsole(api, sc.keys, cv.profile, termW, termH)
+					got := renderConsole(api, sc.consoleKeys, cv.profile, termW, termH)
 
 					path := goldenPath(sc.name, "console")
 					checkOrUpdate(t, path, got)
