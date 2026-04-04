@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -522,7 +521,7 @@ func (m *Model) View() tea.View {
 			gameLabel += " [game over]"
 		}
 	}
-	m.statusBar.RightText = fmt.Sprintf("game: %s | players: %d | uptime %s | %s", gameLabel, m.api.State().PlayerCount(), m.api.Uptime(), time.Now().Format("15:04:05"))
+	m.statusBar.RightText = fmt.Sprintf("game: %s | players: %d | uptime %s | %s", gameLabel, m.api.State().PlayerCount(), m.api.Uptime(), m.api.Clock().Now().Format("15:04:05"))
 
 	// Render the full screen: menu bar + window + status bar.
 	m.screen.RenderToBuf(buf, 0, 0, m.width, m.height, t)

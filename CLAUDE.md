@@ -136,6 +136,19 @@ Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.
 
 **`lastUpdateMu`** protects the `Server.lastUpdate` field, which is written from `splashTimer()`, `resumeGame()`, and read/written in `runTicker()`. All access must go through this mutex.
 
+## Render Tests — Golden Files
+
+`internal/rendertest/` contains full-frame render tests for both the server console and the player chrome view. Tests compare ANSI-stripped output against golden `.txt` files in `internal/rendertest/testdata/renders/`.
+
+- **Curated eval set**: edit `scenarios_test.go` to add/change test states.
+- **Regenerate golden files** after a layout or content change:
+  ```bash
+  go test ./internal/rendertest/ -update
+  ```
+- Each scenario produces two golden files (`console.txt`, `chrome.txt`).
+- `chrome.txt` is verified against **8 sub-tests** (4 execution contexts × 2 color modes) that all strip to the same plain text.
+- `time.Now()` in View() methods uses `m.api.Clock().Now()` so tests inject a fixed time via `domain.MockClock`.
+
 ## Slog Feedback Loop Guard
 
 **Never add `slog` calls to `View()` or `Render()` methods.** The console routes slog → channel → Update → View, so any slog call in the render path creates an infinite feedback loop (high CPU, starved keyboard events).
