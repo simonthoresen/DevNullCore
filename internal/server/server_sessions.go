@@ -116,7 +116,7 @@ func parseNullSpaceTerm(s string) (colorprofile.Profile, bool) {
 		return colorprofile.ANSI256, true
 	case "ansi":
 		return colorprofile.ANSI, true
-	case "ascii":
+	case "ascii", "none", "no-color":
 		return colorprofile.ASCII, true
 	}
 	return 0, false
