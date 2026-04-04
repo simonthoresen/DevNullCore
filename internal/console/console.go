@@ -326,6 +326,7 @@ func (m *Model) consoleMenus() []domain.MenuDef {
 						Title:   "Shutdown",
 						Body:    "Are you sure you want to shut down the server?",
 						Buttons: []string{"Yes", "No"},
+						Warning: true,
 						OnClose: func(btn string) {
 							if btn == "Yes" && m.cancel != nil {
 								m.cancel()
@@ -544,7 +545,11 @@ func (m *Model) View() tea.View {
 		}
 	}
 	if m.overlay.HasDialog() {
-		if sub, col, row := m.overlay.RenderDialogBuf(m.width, m.height, t.LayerAt(m.overlay.DialogLayer())); sub != nil {
+		dlgLayer := t.LayerAt(m.overlay.DialogLayer())
+		if m.overlay.DialogIsWarning() {
+			dlgLayer = t.WarningLayer()
+		}
+		if sub, col, row := m.overlay.RenderDialogBuf(m.width, m.height, dlgLayer); sub != nil {
 			buf.Blit(col, row, sub)
 			render.BlitShadow(buf, col, row, sub.Width, sub.Height, shadowFg, shadowBg)
 		}

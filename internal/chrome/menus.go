@@ -34,7 +34,17 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Shaders...", Handler: func(_ string) { m.showShaderDialog() }},
 		{Label: "---"},
 		{Label: "&Disconnect", Handler: func(playerID string) {
-			go m.api.KickPlayer(playerID)
+			m.overlay.PushDialog(domain.DialogRequest{
+				Title:   "Disconnect",
+				Body:    "Disconnect from the server?",
+				Buttons: []string{"Yes", "No"},
+				Warning: true,
+				OnClose: func(btn string) {
+					if btn == "Yes" {
+						go m.api.KickPlayer(playerID)
+					}
+				},
+			})
 		}},
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}

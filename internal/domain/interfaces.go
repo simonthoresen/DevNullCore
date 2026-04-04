@@ -51,6 +51,7 @@ type DialogRequest struct {
 	Title   string
 	Body    string   // may be multi-line (\n-separated)
 	Buttons []string // button labels; if empty, defaults to ["OK"]
+	Warning bool     // render with the warning theme layer (red) instead of the normal dialog layer
 	// OnClose is called with the pressed button label, or "" if dismissed with Esc.
 	OnClose func(button string)
 

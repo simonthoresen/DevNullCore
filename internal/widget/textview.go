@@ -26,10 +26,11 @@ func (v *TextView) TabWant() (bool, bool) { return v.WantTab, v.WantBackTab }
 
 func (v *TextView) Focusable() bool     { return v.Scrollable }
 func (v *TextView) MinSize() (int, int) {
-	// TextView wraps at whatever width it's given, so its minimum is 1×1.
-	// Returning content dimensions here would cause computeGrid to set the
-	// column wider than the available space when long lines are present,
-	// overflowing into the window border.
+	// Always return 1×1. TextView fills whatever space the layout gives it;
+	// returning content dimensions would force the containing column to be
+	// as wide as the longest line, overflowing the window border.
+	// Callers that need content-aware sizing (e.g. dialog body) must set
+	// GridConstraint.MinW/MinH explicitly.
 	return 1, 1
 }
 

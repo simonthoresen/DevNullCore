@@ -226,13 +226,13 @@ func TestNCTextViewScrollClamp(t *testing.T) {
 }
 
 func TestTextViewMinSize(t *testing.T) {
+	// TextView always returns 1×1 regardless of content: it fills whatever
+	// space the layout provides. Content-aware callers (e.g. dialog body) set
+	// GridConstraint.MinW/MinH explicitly instead of relying on MinSize.
 	tv := &TextView{Lines: []string{"short", "a longer line", "mid"}}
 	w, h := tv.MinSize()
-	if w != 13 {
-		t.Errorf("expected width 13 (longest line), got %d", w)
-	}
-	if h != 3 {
-		t.Errorf("expected height 3 (line count), got %d", h)
+	if w != 1 || h != 1 {
+		t.Errorf("expected (1,1) for TextView, got (%d,%d)", w, h)
 	}
 }
 

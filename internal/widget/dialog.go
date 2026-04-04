@@ -318,3 +318,9 @@ func (o *OverlayState) topEntry() *dialogEntry {
 	}
 	return o.dialogs[len(o.dialogs)-1]
 }
+
+// DialogIsWarning reports whether the top dialog has Warning set.
+func (o *OverlayState) DialogIsWarning() bool {
+	e := o.topEntry()
+	return e != nil && e.request.Warning
+}

@@ -157,6 +157,16 @@ var scenarios = []renderScenario{
 		},
 	},
 
+	// ── Warning dialogs ────────────────────────────────────────────────────────
+	{
+		// Alt+F → down×6 → Enter: navigates File menu to Disconnect and confirms.
+		name:          "chrome_disconnect_dialog",
+		playerID:      "alice",
+		setup:         func(st *state.CentralState) {},
+		keys:          []string{"alt+f", "down", "down", "down", "down", "down", "down", "enter"},
+		noIntegration: true,
+		consoleOnly:   false,
+	},
 	// ── Console-only ───────────────────────────────────────────────────────────
 	{
 		// Ctrl+Q triggers the shutdown confirmation dialog in the console.
