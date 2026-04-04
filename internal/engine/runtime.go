@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -116,10 +117,13 @@ type JSRuntime struct {
 	charmapDef *render.CharMapDef // loaded from dist/charmaps/<name>/charmap.json; nil if no charmap
 }
 
-// LoadGame loads and executes a JS file from games/, extracts the Game object
-// methods, and returns a domain.Game. Init() is NOT called here — the server
+// LoadGame loads and executes a game script (.js or .lua), extracts the Game
+// object, and returns a domain.Game. Init() is NOT called here — the server
 // calls it at the splash→playing transition when GamePlayerIDs are set.
 func LoadGame(path string, logFn func(string), chatCh chan domain.Message, clock domain.Clock, dataDir string) (domain.Game, error) {
+	if strings.HasSuffix(path, ".lua") {
+		return LoadLuaGame(path, logFn, chatCh, clock, dataDir)
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read game file: %w", err)

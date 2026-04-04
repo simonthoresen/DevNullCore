@@ -78,7 +78,7 @@ type Model struct {
 	initCommands []string
 
 	// Per-console plugins
-	plugins     []*engine.JSPlugin
+	plugins     []engine.Plugin
 	pluginNames []string
 
 	// Per-console shaders (post-processing, run in order)

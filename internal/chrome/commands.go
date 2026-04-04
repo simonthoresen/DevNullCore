@@ -114,7 +114,7 @@ func (m *Model) handlePluginCommand(input string) {
 	parts := strings.Fields(input)
 	// /plugin with no args -> list
 	if len(parts) <= 1 {
-		available := engine.ListDir(filepath.Join(m.api.DataDir(), "plugins"), ".js")
+		available := engine.ListScripts(filepath.Join(m.api.DataDir(), "plugins"))
 		loadedSet := make(map[string]bool)
 		for _, n := range m.pluginNames {
 			loadedSet[n] = true
@@ -230,7 +230,7 @@ func (m *Model) handleShaderCommand(input string) {
 	parts := strings.Fields(input)
 	// /shader with no args -> list
 	if len(parts) <= 1 {
-		available := engine.ListDir(filepath.Join(m.api.DataDir(), "shaders"), ".js")
+		available := engine.ListScripts(filepath.Join(m.api.DataDir(), "shaders"))
 		loadedSet := make(map[string]bool)
 		for _, n := range m.shaderNames {
 			loadedSet[n] = true

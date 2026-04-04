@@ -106,7 +106,7 @@ type Model struct {
 	theme *theme.Theme
 
 	// Per-player plugins
-	plugins     []*engine.JSPlugin
+	plugins     []engine.Plugin
 	pluginNames []string // parallel to plugins; display names
 
 	// Per-player shaders (post-processing, run in order)

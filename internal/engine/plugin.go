@@ -24,8 +24,24 @@ type JSPlugin struct {
 	onMessageFn goja.Callable // Plugin.onMessage(author, text, isSystem) → string|null
 }
 
-// LoadPlugin reads and executes a JS plugin file, extracting the Plugin.onMessage hook.
-func LoadPlugin(path string, clock domain.Clock) (*JSPlugin, error) {
+// Plugin is the common interface for all script plugins (JS or Lua).
+type Plugin interface {
+	OnMessage(author, text string, isSystem bool) string
+	Name() string
+	Unload()
+}
+
+// LoadPlugin reads and executes a plugin script (.js or .lua).
+// Returns a Plugin (either JSPlugin or LuaPlugin).
+func LoadPlugin(path string, clock domain.Clock) (Plugin, error) {
+	if strings.HasSuffix(path, ".lua") {
+		return LoadLuaPlugin(path, clock)
+	}
+	return loadJSPlugin(path, clock)
+}
+
+// loadJSPlugin reads and executes a JS plugin file, extracting the Plugin.onMessage hook.
+func loadJSPlugin(path string, clock domain.Clock) (*JSPlugin, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read plugin file: %w", err)
@@ -114,16 +130,20 @@ func (p *JSPlugin) Unload() {
 	p.vm.Interrupt("unloaded")
 }
 
-// ResolvePluginPath resolves a plugin name or URL to a local file path,
-// downloading and caching if it's a URL.
+// ResolvePluginPath resolves a plugin name or URL to a local file path.
+// For names, tries .js first then .lua; URLs are downloaded and cached.
 func ResolvePluginPath(nameOrURL, dataDir string) (name, path string, err error) {
 	if network.IsURL(nameOrURL) {
 		cacheDir := filepath.Join(dataDir, "plugins", ".cache")
-		local, err := network.DownloadToCache(nameOrURL, cacheDir)
-		if err != nil {
-			return "", "", fmt.Errorf("download plugin: %w", err)
+		local, dlErr := network.DownloadToCache(nameOrURL, cacheDir)
+		if dlErr != nil {
+			return "", "", fmt.Errorf("download plugin: %w", dlErr)
 		}
-		return strings.TrimSuffix(filepath.Base(local), ".js"), local, nil
+		return TrimScriptExt(filepath.Base(local)), local, nil
 	}
-	return nameOrURL, filepath.Join(dataDir, "plugins", nameOrURL+".js"), nil
+	jsPath := filepath.Join(dataDir, "plugins", nameOrURL+".js")
+	if _, statErr := os.Stat(jsPath); statErr == nil {
+		return nameOrURL, jsPath, nil
+	}
+	return nameOrURL, filepath.Join(dataDir, "plugins", nameOrURL+".lua"), nil
 }

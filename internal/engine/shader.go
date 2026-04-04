@@ -28,8 +28,16 @@ type JSShader struct {
 	unloadFn  goja.Callable // Shader.unload() — optional
 }
 
-// LoadShader reads and executes a JS shader file, extracting the Shader.process hook.
-func LoadShader(path string, clock domain.Clock) (*JSShader, error) {
+// LoadShader reads and executes a shader script (.js or .lua).
+func LoadShader(path string, clock domain.Clock) (domain.Shader, error) {
+	if strings.HasSuffix(path, ".lua") {
+		return LoadLuaShader(path, clock)
+	}
+	return loadJSShader(path, clock)
+}
+
+// loadJSShader reads and executes a JS shader file, extracting the Shader.process hook.
+func loadJSShader(path string, clock domain.Clock) (*JSShader, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read shader file: %w", err)
@@ -229,18 +237,22 @@ func newJSShaderBuffer(vm *goja.Runtime, buf *render.ImageBuffer) map[string]any
 	}
 }
 
-// ResolveShaderPath resolves a shader name or URL to a local file path,
-// downloading and caching if it's a URL.
+// ResolveShaderPath resolves a shader name or URL to a local file path.
+// For names, tries .js first then .lua; URLs are downloaded and cached.
 func ResolveShaderPath(nameOrURL, dataDir string) (name, path string, err error) {
 	if network.IsURL(nameOrURL) {
 		cacheDir := filepath.Join(dataDir, "shaders", ".cache")
-		local, err := network.DownloadToCache(nameOrURL, cacheDir)
-		if err != nil {
-			return "", "", fmt.Errorf("download shader: %w", err)
+		local, dlErr := network.DownloadToCache(nameOrURL, cacheDir)
+		if dlErr != nil {
+			return "", "", fmt.Errorf("download shader: %w", dlErr)
 		}
-		return strings.TrimSuffix(filepath.Base(local), ".js"), local, nil
+		return TrimScriptExt(filepath.Base(local)), local, nil
 	}
-	return nameOrURL, filepath.Join(dataDir, "shaders", nameOrURL+".js"), nil
+	jsPath := filepath.Join(dataDir, "shaders", nameOrURL+".js")
+	if _, statErr := os.Stat(jsPath); statErr == nil {
+		return nameOrURL, jsPath, nil
+	}
+	return nameOrURL, filepath.Join(dataDir, "shaders", nameOrURL+".lua"), nil
 }
 
 // ApplyShaders runs all shaders in sequence on the given buffer.

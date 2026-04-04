@@ -8,13 +8,25 @@ import (
 	"strings"
 
 	"github.com/dop251/goja"
+	lua "github.com/yuin/gopher-lua"
 
 	"null-space/internal/domain"
 )
 
-// ProbeGameTeamRange reads a game JS file and extracts the Game.teamRange property
+// TrimScriptExt removes .js or .lua extension from a filename.
+func TrimScriptExt(name string) string {
+	if strings.HasSuffix(name, ".js") {
+		return strings.TrimSuffix(name, ".js")
+	}
+	return strings.TrimSuffix(name, ".lua")
+}
+
+// ProbeGameTeamRange reads a game script file and extracts the Game.teamRange property
 // without fully initializing the runtime. Returns zero TeamRange if not defined.
 func ProbeGameTeamRange(path string) domain.TeamRange {
+	if strings.HasSuffix(path, ".lua") {
+		return probeLuaTeamRange(path)
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return domain.TeamRange{}
@@ -75,41 +87,86 @@ func ProbeGameTeamRange(path string) domain.TeamRange {
 	return tr
 }
 
-// ResolveGamePath resolves a game name to a file path. It checks for:
-// 1. gamesDir/<name>.js  (flat single-file game)
-// 2. gamesDir/<name>/main.js  (folder-based multi-file game)
+// ResolveGamePath resolves a game name to a file path. Checks in order:
+// 1. gamesDir/<name>.js
+// 2. gamesDir/<name>/main.js
+// 3. gamesDir/<name>.lua
+// 4. gamesDir/<name>/main.lua
 func ResolveGamePath(gamesDir, name string) string {
-	flat := filepath.Join(gamesDir, name+".js")
-	if _, err := os.Stat(flat); err == nil {
-		return flat
+	for _, flat := range []string{
+		filepath.Join(gamesDir, name+".js"),
+		filepath.Join(gamesDir, name, "main.js"),
+		filepath.Join(gamesDir, name+".lua"),
+		filepath.Join(gamesDir, name, "main.lua"),
+	} {
+		if _, err := os.Stat(flat); err == nil {
+			return flat
+		}
 	}
-	folder := filepath.Join(gamesDir, name, "main.js")
-	if _, err := os.Stat(folder); err == nil {
-		return folder
-	}
-	return flat // return the flat path so the error message makes sense
+	return filepath.Join(gamesDir, name+".js") // fallback for error message
 }
 
-// ListGames returns the names of all available games in dir: both flat .js files
-// and subdirectories containing a main.js, sorted alphabetically.
+// ListGames returns the names of all available games in dir: flat .js/.lua files
+// and subdirectories containing a main.js or main.lua, sorted alphabetically.
+// Duplicate names (e.g. foo.js and foo.lua) are deduplicated.
 func ListGames(dir string) []string {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
 	}
+	seen := map[string]bool{}
 	var names []string
+	add := func(name string) {
+		if !seen[name] {
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
 	for _, e := range entries {
 		if e.Name() == ".cache" {
 			continue
 		}
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".js") {
-			names = append(names, strings.TrimSuffix(e.Name(), ".js"))
-		} else if e.IsDir() {
-			// Check for main.js inside the directory.
-			mainJS := filepath.Join(dir, e.Name(), "main.js")
-			if _, err := os.Stat(mainJS); err == nil {
-				names = append(names, e.Name())
+		if !e.IsDir() {
+			if strings.HasSuffix(e.Name(), ".js") {
+				add(strings.TrimSuffix(e.Name(), ".js"))
+			} else if strings.HasSuffix(e.Name(), ".lua") {
+				add(strings.TrimSuffix(e.Name(), ".lua"))
 			}
+		} else {
+			for _, main := range []string{"main.js", "main.lua"} {
+				if _, err := os.Stat(filepath.Join(dir, e.Name(), main)); err == nil {
+					add(e.Name())
+					break
+				}
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// ListScripts returns the names of all .js and .lua files in dir (without extension),
+// sorted alphabetically and deduplicated.
+func ListScripts(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		var name string
+		if strings.HasSuffix(e.Name(), ".js") {
+			name = strings.TrimSuffix(e.Name(), ".js")
+		} else if strings.HasSuffix(e.Name(), ".lua") {
+			name = strings.TrimSuffix(e.Name(), ".lua")
+		}
+		if name != "" && !seen[name] {
+			seen[name] = true
+			names = append(names, name)
 		}
 	}
 	sort.Strings(names)
@@ -183,4 +240,44 @@ func FormatGameList(gamesDir string, available []string, activeGame string, team
 
 	header := fmt.Sprintf("Available games (%d teams configured):", teamCount)
 	return header + "\n" + strings.Join(lines, "\n")
+}
+
+// probeLuaTeamRange extracts Game.teamRange from a Lua game file without fully
+// initializing the runtime. Returns zero TeamRange on any error.
+func probeLuaTeamRange(path string) domain.TeamRange {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return domain.TeamRange{}
+	}
+	L := newSandboxedLState()
+	defer L.Close()
+
+	// Stub out all globals so the script doesn't crash during probe.
+	noop := L.NewFunction(func(L *lua.LState) int { return 0 })
+	for _, name := range []string{"log", "chat", "chatPlayer", "teams", "gameOver",
+		"figlet", "now", "addMenu", "messageBox", "registerCommand", "include"} {
+		L.SetGlobal(name, noop)
+	}
+
+	if err := L.DoString(string(src)); err != nil {
+		return domain.TeamRange{}
+	}
+	gameLV := L.GetGlobal("Game")
+	gameTbl, ok := gameLV.(*lua.LTable)
+	if !ok {
+		return domain.TeamRange{}
+	}
+	trLV := gameTbl.RawGetString("teamRange")
+	trTbl, ok := trLV.(*lua.LTable)
+	if !ok {
+		return domain.TeamRange{}
+	}
+	var tr domain.TeamRange
+	if min := trTbl.RawGetString("min"); min != lua.LNil {
+		tr.Min = int(lua.LVAsNumber(min))
+	}
+	if max := trTbl.RawGetString("max"); max != lua.LNil {
+		tr.Max = int(lua.LVAsNumber(max))
+	}
+	return tr
 }

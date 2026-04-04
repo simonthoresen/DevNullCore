@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"null-space/internal/domain"
@@ -22,13 +21,13 @@ func (a *Server) checkGameOver() {
 	if game == nil || phase != domain.PhasePlaying {
 		return
 	}
-	rt, ok := game.(*engine.JSRuntime)
-	if !ok || !rt.IsGameOverPending() {
+	srt, ok := game.(engine.ScriptRuntime)
+	if !ok || !srt.IsGameOverPending() {
 		return
 	}
 
 	// Save state if the game passed one as the second arg to gameOver().
-	gameOverState := rt.GameOverStateExport()
+	gameOverState := srt.GameOverStateExport()
 
 	a.state.RLock()
 	gameName := a.state.GameName
@@ -44,7 +43,7 @@ func (a *Server) checkGameOver() {
 
 	a.state.SetGamePhase(domain.PhaseGameOver)
 	a.state.Lock()
-	a.state.GameOverResults = rt.GameOverResults()
+	a.state.GameOverResults = srt.GameOverResults()
 	a.state.Unlock()
 
 	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseGameOver})
@@ -101,9 +100,9 @@ func (a *Server) loadGame(path string) error {
 		a.unloadGame()
 	}
 
-	// Derive game name: for folder games (games/nethack/main.js) use the folder name,
-	// for flat games (games/example.js) use the filename stem.
-	name := strings.TrimSuffix(filepath.Base(path), ".js")
+	// Derive game name: for folder games use the folder name,
+	// for flat games use the filename stem (strip .js or .lua).
+	name := engine.TrimScriptExt(filepath.Base(path))
 	if name == "main" {
 		name = filepath.Base(filepath.Dir(path))
 	}
@@ -119,8 +118,8 @@ func (a *Server) loadGame(path string) error {
 		close(gameChatCh)
 		return err
 	}
-	if jrt, ok := rt.(*engine.JSRuntime); ok {
-		jrt.SetShowDialogFn(a.ShowDialog)
+	if srt, ok := rt.(engine.ScriptRuntime); ok {
+		srt.SetShowDialogFn(a.ShowDialog)
 	}
 
 	// Validate team count against game's declared range.
@@ -145,9 +144,9 @@ func (a *Server) loadGame(path string) error {
 	a.state.GamePhase = domain.PhaseSplash
 	a.state.Unlock()
 
-	// Populate the teams cache so JS teams() returns correct data.
-	if jrt, ok := rt.(*engine.JSRuntime); ok {
-		jrt.SetTeamsCache(a.buildTeamsCache())
+	// Populate the teams cache so script teams() returns correct data.
+	if srt, ok := rt.(engine.ScriptRuntime); ok {
+		srt.SetTeamsCache(a.buildTeamsCache())
 	}
 
 	// Drain JS chat messages on a background goroutine.
@@ -252,9 +251,9 @@ func (a *Server) unloadGame() {
 	}
 	game.Unload()
 
-	// Close the JS chat channel so the drainer goroutine exits.
-	if jrt, ok := game.(*engine.JSRuntime); ok {
-		jrt.CloseChatCh()
+	// Close the script chat channel so the drainer goroutine exits.
+	if srt, ok := game.(engine.ScriptRuntime); ok {
+		srt.CloseChatCh()
 	}
 
 	a.broadcastMsg(domain.GameUnloadedMsg{})
@@ -406,8 +405,8 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 		close(gameChatCh)
 		return fmt.Errorf("load game for resume: %w", err)
 	}
-	if jrt, ok := rt.(*engine.JSRuntime); ok {
-		jrt.SetShowDialogFn(a.ShowDialog)
+	if srt, ok := rt.(engine.ScriptRuntime); ok {
+		srt.SetShowDialogFn(a.ShowDialog)
 	}
 
 	// Validate team count against game's declared range.
@@ -435,8 +434,8 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 	a.state.Unlock()
 
 	// Populate teams cache.
-	if jrt, ok := rt.(*engine.JSRuntime); ok {
-		jrt.SetTeamsCache(a.buildTeamsCache())
+	if srt, ok := rt.(engine.ScriptRuntime); ok {
+		srt.SetTeamsCache(a.buildTeamsCache())
 	}
 
 	// Drain JS chat.
