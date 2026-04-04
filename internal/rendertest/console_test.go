@@ -8,7 +8,7 @@ import (
 
 // TestConsoleRenders runs each scenario through the server console view and
 // compares the stripped output against the golden file at
-// testdata/golden/<scenario>_console.txt.
+// testdata/<scenario>_console.txt.
 //
 // Two color-mode subtests are run per scenario:
 //   - ascii  — NoTTY profile: no escape codes in the output at all.
@@ -16,6 +16,9 @@ import (
 //
 // Both subtests compare against the same golden file because stripping produces
 // identical plain text regardless of the color profile used.
+//
+// Scenarios with keys defined apply those key sequences to the console model
+// too, exercising the console's own overlay/menu system.
 func TestConsoleRenders(t *testing.T) {
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
@@ -25,7 +28,7 @@ func TestConsoleRenders(t *testing.T) {
 					sc.setup(st)
 
 					api := newMockConsoleAPI(st)
-					got := renderConsole(api, cv.profile, termW, termH)
+					got := renderConsole(api, sc.keys, cv.profile, termW, termH)
 
 					path := goldenPath(sc.name, "console")
 					checkOrUpdate(t, path, got)

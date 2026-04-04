@@ -228,11 +228,14 @@ func normalizeScreen(s string) string {
 }
 
 // renderConsole creates a console model with the given API, sends a window-size
-// message, and returns the ANSI-stripped render content.
-func renderConsole(api console.ServerAPI, profile colorprofile.Profile, w, h int) string {
+// message, applies any key sequences, and returns the ANSI-stripped render content.
+func renderConsole(api console.ServerAPI, keys []string, profile colorprofile.Profile, w, h int) string {
 	m := console.NewModel(api, func() {}, profile)
-	m2, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
-	return normalizeScreen(stripRender(m2.View().Content))
+	cur, _ := m.Update(tea.WindowSizeMsg{Width: w, Height: h})
+	for _, k := range keys {
+		cur, _ = cur.Update(parseKey(k))
+	}
+	return normalizeScreen(stripRender(cur.View().Content))
 }
 
 // renderChrome creates a chrome model for the given player, applies variant
@@ -248,7 +251,7 @@ func renderChrome(
 	playerID string,
 	inActiveGame bool,
 	gameName string,
-	chromeKeys []string,
+	keys []string,
 	variant chromeVariant,
 	profile colorprofile.Profile,
 	w, h int,
@@ -282,7 +285,7 @@ func renderChrome(
 	if inActiveGame {
 		cur, _ = cur.Update(domain.GameLoadedMsg{Name: gameName})
 	}
-	for _, k := range chromeKeys {
+	for _, k := range keys {
 		cur, _ = cur.Update(parseKey(k))
 	}
 	return sanitize(normalizeScreen(stripRender(cur.View().Content)))

@@ -23,9 +23,11 @@ type renderScenario struct {
 	inActiveGame bool
 	// gameName is used in GameLoadedMsg when inActiveGame is true.
 	gameName string
-	// chromeKeys is a sequence of key names (e.g. "f10", "alt+h", "enter")
-	// sent to the chrome model after initial setup to drive overlay/menu state.
-	chromeKeys []string
+	// keys is a sequence of key names (e.g. "f10", "alt+h", "enter") sent to
+	// both the console and chrome models after initial setup to drive
+	// overlay/menu state. Both models share the same widget.OverlayState key
+	// handling, so the same sequences work for both.
+	keys []string
 	// noIntegration skips this scenario in TestChromeRendersIntegration.
 	// Use for scenarios that cannot be reproduced over a real SSH connection:
 	// playing/splash (late joiners stay in lobby) and menu/dialog scenarios
@@ -88,7 +90,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_menu_focused",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"f10"},
+		keys:    []string{"f10"},
 		noIntegration: true,
 	},
 	{
@@ -96,7 +98,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_help_menu_open",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"alt+h"},
+		keys:    []string{"alt+h"},
 		noIntegration: true,
 	},
 	{
@@ -104,7 +106,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_about_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"alt+h", "enter"},
+		keys:    []string{"alt+h", "enter"},
 		noIntegration: true,
 	},
 

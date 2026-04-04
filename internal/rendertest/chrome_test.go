@@ -38,7 +38,7 @@ func TestChromeRenders(t *testing.T) {
 								playerID,
 								sc.inActiveGame,
 								sc.gameName,
-								sc.chromeKeys,
+								sc.keys,
 								variant,
 								cv.profile,
 								termW, termH,
