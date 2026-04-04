@@ -56,7 +56,7 @@ func sanitize(s string) string {
 		sub := lobbyStatusBarPattern.FindStringSubmatch(match)
 		players := sub[1]
 		left := fmt.Sprintf(" null-space | %s players | uptime XX", players)
-		pad := termW - len(left) - len(fixedTimestamp)
+		pad := termW - len(left) - len(fixedTimestamp) - 1
 		if pad < 1 {
 			pad = 1
 		}
