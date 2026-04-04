@@ -53,27 +53,36 @@ if ($version) { Set-Content -Path (Join-Path $InstallDir ".version") -Value $ver
 
 # Create desktop shortcuts
 $desktop  = [Environment]::GetFolderPath("Desktop")
-$startPs1 = Join-Path $InstallDir "start.ps1"
+$startServerPs1 = Join-Path $InstallDir "start-server.ps1"
+$startClientPs1 = Join-Path $InstallDir "start-client.ps1"
 $shell    = New-Object -ComObject WScript.Shell
 
-$public = $shell.CreateShortcut((Join-Path $desktop "NullSpace (public).lnk"))
+$public = $shell.CreateShortcut((Join-Path $desktop "NullSpace Server (public).lnk"))
 $public.TargetPath       = "powershell.exe"
-$public.Arguments        = "-ExecutionPolicy Bypass -File `"$startPs1`""
+$public.Arguments        = "-ExecutionPolicy Bypass -File `"$startServerPs1`""
 $public.WorkingDirectory = $InstallDir
 $public.Description      = "Start the null-space server (online multiplayer)"
 $public.Save()
 
-$private = $shell.CreateShortcut((Join-Path $desktop "NullSpace (private).lnk"))
+$private = $shell.CreateShortcut((Join-Path $desktop "NullSpace Server (LAN).lnk"))
 $private.TargetPath       = "powershell.exe"
-$private.Arguments        = "-ExecutionPolicy Bypass -File `"$startPs1`" --local"
+$private.Arguments        = "-ExecutionPolicy Bypass -File `"$startServerPs1`" --lan"
 $private.WorkingDirectory = $InstallDir
-$private.Description      = "Start null-space in local single-player mode"
+$private.Description      = "Start the null-space server (LAN only, no Pinggy)"
 $private.Save()
+
+$client = $shell.CreateShortcut((Join-Path $desktop "NullSpace Client.lnk"))
+$client.TargetPath       = "powershell.exe"
+$client.Arguments        = "-ExecutionPolicy Bypass -File `"$startClientPs1`""
+$client.WorkingDirectory = $InstallDir
+$client.Description      = "Start the null-space graphical client"
+$client.Save()
 
 Write-Host ""
 Write-Host "  Installed! Desktop shortcuts created." -ForegroundColor Green
 Write-Host ""
 Write-Host "  To start manually:"
 Write-Host "    cd `"$InstallDir`""
-Write-Host "    .\start.ps1"
+Write-Host "    .\start-server.ps1   # run the server"
+Write-Host "    .\start-client.ps1   # run the graphical client"
 Write-Host ""

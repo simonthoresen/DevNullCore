@@ -104,7 +104,8 @@ go run ./cmd/null-space-client --local --data-dir dist --player alice --game orb
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
 | `internal/client/` | Client internals: SSH transport, ANSI parser, charmap atlas, Ebitengine renderer |
 | `dist/charmaps/` | Charmap assets: per-game subdirectories with charmap.json + atlas PNG |
-| `dist/start.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then null-space-server.exe |
+| `dist/start-server.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then null-space-server.exe |
+| `dist/start-client.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts null-space-client.exe |
 | `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
 | `.github/workflows/release.yml` | CI: builds binaries and publishes rolling `latest` release on every push to main |
 

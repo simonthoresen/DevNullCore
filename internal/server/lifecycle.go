@@ -171,7 +171,7 @@ func (a *Server) loadGame(path string) error {
 	a.broadcastMsg(domain.GameLoadedMsg{Name: name})
 	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseSplash})
 	a.broadcastChat(domain.Message{Text: fmt.Sprintf("Game loaded: %s", name)})
-	a.serverLog(fmt.Sprintf("game loaded: %s (splash)", name))
+	a.serverLog(fmt.Sprintf("game loaded: %s (%s, splash)", name, path))
 
 	// Start splash goroutine: waits up to 10s or until admin triggers start.
 	a.splashDone = make(chan struct{})

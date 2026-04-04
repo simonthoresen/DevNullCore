@@ -28,7 +28,8 @@ jobs:
             null-space-server.exe \
             null-space-client.exe \
             pinggy-helper.exe \
-            start.ps1 \
+            start-server.ps1 \
+            start-client.ps1 \
             fonts/ \
             games/ \
             plugins/ \
@@ -61,5 +62,5 @@ jobs:
             --notes "Auto-built from main at ${{ github.sha }}.
 
           **Fresh install:** save and run [install.ps1](https://github.com/simonthoresen/null-space/raw/main/install.ps1).
-          **Existing install:** \`start.ps1\` auto-updates binaries on each launch." \
+          **Existing install:** \`start-server.ps1\` / \`start-client.ps1\` auto-update binaries on each launch." \
             --latest

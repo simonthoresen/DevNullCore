@@ -65,34 +65,61 @@ if ([string]::IsNullOrWhiteSpace($name)) {
     $name = $env:USERNAME
 }
 
-# Ensure the SSH client advertises proper terminal capabilities.
-$env:TERM = "xterm-256color"
-$env:LANG = "en_US.UTF-8"
-$env:COLORTERM = "truecolor"
-
-# Read init commands from ~/.null-space/client.txt if it exists.
-$initFile = Join-Path $HOME ".null-space" "client.txt"
-if (Test-Path $initFile) {
-    $initContent = Get-Content $initFile -Raw -ErrorAction SilentlyContinue
-    if ($initContent) {
-        $env:NULL_SPACE_INIT = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($initContent))
+# Locate null-space-client.exe: check PATH first, then the desktop shortcut.
+$clientExe = $null
+$clientCmd = Get-Command "null-space-client.exe" -ErrorAction SilentlyContinue
+if ($clientCmd) {
+    $clientExe = $clientCmd.Source
+} else {
+    $shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "NullSpace Client.lnk"
+    if (Test-Path $shortcut) {
+        $shell = New-Object -ComObject WScript.Shell
+        $lnk   = $shell.CreateShortcut($shortcut)
+        # Arguments looks like: -ExecutionPolicy Bypass -File "C:\...\start-client.ps1"
+        if ($lnk.Arguments -match '-File\s+"([^"]+)"') {
+            $candidate = Join-Path (Split-Path $Matches[1] -Parent) "null-space-client.exe"
+            if (Test-Path $candidate) { $clientExe = $candidate }
+        }
+    }
+    if (-not $clientExe) {
+        $candidate = Join-Path $env:ProgramFiles "NullSpace" "null-space-client.exe"
+        if (Test-Path $candidate) { $clientExe = $candidate }
     }
 }
 
-$sshOpts = @(
-    "-tt",
-    "-o", "ConnectTimeout=5",
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null",
-    "-o", "SendEnv=TERM",
-    "-o", "SendEnv=LANG",
-    "-o", "SendEnv=COLORTERM",
-    "-o", "SendEnv=NULL_SPACE_INIT"
-)
-
 foreach ($ep in $endpoints) {
     Write-Host "Trying $($ep.Host):$($ep.Port) ..." -ForegroundColor DarkGray
-    ssh @sshOpts -p $ep.Port "${name}@$($ep.Host)"
+
+    if ($clientExe) {
+        & $clientExe --host $ep.Host --port $ep.Port --player $name
+    } else {
+        # Ensure the SSH client advertises proper terminal capabilities.
+        $env:TERM = "xterm-256color"
+        $env:LANG = "en_US.UTF-8"
+        $env:COLORTERM = "truecolor"
+
+        # Read init commands from ~/.null-space/client.txt if it exists.
+        $initFile = Join-Path $HOME ".null-space" "client.txt"
+        if (Test-Path $initFile) {
+            $initContent = Get-Content $initFile -Raw -ErrorAction SilentlyContinue
+            if ($initContent) {
+                $env:NULL_SPACE_INIT = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($initContent))
+            }
+        }
+
+        $sshOpts = @(
+            "-tt",
+            "-o", "ConnectTimeout=5",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "SendEnv=TERM",
+            "-o", "SendEnv=LANG",
+            "-o", "SendEnv=COLORTERM",
+            "-o", "SendEnv=NULL_SPACE_INIT"
+        )
+        ssh @sshOpts -p $ep.Port "${name}@$($ep.Host)"
+    }
+
     if ($LASTEXITCODE -eq 0) { exit 0 }
 }
 
