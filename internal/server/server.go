@@ -91,7 +91,7 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 	server, err := wish.NewServer(
 		ssh.EmulatePty(),
 		wish.WithAddress(address),
-		wish.WithHostKeyPath("null-space_ed25519"),
+		wish.WithHostKeyPath(filepath.Join(dataDir, "null-space_ed25519")),
 		wish.WithMiddleware(
 			wishbubbletea.MiddlewareWithProgramHandler(app.programHandler),
 			app.sessionMiddleware(),
@@ -148,16 +148,32 @@ func (a *Server) Start(ctx context.Context) error {
 // the listener is accepting connections. This allows callers to wait for the
 // server to be ready before connecting.
 func (a *Server) StartWithReady(ctx context.Context, ready chan<- struct{}) error {
+	return a.serveWith(ctx, ready, nil)
+}
+
+// ServeListener starts the SSH server using an already-bound net.Listener.
+// The listener's address is used as-is (no TCP_NODELAY wrapper is added on top).
+// If ready is non-nil it is closed once the server begins accepting connections.
+// This is primarily useful in tests, where the caller pre-binds to ":0" to
+// obtain an OS-assigned port before handing the listener to the server.
+func (a *Server) ServeListener(ctx context.Context, ln net.Listener, ready chan<- struct{}) error {
+	return a.serveWith(ctx, ready, ln)
+}
+
+func (a *Server) serveWith(ctx context.Context, ready chan<- struct{}, ln net.Listener) error {
 	go a.runTicker(ctx)
 
 	errCh := make(chan error, 1)
 	go func() {
-		ln, err := newNoDelayListener(a.sshServer.Addr)
-		if err != nil {
-			errCh <- err
-			return
+		var err error
+		if ln == nil {
+			ln, err = newNoDelayListener(a.sshServer.Addr)
+			if err != nil {
+				errCh <- err
+				return
+			}
 		}
-		slog.Info("TCP_NODELAY listener ready", "address", a.sshServer.Addr)
+		slog.Info("TCP_NODELAY listener ready", "address", ln.Addr())
 		if ready != nil {
 			close(ready)
 		}
