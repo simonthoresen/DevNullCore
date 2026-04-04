@@ -62,12 +62,18 @@ func (o *OverlayState) buildDialogWindow(d domain.DialogRequest) *dialogEntry {
 		tabIdx++
 	} else if d.Body != "" {
 		bodyLines := strings.Split(d.Body, "\n")
+		maxW := 0
+		for _, line := range bodyLines {
+			if w := len([]rune(line)); w > maxW {
+				maxW = w
+			}
+		}
 		tv := &TextView{Lines: bodyLines}
 		children = append(children, GridChild{
 			Control: tv,
 			Constraint: GridConstraint{
 				Col: 1, Row: row, WeightX: 1,
-				MinH: len(bodyLines), Fill: FillBoth,
+				MinW: maxW, MinH: len(bodyLines), Fill: FillBoth,
 			},
 		})
 	}
