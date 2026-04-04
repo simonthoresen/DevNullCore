@@ -54,6 +54,7 @@ func main() {
 	flag.DurationVar(&tickInterval, "tick-interval", 100*time.Millisecond, "server tick interval (e.g. 100ms, 50ms)")
 	flag.StringVar(&termFlag, "term", "", "force terminal color profile for all sessions: truecolor, 256color, ansi, ascii")
 	flag.Parse()
+	bootProfile = detectConsoleProfile(termFlag)
 
 	if portOverride != "" {
 		address = ":" + portOverride
@@ -167,9 +168,8 @@ func main() {
 	}
 
 	startBootStep("Starting console")
-	consoleProfile := detectConsoleProfile(termFlag)
-	consoleModel := console.NewModel(app, stop, consoleProfile)
-	program := tea.NewProgram(consoleModel, tea.WithFPS(60), tea.WithColorProfile(consoleProfile))
+	consoleModel := console.NewModel(app, stop, bootProfile)
+	program := tea.NewProgram(consoleModel, tea.WithFPS(60), tea.WithColorProfile(bootProfile))
 	app.SetConsoleProgram(program)
 
 	// Start server in background
@@ -214,6 +214,9 @@ func main() {
 	}
 }
 
+// bootProfile is the color profile for boot-step output, set from --term.
+var bootProfile = colorprofile.TrueColor
+
 var currentBootLabel string
 
 // statusTokenWidth is the fixed display width of every status token: "[ DONE ]" = 8.
@@ -232,7 +235,11 @@ func statusToken(status string) string {
 }
 
 // colorizedToken colors only the status text inside the brackets.
+// Returns a plain token when bootProfile has no color support.
 func colorizedToken(token, status string) string {
+	if bootProfile <= colorprofile.ASCII {
+		return token
+	}
 	var code string
 	switch status {
 	case "DONE":
