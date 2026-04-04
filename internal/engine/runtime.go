@@ -114,7 +114,8 @@ type JSRuntime struct {
 	menus        []domain.MenuDef
 	showDialogFn func(playerID string, d domain.DialogRequest) // injected by server
 
-	charmapDef *render.CharMapDef // loaded from dist/charmaps/<name>/charmap.json; nil if no charmap
+	charmapDef  *render.CharMapDef // loaded from dist/charmaps/<name>/charmap.json; nil if no charmap
+	isFolderGame bool              // true when the game was loaded from <name>/main.js (not a flat .js file)
 }
 
 // LoadGame loads and executes a game script (.js or .lua), extracts the Game
@@ -130,12 +131,13 @@ func LoadGame(path string, logFn func(string), chatCh chan domain.Message, clock
 	}
 
 	rt := &JSRuntime{
-		vm:      goja.New(),
-		baseDir: filepath.Dir(path),
-		logFn:   logFn,
-		chatCh:  chatCh,
-		clock:   clock,
-		dataDir: dataDir,
+		vm:           goja.New(),
+		baseDir:      filepath.Dir(path),
+		logFn:        logFn,
+		chatCh:       chatCh,
+		clock:        clock,
+		dataDir:      dataDir,
+		isFolderGame: filepath.Base(path) == "main.js",
 	}
 
 	// Record the main source file.
@@ -600,6 +602,39 @@ func (r *JSRuntime) GameSource() []domain.GameSourceFile {
 		result[i] = domain.GameSourceFile{Name: sf.Name, Content: sf.Content}
 	}
 	return result
+}
+
+// GameAssets returns the binary asset files (audio, images) bundled alongside
+// a folder-based game. Returns nil for single-file games.
+func (r *JSRuntime) GameAssets() []domain.GameAsset {
+	if !r.isFolderGame {
+		return nil
+	}
+	entries, err := os.ReadDir(r.baseDir)
+	if err != nil {
+		return nil
+	}
+	allowed := map[string]bool{
+		".ogg": true, ".mp3": true, ".wav": true,
+		".png": true, ".jpg": true, ".jpeg": true,
+	}
+	var assets []domain.GameAsset
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(e.Name()))
+		if !allowed[ext] {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(r.baseDir, e.Name()))
+		if err != nil {
+			slog.Warn("game asset read failed", "file", e.Name(), "error", err)
+			continue
+		}
+		assets = append(assets, domain.GameAsset{Name: e.Name(), Data: data})
+	}
+	return assets
 }
 
 // ChatCh returns the channel used by JS chat()/chatPlayer() to send messages.

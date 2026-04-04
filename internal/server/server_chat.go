@@ -39,28 +39,33 @@ func (a *Server) broadcastMsg(msg tea.Msg) {
 
 func (a *Server) broadcastChat(msg domain.Message) {
 	start := time.Now()
-	a.state.AddChat(msg)
 
-	// Write to chat log file.
-	if a.chatLogFile != nil {
-		ts := time.Now().Format(domain.TimeFormatDateTime)
-		var line string
-		switch {
-		case msg.IsPrivate:
-			line = fmt.Sprintf("%s [PM %s→%s] %s\n", ts, msg.FromID, msg.ToID, msg.Text)
-		case msg.Author == "":
-			line = fmt.Sprintf("%s [system] %s\n", ts, msg.Text)
+	// Messages with no visible text (e.g. sound-only stop commands) skip history
+	// and log storage but are still broadcast so graphical clients receive the OSC.
+	if msg.Text != "" {
+		a.state.AddChat(msg)
+
+		// Write to chat log file.
+		if a.chatLogFile != nil {
+			ts := time.Now().Format(domain.TimeFormatDateTime)
+			var line string
+			switch {
+			case msg.IsPrivate:
+				line = fmt.Sprintf("%s [PM %s→%s] %s\n", ts, msg.FromID, msg.ToID, msg.Text)
+			case msg.Author == "":
+				line = fmt.Sprintf("%s [system] %s\n", ts, msg.Text)
+			default:
+				line = fmt.Sprintf("%s <%s> %s\n", ts, msg.Author, msg.Text)
+			}
+			if _, err := a.chatLogFile.WriteString(line); err != nil {
+				slog.Debug("chat log write failed", "error", err)
+			}
+		}
+
+		select {
+		case a.chatCh <- msg:
 		default:
-			line = fmt.Sprintf("%s <%s> %s\n", ts, msg.Author, msg.Text)
 		}
-		if _, err := a.chatLogFile.WriteString(line); err != nil {
-			slog.Debug("chat log write failed", "error", err)
-		}
-	}
-
-	select {
-	case a.chatCh <- msg:
-	default:
 	}
 
 	a.broadcastMsg(domain.ChatMsg{Msg: msg})

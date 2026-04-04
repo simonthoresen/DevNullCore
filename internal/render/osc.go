@@ -108,6 +108,41 @@ func EncodeModeOSC(mode string) string {
 	return "\x1b]ns;mode;" + mode + "\x07"
 }
 
+// EncodeAssetManifestOSC returns an OSC sequence announcing the total number of
+// game asset files about to be sent. The client uses this for loading progress.
+func EncodeAssetManifestOSC(count int) string {
+	return fmt.Sprintf("\x1b]ns;asset-manifest;%d\x07", count)
+}
+
+// EncodeAssetOSC returns an OSC sequence containing a single game asset file
+// (gzipped and base64-encoded). name must be a bare filename with no path separators.
+func EncodeAssetOSC(name string, data []byte) string {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		return ""
+	}
+	if err := gz.Close(); err != nil {
+		return ""
+	}
+	return "\x1b]ns;asset;" + name + ";" + base64.StdEncoding.EncodeToString(buf.Bytes()) + "\x07"
+}
+
+// EncodeSoundOSC returns an OSC sequence instructing graphical clients to play a sound.
+func EncodeSoundOSC(filename string, loop bool) string {
+	loopVal := "0"
+	if loop {
+		loopVal = "1"
+	}
+	return "\x1b]ns;sound;" + filename + ";loop=" + loopVal + "\x07"
+}
+
+// EncodeStopSoundOSC returns an OSC sequence instructing graphical clients to stop a sound.
+// An empty filename means stop all currently playing sounds.
+func EncodeStopSoundOSC(filename string) string {
+	return "\x1b]ns;stop-sound;" + filename + "\x07"
+}
+
 // CanvasFrameSize estimates the bandwidth in bytes for a single canvas frame
 // at the given pixel dimensions. Uses empirical PNG compression ratio.
 func CanvasFrameSize(pixelW, pixelH int) int {

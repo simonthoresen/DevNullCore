@@ -53,6 +53,49 @@ func (r *JSRuntime) registerGlobals() {
 		}
 	})
 
+	r.vm.Set("playSound", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		filename := ""
+		if v := call.Argument(0); !goja.IsUndefined(v) && !goja.IsNull(v) {
+			filename = v.String()
+		}
+		msg := domain.Message{SoundFile: filename}
+		if optsVal := call.Argument(1); !goja.IsUndefined(optsVal) && !goja.IsNull(optsVal) {
+			if opts := optsVal.ToObject(r.vm); opts != nil {
+				if v := opts.Get("loop"); v != nil && !goja.IsUndefined(v) {
+					msg.SoundLoop = v.ToBoolean()
+				}
+				if v := opts.Get("alt"); v != nil && !goja.IsUndefined(v) {
+					msg.Text = v.String()
+				}
+			}
+		}
+		select {
+		case r.chatCh <- msg:
+		default:
+			slog.Warn("JS playSound channel full, dropping", "file", filename)
+		}
+		return goja.Undefined()
+	})
+
+	r.vm.Set("stopSound", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		filename := ""
+		if v := call.Argument(0); !goja.IsUndefined(v) && !goja.IsNull(v) {
+			filename = v.String()
+		}
+		select {
+		case r.chatCh <- domain.Message{SoundStop: true, SoundFile: filename}:
+		default:
+			slog.Warn("JS stopSound channel full, dropping", "file", filename)
+		}
+		return goja.Undefined()
+	})
+
 	r.vm.Set("teams", func() []map[string]any {
 		// Return a deep copy of the cached snapshot to prevent JS mutation.
 		result := make([]map[string]any, len(r.cachedTeams))

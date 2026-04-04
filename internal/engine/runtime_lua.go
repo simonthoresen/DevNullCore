@@ -616,6 +616,9 @@ func (r *LuaRuntime) GameSource() []domain.GameSourceFile {
 	return result
 }
 
+// GameAssets returns nil for Lua games (folder-based assets not yet supported).
+func (r *LuaRuntime) GameAssets() []domain.GameAsset { return nil }
+
 // --- ScriptRuntime extension methods ---
 
 func (r *LuaRuntime) SetTeamsCache(teams []map[string]any) {

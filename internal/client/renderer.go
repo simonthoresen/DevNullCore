@@ -4,19 +4,40 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
 	_ "image/png"
 	"io"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/mp3"
+	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
+	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/bitmapfont/v4"
 
 	"null-space/internal/render"
 	"null-space/internal/theme"
 )
+
+// sharedAudioCtx is the process-wide Ebitengine audio context (44100 Hz sample rate).
+// Created lazily on first use via sync.Once to avoid panicking if audio is never used.
+var (
+	sharedAudioCtx     *audio.Context
+	sharedAudioCtxOnce sync.Once
+)
+
+func getAudioCtx() *audio.Context {
+	sharedAudioCtxOnce.Do(func() {
+		sharedAudioCtx = audio.NewContext(44100)
+	})
+	return sharedAudioCtx
+}
 
 // cellW and cellH are the pixel dimensions of a single terminal cell.
 const (
@@ -50,6 +71,14 @@ type Game struct {
 	localBuf      *render.ImageBuffer // locally rendered cell buffer (full screen)
 	playerID      string        // this client's player ID
 	chatLines     []string      // chat messages (received from ANSI stream for now)
+
+	// Asset loading progress.
+	assetTotal    int // expected asset count (from asset-manifest OSC)
+	assetReceived int // assets received so far
+
+	// Audio state. Keys are bare filenames (e.g. "music.ogg").
+	audioAssets  map[string][]byte        // raw decoded asset bytes
+	audioPlayers map[string]*audio.Player // currently playing audio players
 
 	// Read buffer for SSH data.
 	readBuf []byte
@@ -132,6 +161,32 @@ func (g *Game) readLoop() {
 				g.renderMode = g.grid.RenderMode
 				g.grid.RenderMode = ""
 			}
+			// Asset manifest — resets progress tracking and clears old assets/sounds.
+			if g.grid.AssetManifestTotal > 0 {
+				g.assetTotal = g.grid.AssetManifestTotal
+				g.assetReceived = 0
+				g.audioAssets = make(map[string][]byte)
+				g.stopSound("")
+				g.grid.AssetManifestTotal = 0
+			}
+			// Incoming binary assets.
+			for _, a := range g.grid.AssetFiles {
+				if g.audioAssets == nil {
+					g.audioAssets = make(map[string][]byte)
+				}
+				g.audioAssets[filepath.Base(a.Name)] = a.Data
+				g.assetReceived++
+			}
+			g.grid.AssetFiles = nil
+			// Sound commands.
+			for _, cmd := range g.grid.SoundCmds {
+				if cmd.Stop {
+					g.stopSound(cmd.Filename)
+				} else {
+					g.playSound(cmd.Filename, cmd.Loop)
+				}
+			}
+			g.grid.SoundCmds = nil
 			g.mu.Unlock()
 		}
 		if err != nil {
@@ -204,6 +259,120 @@ func (g *Game) loadCanvasFrame(gzipData []byte) {
 	g.canvasFrame = ebiten.NewImageFromImage(img)
 }
 
+// audioStream is the common interface implemented by all Ebitengine audio decoders.
+type audioStream interface {
+	io.ReadSeeker
+	Length() int64
+}
+
+// playSound plays the named audio file. If the file is not yet loaded (asset not received),
+// the call is silently dropped. If the sound is already playing, it is restarted.
+// Must be called with g.mu held.
+func (g *Game) playSound(filename string, loop bool) {
+	data, ok := g.audioAssets[filename]
+	if !ok {
+		return // asset not yet received
+	}
+	g.stopSound(filename) // stop any existing player for this file
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	ctx := getAudioCtx()
+
+	var stream audioStream
+	switch ext {
+	case ".ogg":
+		s, err := vorbis.DecodeWithSampleRate(44100, bytes.NewReader(data))
+		if err != nil {
+			return
+		}
+		stream = s
+	case ".mp3":
+		s, err := mp3.DecodeWithSampleRate(44100, bytes.NewReader(data))
+		if err != nil {
+			return
+		}
+		stream = s
+	case ".wav":
+		s, err := wav.DecodeWithSampleRate(44100, bytes.NewReader(data))
+		if err != nil {
+			return
+		}
+		stream = s
+	default:
+		return
+	}
+
+	var readSeeker io.ReadSeeker = stream
+	if loop {
+		readSeeker = audio.NewInfiniteLoop(stream, stream.Length())
+	}
+	player, err := ctx.NewPlayer(readSeeker)
+	if err != nil {
+		return
+	}
+	player.Play()
+	if g.audioPlayers == nil {
+		g.audioPlayers = make(map[string]*audio.Player)
+	}
+	g.audioPlayers[filename] = player
+}
+
+// stopSound stops playback of the named audio file. An empty filename stops all sounds.
+// Must be called with g.mu held.
+func (g *Game) stopSound(filename string) {
+	if g.audioPlayers == nil {
+		return
+	}
+	if filename == "" {
+		for _, p := range g.audioPlayers {
+			p.Pause()
+			p.Close()
+		}
+		g.audioPlayers = make(map[string]*audio.Player)
+		return
+	}
+	if p, ok := g.audioPlayers[filename]; ok {
+		p.Pause()
+		p.Close()
+		delete(g.audioPlayers, filename)
+	}
+}
+
+// drawLoadingOverlay renders a centered progress bar when assets are still loading.
+func (g *Game) drawLoadingOverlay(screen *ebiten.Image) {
+	w, h := screen.Bounds().Dx(), screen.Bounds().Dy()
+	barW := w / 2
+	barH := 16
+	bx := (w - barW) / 2
+	by := h/2 - barH/2
+
+	// Background bar.
+	bgImg := ebiten.NewImage(barW, barH)
+	bgImg.Fill(color.RGBA{R: 60, G: 60, B: 60, A: 220})
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(bx), float64(by))
+	screen.DrawImage(bgImg, op)
+
+	// Fill bar.
+	if g.assetTotal > 0 {
+		fillW := barW * g.assetReceived / g.assetTotal
+		if fillW > 0 {
+			fillImg := ebiten.NewImage(fillW, barH)
+			fillImg.Fill(color.RGBA{R: 80, G: 180, B: 80, A: 255})
+			op2 := &ebiten.DrawImageOptions{}
+			op2.GeoM.Translate(float64(bx), float64(by))
+			screen.DrawImage(fillImg, op2)
+		}
+	}
+
+	// Label.
+	label := fmt.Sprintf("Loading assets... %d/%d", g.assetReceived, g.assetTotal)
+	dop := &text.DrawOptions{}
+	dop.GeoM.Translate(float64(bx), float64(by+barH+4))
+	dop.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
+	text.Draw(screen, label, g.fontFace, dop)
+}
+
 func (g *Game) getSprite(r rune) *ebiten.Image {
 	if g.charmapDef == nil || g.atlasImage == nil {
 		return nil
@@ -265,6 +434,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Fallback: remote rendering from parsed ANSI stream.
 	g.drawRemote(screen)
+
+	// Loading overlay: shown while assets are still being received.
+	if g.assetTotal > 0 && g.assetReceived < g.assetTotal {
+		g.drawLoadingOverlay(screen)
+	}
 }
 
 // drawLocal renders the full screen using the client's local JS runtime + NC widgets.

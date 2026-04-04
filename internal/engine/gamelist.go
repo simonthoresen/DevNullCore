@@ -54,7 +54,7 @@ func ProbeGameTeamRange(path string) domain.TeamRange {
 		_, _ = vm.RunScript(name, string(inc))
 	})
 	noop := func(goja.FunctionCall) goja.Value { return goja.Undefined() }
-	for _, name := range []string{"log", "chat", "chatPlayer", "teams", "gameOver", "figlet", "addMenu", "messageBox", "registerCommand"} {
+	for _, name := range []string{"log", "chat", "chatPlayer", "teams", "gameOver", "figlet", "addMenu", "messageBox", "registerCommand", "playSound", "stopSound"} {
 		vm.Set(name, noop)
 	}
 	_, err = vm.RunScript(path, string(src))

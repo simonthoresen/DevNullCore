@@ -131,6 +131,11 @@ type Game interface {
 
 	// GameSource returns all JS files (main + includes) for client-side replication.
 	GameSource() []GameSourceFile
+
+	// GameAssets returns binary asset files (audio, images) bundled with the game folder.
+	// Returns nil for single-file games. Called once per game load to send assets to
+	// graphical clients during the splash phase.
+	GameAssets() []GameAsset
 }
 
 // GameSourceFile is a JS file loaded by the game (main or included).

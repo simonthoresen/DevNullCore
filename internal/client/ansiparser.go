@@ -18,6 +18,19 @@ type GameSrcFile struct {
 	Content string
 }
 
+// GameAsset is a binary asset file received from the server (audio, image).
+type GameAsset struct {
+	Name string // bare filename, e.g. "music.ogg"
+	Data []byte // raw decompressed bytes
+}
+
+// SoundCmd is a play or stop sound instruction received from the server.
+type SoundCmd struct {
+	Filename string // file to play; empty on Stop means stop all
+	Loop     bool
+	Stop     bool // true = stop command
+}
+
 // Cell represents a single terminal cell in the parsed grid.
 type Cell struct {
 	Char rune
@@ -48,6 +61,13 @@ type TerminalGrid struct {
 	StateData []byte
 	// Render mode from ns;mode OSC ("local" or "remote").
 	RenderMode string
+
+	// Asset loading (from ns;asset-manifest and ns;asset OSC).
+	AssetManifestTotal int
+	AssetFiles         []GameAsset
+
+	// Sound commands from ns;sound and ns;stop-sound OSC.
+	SoundCmds []SoundCmd
 
 	// Current SGR state for parsing.
 	curFg   color.RGBA
@@ -385,6 +405,30 @@ func (g *TerminalGrid) handleOSC(payload string) {
 				g.ViewportW, _ = strconv.Atoi(parts[2])
 				g.ViewportH, _ = strconv.Atoi(parts[3])
 			}
+		case "asset-manifest":
+			if n, err := strconv.Atoi(data); err == nil {
+				g.AssetManifestTotal = n
+			}
+		case "asset":
+			// Format: ns;asset;<name>;<base64 gzipped data>
+			if sepIdx := strings.Index(data, ";"); sepIdx >= 0 {
+				name := data[:sepIdx]
+				if decoded, err := decodeBase64Str(data[sepIdx+1:]); err == nil {
+					if raw := decompressBytes(decoded); raw != nil {
+						g.AssetFiles = append(g.AssetFiles, GameAsset{Name: name, Data: raw})
+					}
+				}
+			}
+		case "sound":
+			// Format: ns;sound;<filename>;<options>  e.g. music.ogg;loop=1
+			if sepIdx := strings.Index(data, ";"); sepIdx >= 0 {
+				filename := data[:sepIdx]
+				opts := data[sepIdx+1:]
+				loop := strings.Contains(opts, "loop=1")
+				g.SoundCmds = append(g.SoundCmds, SoundCmd{Filename: filename, Loop: loop})
+			}
+		case "stop-sound":
+			g.SoundCmds = append(g.SoundCmds, SoundCmd{Filename: data, Stop: true})
 		}
 	}
 }

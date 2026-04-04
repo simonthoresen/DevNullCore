@@ -109,6 +109,21 @@ func (m Model) View() tea.View {
 			}
 			m.charmapSent = true
 		}
+		if !m.assetsSent && !m.IsTerminalClient {
+			assets := game.GameAssets()
+			if len(assets) > 0 {
+				oscPrefix += render.EncodeAssetManifestOSC(len(assets))
+				for _, a := range assets {
+					oscPrefix += render.EncodeAssetOSC(a.Name, a.Data)
+				}
+			}
+			m.assetsSent = true
+		}
+		// Drain pending sound OSC commands (from JS playSound/stopSound via chatCh).
+		for _, osc := range m.pendingSoundOSC {
+			oscPrefix += osc
+		}
+		m.pendingSoundOSC = nil
 		if m.viewportW > 0 && m.viewportH > 0 {
 			oscPrefix += render.EncodeViewportOSC(m.viewportX, m.viewportY, m.viewportW, m.viewportH)
 

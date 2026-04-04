@@ -24,6 +24,18 @@ type Message struct {
 	FromID       string // sender player ID (if private)
 	IsReply      bool   // command response to caller — render as plain text, no prefix
 	IsFromPlugin bool   // message originated from a plugin — plugins skip these to prevent loops
+
+	// Sound fields — optional. Graphical clients act on these via OSC; all others ignore them.
+	// Messages with empty Text and a sound action are not stored in chat history.
+	SoundFile string // filename to play on graphical clients (e.g. "music.ogg"); empty = no sound
+	SoundLoop bool   // true = loop the sound
+	SoundStop bool   // true = this is a stop-sound command (SoundFile="" means stop all)
+}
+
+// GameAsset is a binary asset file bundled with a folder-based game.
+type GameAsset struct {
+	Name string // bare filename, e.g. "music.ogg"
+	Data []byte // raw file bytes
 }
 
 // GamePhase represents the current phase of the game lifecycle.

@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"null-space/internal/domain"
+	"null-space/internal/render"
 	"null-space/internal/widget"
 )
 
@@ -83,6 +84,21 @@ func (m Model) handleChat(msg domain.ChatMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
+
+	// Extract sound OSC for graphical clients before any early-return.
+	if m.IsEnhancedClient && !m.IsTerminalClient {
+		if chatMsg.SoundStop {
+			m.pendingSoundOSC = append(m.pendingSoundOSC, render.EncodeStopSoundOSC(chatMsg.SoundFile))
+		} else if chatMsg.SoundFile != "" {
+			m.pendingSoundOSC = append(m.pendingSoundOSC, render.EncodeSoundOSC(chatMsg.SoundFile, chatMsg.SoundLoop))
+		}
+	}
+
+	// Messages with no text (sound-only events) have nothing to display.
+	if chatMsg.Text == "" {
+		return m, nil
+	}
+
 	var line string
 	switch {
 	case chatMsg.IsReply:
@@ -124,6 +140,8 @@ func (m Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.inActiveGame = true
 	m.charmapSent = false
 	m.gameSrcSent = false
+	m.assetsSent = false
+	m.pendingSoundOSC = nil
 	m.lastStateJSON = ""
 	m.localModeSent = false
 	m.localRendering = m.IsEnhancedClient // default on for enhanced clients
