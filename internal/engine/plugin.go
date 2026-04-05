@@ -14,10 +14,10 @@ import (
 	"null-space/internal/network"
 )
 
-// JSPlugin wraps a goja JS runtime for a per-player or per-console plugin.
+// jsPlugin wraps a goja JS runtime for a per-player or per-console plugin.
 // The plugin exports a Plugin object with an onMessage(author, text, isSystem) hook.
 // If onMessage returns a non-empty string, it is treated as if the owner typed it.
-type JSPlugin struct {
+type jsPlugin struct {
 	mu          sync.Mutex
 	vm          *goja.Runtime
 	name        string
@@ -31,23 +31,14 @@ type Plugin interface {
 	Unload()
 }
 
-// LoadPlugin reads and executes a plugin script (.js or .lua).
-// Returns a Plugin (either JSPlugin or LuaPlugin).
+// LoadPlugin reads and executes a JS plugin file, extracting the Plugin.onMessage hook.
 func LoadPlugin(path string, clock domain.Clock) (Plugin, error) {
-	if strings.HasSuffix(path, ".lua") {
-		return LoadLuaPlugin(path, clock)
-	}
-	return loadJSPlugin(path, clock)
-}
-
-// loadJSPlugin reads and executes a JS plugin file, extracting the Plugin.onMessage hook.
-func loadJSPlugin(path string, clock domain.Clock) (*JSPlugin, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read plugin file: %w", err)
 	}
 
-	p := &JSPlugin{
+	p := &jsPlugin{
 		vm:   goja.New(),
 		name: strings.TrimSuffix(filepath.Base(path), ".js"),
 	}
@@ -86,7 +77,7 @@ func loadJSPlugin(path string, clock domain.Clock) (*JSPlugin, error) {
 
 // OnMessage calls the JS onMessage hook with the given message fields.
 // Returns a non-empty string if the plugin wants to inject input, empty string otherwise.
-func (p *JSPlugin) OnMessage(author, text string, isSystem bool) string {
+func (p *jsPlugin) OnMessage(author, text string, isSystem bool) string {
 	if p.onMessageFn == nil {
 		return ""
 	}
@@ -100,7 +91,7 @@ func (p *JSPlugin) OnMessage(author, text string, isSystem bool) string {
 		}
 	}()
 
-	cancel := WatchdogJS(p.vm, "Plugin.onMessage")
+	cancel := Watchdog(p.vm, "Plugin.onMessage")
 	defer cancel()
 
 	val, err := p.onMessageFn(goja.Undefined(),
@@ -123,15 +114,14 @@ func (p *JSPlugin) OnMessage(author, text string, isSystem bool) string {
 }
 
 // Name returns the plugin's display name (filename stem).
-func (p *JSPlugin) Name() string { return p.name }
+func (p *jsPlugin) Name() string { return p.name }
 
 // Unload interrupts the JS runtime.
-func (p *JSPlugin) Unload() {
+func (p *jsPlugin) Unload() {
 	p.vm.Interrupt("unloaded")
 }
 
 // ResolvePluginPath resolves a plugin name or URL to a local file path.
-// For names, tries .js first then .lua; URLs are downloaded and cached.
 func ResolvePluginPath(nameOrURL, dataDir string) (name, path string, err error) {
 	if network.IsURL(nameOrURL) {
 		cacheDir := filepath.Join(dataDir, "plugins", ".cache")
@@ -139,11 +129,7 @@ func ResolvePluginPath(nameOrURL, dataDir string) (name, path string, err error)
 		if dlErr != nil {
 			return "", "", fmt.Errorf("download plugin: %w", dlErr)
 		}
-		return TrimScriptExt(filepath.Base(local)), local, nil
+		return strings.TrimSuffix(filepath.Base(local), ".js"), local, nil
 	}
-	jsPath := filepath.Join(dataDir, "plugins", nameOrURL+".js")
-	if _, statErr := os.Stat(jsPath); statErr == nil {
-		return nameOrURL, jsPath, nil
-	}
-	return nameOrURL, filepath.Join(dataDir, "plugins", nameOrURL+".lua"), nil
+	return nameOrURL, filepath.Join(dataDir, "plugins", nameOrURL+".js"), nil
 }

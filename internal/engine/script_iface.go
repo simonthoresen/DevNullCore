@@ -2,9 +2,8 @@ package engine
 
 import "null-space/internal/domain"
 
-// ScriptRuntime is the common interface for all scripting runtimes (JS, Lua).
-// It extends domain.Game with lifecycle hooks used by the server that sit
-// outside the public Game interface (teams cache, game-over signalling, etc.).
+// ScriptRuntime extends domain.Game with lifecycle hooks used by the server that
+// sit outside the public Game interface (teams cache, game-over signalling, etc.).
 type ScriptRuntime interface {
 	domain.Game
 	SetTeamsCache(teams []map[string]any)

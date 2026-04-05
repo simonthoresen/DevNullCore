@@ -14,7 +14,7 @@ import (
 	"null-space/internal/render"
 )
 
-func (r *JSRuntime) registerGlobals() {
+func (r *Runtime) registerGlobals() {
 	// Pixel attribute constants for buf.setChar/writeString/fill.
 	r.vm.Set("ATTR_NONE", int(render.AttrNone))
 	r.vm.Set("ATTR_BOLD", int(render.AttrBold))
@@ -355,7 +355,7 @@ func (r *JSRuntime) registerGlobals() {
 			panic(r.vm.NewGoError(fmt.Errorf("include %q: %w", name, err)))
 		}
 		// Record for client-side replication.
-		r.SourceFiles = append(r.SourceFiles, SourceFile{Name: name, Content: string(src)})
+		r.SourceFiles = append(r.SourceFiles, domain.GameSourceFile{Name: name, Content: string(src)})
 		_, err = r.vm.RunScript(name, string(src))
 		if err != nil {
 			panic(r.vm.NewGoError(fmt.Errorf("include %q: %w", name, err)))
@@ -366,7 +366,7 @@ func (r *JSRuntime) registerGlobals() {
 // newJSImageBuffer creates a JS-friendly wrapper around an ImageBuffer region.
 // JS games call buf.setChar(x, y, ch, fg, bg), buf.writeString(x, y, text, fg, bg),
 // buf.fill(x, y, w, h, ch, fg, bg) to write directly into the buffer.
-func (r *JSRuntime) newJSImageBuffer(buf *render.ImageBuffer, ox, oy, w, h int) map[string]any {
+func (r *Runtime) newJSImageBuffer(buf *render.ImageBuffer, ox, oy, w, h int) map[string]any {
 	return map[string]any{
 		"width":  w,
 		"height": h,

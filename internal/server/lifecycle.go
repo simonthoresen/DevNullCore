@@ -263,7 +263,7 @@ func (a *Server) unloadGame() {
 }
 
 // buildTeamsCache builds a pre-resolved teams snapshot for JS teams().
-// Resolves player IDs to names so JSRuntime doesn't need CentralState access.
+// Resolves player IDs to names so the game runtime doesn't need CentralState access.
 func (a *Server) buildTeamsCache() []map[string]any {
 	teams := a.state.GetGameTeams()
 	result := make([]map[string]any, 0, len(teams))

@@ -184,7 +184,7 @@ func (a *Server) registerSession(sess ssh.Session) *domain.Player {
 		a.state.Unlock()
 		a.serverLog(fmt.Sprintf("player %s rejoined game (was %s, now %s)", player.Name, oldID, player.ID))
 		// Refresh the teams cache so JS sees the updated player ID.
-		if jrt, ok := game.(*engine.JSRuntime); ok {
+		if jrt, ok := game.(*engine.Runtime); ok {
 			jrt.SetTeamsCache(a.buildTeamsCache())
 		}
 	} else {

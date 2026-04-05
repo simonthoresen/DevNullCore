@@ -16,10 +16,10 @@ import (
 	"null-space/internal/network"
 )
 
-// JSShader wraps a goja JS runtime for a per-player post-processing shader.
+// jsShader wraps a goja JS runtime for a per-player post-processing shader.
 // The shader exports a Shader object with a process(buf) method that receives
 // the full rendered ImageBuffer and may read/write any pixel.
-type JSShader struct {
+type jsShader struct {
 	mu        sync.Mutex
 	vm        *goja.Runtime
 	name      string
@@ -28,22 +28,14 @@ type JSShader struct {
 	unloadFn  goja.Callable // Shader.unload() — optional
 }
 
-// LoadShader reads and executes a shader script (.js or .lua).
+// LoadShader reads and executes a JS shader file, extracting the Shader.process hook.
 func LoadShader(path string, clock domain.Clock) (domain.Shader, error) {
-	if strings.HasSuffix(path, ".lua") {
-		return LoadLuaShader(path, clock)
-	}
-	return loadJSShader(path, clock)
-}
-
-// loadJSShader reads and executes a JS shader file, extracting the Shader.process hook.
-func loadJSShader(path string, clock domain.Clock) (*JSShader, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read shader file: %w", err)
 	}
 
-	s := &JSShader{
+	s := &jsShader{
 		vm:   goja.New(),
 		name: strings.TrimSuffix(filepath.Base(path), ".js"),
 	}
@@ -90,7 +82,7 @@ func loadJSShader(path string, clock domain.Clock) (*JSShader, error) {
 
 	// Call init() if present.
 	if fn, ok := goja.AssertFunction(obj.Get("init")); ok {
-		cancel := WatchdogJS(s.vm, "Shader.init")
+		cancel := Watchdog(s.vm, "Shader.init")
 		defer cancel()
 		if _, err := fn(s.thisObj); err != nil {
 			slog.Warn("shader init error", "shader", s.name, "error", err)
@@ -101,12 +93,12 @@ func loadJSShader(path string, clock domain.Clock) (*JSShader, error) {
 }
 
 // Name returns the shader's display name (filename stem).
-func (s *JSShader) Name() string { return s.name }
+func (s *jsShader) Name() string { return s.name }
 
 // Process calls the JS process(buf, time) hook with a buffer wrapper.
 // elapsed is total seconds since server start — shaders derive all
 // time-based effects from this value.
-func (s *JSShader) Process(buf *render.ImageBuffer, elapsed float64) {
+func (s *jsShader) Process(buf *render.ImageBuffer, elapsed float64) {
 	if s.processFn == nil {
 		return
 	}
@@ -119,7 +111,7 @@ func (s *JSShader) Process(buf *render.ImageBuffer, elapsed float64) {
 		}
 	}()
 
-	cancel := WatchdogJS(s.vm, "Shader.process")
+	cancel := Watchdog(s.vm, "Shader.process")
 	defer cancel()
 
 	jsBuf := newJSShaderBuffer(s.vm, buf)
@@ -130,10 +122,10 @@ func (s *JSShader) Process(buf *render.ImageBuffer, elapsed float64) {
 }
 
 // Unload interrupts the JS runtime, calling Shader.unload() first if defined.
-func (s *JSShader) Unload() {
+func (s *jsShader) Unload() {
 	if s.unloadFn != nil {
 		s.mu.Lock()
-		cancel := WatchdogJS(s.vm, "Shader.unload")
+		cancel := Watchdog(s.vm, "Shader.unload")
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -238,7 +230,6 @@ func newJSShaderBuffer(vm *goja.Runtime, buf *render.ImageBuffer) map[string]any
 }
 
 // ResolveShaderPath resolves a shader name or URL to a local file path.
-// For names, tries .js first then .lua; URLs are downloaded and cached.
 func ResolveShaderPath(nameOrURL, dataDir string) (name, path string, err error) {
 	if network.IsURL(nameOrURL) {
 		cacheDir := filepath.Join(dataDir, "shaders", ".cache")
@@ -246,13 +237,9 @@ func ResolveShaderPath(nameOrURL, dataDir string) (name, path string, err error)
 		if dlErr != nil {
 			return "", "", fmt.Errorf("download shader: %w", dlErr)
 		}
-		return TrimScriptExt(filepath.Base(local)), local, nil
+		return strings.TrimSuffix(filepath.Base(local), ".js"), local, nil
 	}
-	jsPath := filepath.Join(dataDir, "shaders", nameOrURL+".js")
-	if _, statErr := os.Stat(jsPath); statErr == nil {
-		return nameOrURL, jsPath, nil
-	}
-	return nameOrURL, filepath.Join(dataDir, "shaders", nameOrURL+".lua"), nil
+	return nameOrURL, filepath.Join(dataDir, "shaders", nameOrURL+".js"), nil
 }
 
 // ApplyShaders runs all shaders in sequence on the given buffer.

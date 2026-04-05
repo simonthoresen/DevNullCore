@@ -144,7 +144,7 @@ func TestGameLifecycle(t *testing.T) {
 	game.OnInput("p1", "space")
 
 	// Check that game over was signaled.
-	rt := game.(*engine.JSRuntime)
+	rt := game.(*engine.Runtime)
 	if !rt.IsGameOverPending() {
 		t.Fatal("expected game over to be pending")
 	}
