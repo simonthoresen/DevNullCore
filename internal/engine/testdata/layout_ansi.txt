@@ -1,0 +1,145 @@
+=== label_with_ansi_color
+# Label containing ANSI color codes should render the text correctly,
+# not display escape sequences as visible characters.
+mode: layout
+width: 30
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    layout: function(playerID, w, h) {
+        return {
+            type: "label",
+            text: "\x1b[31mRed\x1b[0m and \x1b[32mGreen\x1b[0m",
+            align: "left"
+        };
+    }
+};
+---
+===
+╔════════════════════════════╗
+║Red and Green               ║
+║                            ║
+║                            ║
+╚════════════════════════════╝
+
+=== label_centered_ansi
+# Centered label with ANSI — alignment should use visible width, not byte length.
+mode: layout
+width: 30
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    layout: function(playerID, w, h) {
+        return {
+            type: "label",
+            text: "\x1b[33mHello\x1b[0m",
+            align: "center"
+        };
+    }
+};
+---
+===
+╔════════════════════════════╗
+║           Hello            ║
+║                            ║
+║                            ║
+╚════════════════════════════╝
+
+=== table_with_ansi_cells
+# Table cells containing ANSI colors — column widths should be based on
+# visible character count, not raw string length.
+mode: layout
+width: 30
+height: 7
+--- js
+var Game = {
+    init: function(s) {},
+    layout: function(playerID, w, h) {
+        return {
+            type: "table",
+            rows: [
+                ["\x1b[1m\x1b[37mAlice\x1b[0m", "\x1b[38;5;136m$500\x1b[0m"],
+                ["\x1b[2mBob\x1b[0m",             "\x1b[38;5;136m$1200\x1b[0m"]
+            ]
+        };
+    }
+};
+---
+===
+╔════════════════════════════╗
+║Alice $500                  ║
+║Bob   $1200                 ║
+║                            ║
+║                            ║
+║                            ║
+╚════════════════════════════╝
+
+=== panel_with_ansi_labels
+# Panel containing labels with ANSI codes — borders drawn by Go,
+# content painted via PaintANSI.
+mode: layout
+width: 30
+height: 7
+--- js
+var Game = {
+    init: function(s) {},
+    layout: function(playerID, w, h) {
+        return {
+            type: "panel",
+            title: "Scores",
+            children: [
+                { type: "label", text: "\x1b[36mCyan text\x1b[0m" },
+                { type: "label", text: "Plain text" }
+            ]
+        };
+    }
+};
+---
+===
+╔════════════════════════════╗
+║╔═ Scores ═════════════════╗║
+║║Cyan text                 ║║
+║║Plain text                ║║
+║║                          ║║
+║╚══════════════════════════╝║
+╚════════════════════════════╝
+
+=== hsplit_gameview_and_panel
+# Horizontal split: left half is a gameview (render() paints ANSI text),
+# right half is a panel with ANSI labels. Tests both rendering paths.
+mode: layout
+width: 40
+height: 7
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "\x1b[31mR\x1b[32mG\x1b[34mB\x1b[0m line", null, null);
+        buf.writeString(0, 1, "row 2", null, null);
+    },
+    layout: function(playerID, w, h) {
+        return {
+            type: "hsplit",
+            children: [
+                { type: "gameview", weight: 1 },
+                {
+                    type: "panel", title: "Info", width: 16,
+                    children: [
+                        { type: "label", text: "\x1b[33mGold\x1b[0m: 42" }
+                    ]
+                }
+            ]
+        };
+    }
+};
+---
+===
+╔══════════════════════════════════════╗
+║RGB╔═ Info ═══════╗║
+║row 2                 ║Gold: 42      ║║
+║                      ║              ║║
+║                      ║              ║║
+║                      ╚══════════════╝║
+╚══════════════════════════════════════╝
