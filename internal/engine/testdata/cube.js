@@ -12,8 +12,10 @@
 // This reproduces the same on-screen pixel size as the previous code that applied
 // a "* 0.5" Y correction directly inside the projection function.
 //
-// Lines are drawn as single-pixel marks (1×1 logical px) so sub-cell edges produce
-// half-block quadrant characters and the wireframe structure is clearly visible.
+// Lines are drawn using 1×0.5 logical rects (half-logical-unit height) so that the
+// gg scaleY=2.0 maps each mark to a single actual pixel.  This lets the Y position
+// snap to the nearest 0.5-unit (upper or lower half-row), producing the full range
+// of quadrant block characters on diagonal and nearly-horizontal edges.
 //
 // Usage: drawCube(ctx, w, h, ax, ay)
 //   ctx — canvas context passed to renderCanvas
@@ -60,19 +62,22 @@ function drawCube(ctx, w, h, ax, ay) {
     var pv = [];
     for (var i = 0; i < 8; i++) pv.push(proj(rot(verts[i])));
 
-    // Draw all edges as single-pixel marks.
+    // Draw all edges.  Each mark is 1×0.5 logical units: with scaleY=2.0 the gg
+    // context maps that to exactly 1×1 actual pixel, enabling all 16 quadrant chars.
+    // Y is snapped to the nearest 0.5-unit grid (upper or lower cell half-row).
+    // Steps are sized so that each 0.5-unit y interval has at least one sample.
     ctx.setFillStyle("#000000");
     for (var e = 0; e < edges.length; e++) {
         var edge = edges[e];
         var p0 = pv[edge[0]], p1 = pv[edge[1]];
         var dx = p1[0] - p0[0], dy = p1[1] - p0[1];
-        var steps = Math.ceil(Math.sqrt(dx*dx + dy*dy));
+        var steps = Math.ceil(Math.max(Math.abs(dx), Math.abs(dy) * 2));
         if (steps < 1) steps = 1;
         for (var s = 0; s <= steps; s++) {
             var t = s / steps;
             var px = Math.round(p0[0] + dx * t);
-            var py = Math.round(p0[1] + dy * t);
-            ctx.fillRect(px, py, 1, 1);
+            var py = Math.round((p0[1] + dy * t) * 2) / 2;
+            ctx.fillRect(px, py, 1, 0.5);
         }
     }
 }
