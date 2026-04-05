@@ -229,38 +229,46 @@ func renderGameCase(t *testing.T, tc gameCase, profile colorprofile.Profile) str
 	game.Init(nil)
 	game.Start()
 
+	// All modes wrap their render output in a GameWindow so the expected
+	// output includes the Window border, matching the in-game presentation.
+	var renderFn func(rbuf *render.ImageBuffer, rx, ry, rw, rh int)
+	var tree *domain.WidgetNode
+
 	switch mode {
 	case "text":
-		buf := render.NewImageBuffer(w, h)
-		game.Render(buf, playerID, 0, 0, w, h)
-		return normaliseGameOutput(buf.ToString(profile))
+		renderFn = func(rbuf *render.ImageBuffer, rx, ry, rw, rh int) {
+			game.Render(rbuf, playerID, rx, ry, rw, rh)
+		}
+		tree = &domain.WidgetNode{Type: "gameview"}
 
 	case "canvas":
-		img := game.RenderCanvasImage(playerID, w*2, h*2)
-		if img == nil {
-			t.Fatalf("test case %q: RenderCanvasImage returned nil (game may not define renderCanvas)", tc.name)
+		renderFn = func(rbuf *render.ImageBuffer, rx, ry, rw, rh int) {
+			img := game.RenderCanvasImage(playerID, rw*2, rh*2)
+			if img == nil {
+				return
+			}
+			render.ImageToQuadrants(img, rbuf, rx, ry, rw, rh)
 		}
-		buf := render.NewImageBuffer(w, h)
-		render.ImageToQuadrants(img, buf, 0, 0, w, h)
-		return normaliseGameOutput(buf.ToString(profile))
+		tree = &domain.WidgetNode{Type: "gameview"}
 
 	case "layout":
-		tree := game.Layout(playerID, w, h)
+		tree = game.Layout(playerID, w, h)
 		if tree == nil {
 			t.Fatalf("test case %q: Layout returned nil (game may not define layout hook)", tc.name)
 		}
-		renderFn := func(rbuf *render.ImageBuffer, rx, ry, rw, rh int) {
+		renderFn = func(rbuf *render.ImageBuffer, rx, ry, rw, rh int) {
 			game.Render(rbuf, playerID, rx, ry, rw, rh)
 		}
-		gw := widget.ReconcileGameWindow(nil, tree, renderFn, nil)
-		buf := render.NewImageBuffer(w, h)
-		gw.Window.RenderToBuf(buf, 0, 0, w, h, engineTestLayer())
-		return normaliseGameOutput(buf.ToString(profile))
 
 	default:
 		t.Fatalf("test case %q: unknown mode %q (want text, canvas, or layout)", tc.name, mode)
 		return ""
 	}
+
+	gw := widget.ReconcileGameWindow(nil, tree, renderFn, nil)
+	buf := render.NewImageBuffer(w, h)
+	gw.Window.RenderToBuf(buf, 0, 0, w, h, engineTestLayer())
+	return normaliseGameOutput(buf.ToString(profile))
 }
 
 // normaliseGameOutput strips ANSI codes and trims trailing spaces per line

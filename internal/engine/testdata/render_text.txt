@@ -13,7 +13,11 @@ var Game = {
 };
 ---
 ===
-Hello, alice!
+╔══════════════════╗
+║Hello, alice!     ║
+║                  ║
+║                  ║
+╚══════════════════╝
 
 === fill_row
 # Game fills the entire first row with dashes.
@@ -31,7 +35,9 @@ var Game = {
 };
 ---
 ===
---------------------
+╔══════════════════╗
+║------------------║
+╚══════════════════╝
 
 === multiline
 # Game writes on multiple rows.
@@ -49,6 +55,8 @@ var Game = {
 };
 ---
 ===
-Row 0
-Row 1
-Row 2
+╔══════════════════╗
+║Row 0             ║
+║Row 1             ║
+║Row 2             ║
+╚══════════════════╝
