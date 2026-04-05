@@ -69,8 +69,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Splash phase — admin can press Enter to start, others wait.
-	if m.inActiveGame && phase == domain.PhaseSplash {
+	// Starting phase — admin can press Enter to start, others wait.
+	if m.inActiveGame && phase == domain.PhaseStarting {
 		switch msg.String() {
 		case "enter":
 			player := m.api.State().GetPlayer(m.playerID)
@@ -81,8 +81,8 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Game-over phase — Enter acknowledges.
-	if m.inActiveGame && phase == domain.PhaseGameOver {
+	// Ending phase — Enter acknowledges.
+	if m.inActiveGame && phase == domain.PhaseEnding {
 		switch msg.String() {
 		case "enter":
 			m.api.AcknowledgeGameOver(m.playerID)

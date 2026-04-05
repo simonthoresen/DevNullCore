@@ -778,12 +778,12 @@ func (m *Model) View() tea.View {
 	if gameName != "" {
 		gameLabel = gameName
 		switch phase {
-		case domain.PhaseSplash:
-			gameLabel += " [splash]"
+		case domain.PhaseStarting:
+			gameLabel += " [starting]"
 		case domain.PhasePlaying:
 			gameLabel += " [playing]"
-		case domain.PhaseGameOver:
-			gameLabel += " [game over]"
+		case domain.PhaseEnding:
+			gameLabel += " [ending]"
 		}
 	}
 	m.statusBar.RightText = fmt.Sprintf("game: %s | players: %d | uptime %s | %s ", gameLabel, m.api.State().PlayerCount(), m.api.Uptime(), m.api.Clock().Now().Format("15:04:05"))

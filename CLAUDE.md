@@ -70,12 +70,13 @@ go run ./cmd/null-space-client --local --data-dir dist --player alice --game orb
 | `internal/server/local.go` | `--local` mode: headless SSH server + terminal SSH pipe to stdin/stdout |
 | `internal/server/pinggy.go` | Pinggy tunnel status polling bridge |
 | `internal/chrome/model.go` | Per-player TUI model: struct, constructor, Init, Update |
-| `internal/chrome/view.go` | Per-player rendering: lobby, playing, splash, game-over |
+| `internal/chrome/view.go` | Per-player rendering: lobby, playing, starting, ending |
 | `internal/chrome/input.go` | Key/mouse handling: lobby, game, team editing |
 | `internal/chrome/commands.go` | Per-player command dispatch: /plugin, /theme, /shader |
 | `internal/chrome/menus.go` | Menu tree construction and dialog helpers |
 | `internal/console/console.go` | Server console TUI: model, view, log filtering |
 | `internal/console/commands.go` | Console command dispatch: /plugin, /theme, /shader |
+| `internal/localcmd/localcmd.go` | Shared /theme, /plugin, /shader command handlers (used by chrome and console) |
 | `internal/console/sloghandler.go` | Console slog handler with render-path guard |
 | `internal/domain/types.go` | Player, Message, GamePhase, Team, WidgetNode, tea messages |
 | `internal/domain/interfaces.go` | Game, Command, Shader, MenuDef, DialogRequest interfaces |
@@ -130,11 +131,11 @@ Two primary mutexes protect shared state:
 - **Teams:** Server builds a cache (`buildTeamsCache`) and pushes it via `SetTeamsCache()`. JS `teams()` reads the local cache.
 - **Chat:** JS `chat()`/`chatPlayer()` send on a buffered channel; a server goroutine drains it and calls `broadcastChat()`.
 
-**Callers** (`internal/server/server.go`, `internal/chrome/model.go`) must release `state.mu` **before** calling any `Runtime` Game method (`Init`, `Start`, `Update`, `Render`, `OnInput`, etc.). All existing call sites follow this pattern — verify any new ones do too.
+**Callers** (`internal/server/server.go`, `internal/chrome/model.go`) must release `state.mu` **before** calling any `Runtime` Game method (`Load`, `Begin`, `Update`, `Render`, `OnInput`, etc.). All existing call sites follow this pattern — verify any new ones do too.
 
 Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.mu`, `lastUpdateMu`) are leaf locks — they don't call into JS or acquire `state.mu`.
 
-**`lastUpdateMu`** protects the `Server.lastUpdate` field, which is written from `splashTimer()`, `resumeGame()`, and read/written in `runTicker()`. All access must go through this mutex.
+**`lastUpdateMu`** protects the `Server.lastUpdate` field, which is written from `startingTimer()`, `resumeGame()`, and read/written in `runTicker()`. All access must go through this mutex.
 
 ## Render Tests — Golden Files
 
@@ -149,7 +150,7 @@ Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.
 - `<name>_chrome.txt` is verified against **8 unit sub-tests** (4 execution contexts × 2 color modes) and **4 integration sub-tests** (real SSH connections) — all compared against the same golden file.
 - Chrome output is normalized before comparison: ANSI stripped, trailing spaces trimmed per line, trailing blank lines dropped, and the lobby status bar line (timestamp + uptime) replaced with fixed placeholders so golden files are stable across runs.
 - `time.Now()` in View() methods uses `m.api.Clock().Now()` so tests inject a fixed time via `domain.MockClock`.
-- Scenarios marked `noIntegration: true` are only tested by unit tests. Use this for: playing/splash (late joiners stay in lobby) and menu/dialog scenarios (integration harness can't send keystrokes).
+- Scenarios marked `noIntegration: true` are only tested by unit tests. Use this for: playing/starting (late joiners stay in lobby) and menu/dialog scenarios (integration harness can't send keystrokes).
 - `setup()` must **never** add the scenario's `playerID` to state. `renderChrome` adds them automatically (simulating the server's player-join path), keeping unit and integration outputs identical.
 
 ## Slog Feedback Loop Guard

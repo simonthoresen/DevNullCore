@@ -94,33 +94,42 @@ type Shader interface {
 
 // Game is the interface every loaded game must satisfy.
 // One game is active at a time and owns the viewport, status bar, and command bar.
-// All methods are implemented by jsRuntime; optional JS hooks return zero values
+// All methods are implemented by the JS runtime; optional JS hooks return zero values
 // when not defined by the game script.
 type Game interface {
-	GameName() string     // display name (fallback: filename stem)
-	TeamRange() TeamRange // supported team count range (zero = no constraint)
-	Init(savedState any)  // called before splash with persisted state (or nil)
-	Start()               // called at splash→playing transition
-	Update(dt float64)    // called once per tick with seconds since last update
+	// --- Lifecycle ---
+
+	// Load is called before PhaseStarting with persisted state (nil for new game).
+	Load(savedState any)
+	// Begin is called at the PhaseStarting→PhasePlaying transition.
+	Begin()
+	// Update is called once per tick with seconds since last update.
+	Update(dt float64)
+	// End is called when the game signals game-over, before PhaseEnding.
+	End()
+	// Unload tears down the game runtime and returns the session state to persist
+	// (nil if the game has no state to save).
+	Unload() any
+
+	// --- Events ---
+
 	OnPlayerLeave(playerID string)
 	OnInput(playerID, key string)
+
+	// --- Rendering ---
+
 	Render(buf *render.ImageBuffer, playerID string, x, y, width, height int)
-	// RenderSplash renders a custom splash screen into buf. Returns false to
-	// use the framework's default figlet-based splash screen.
-	RenderSplash(buf *render.ImageBuffer, playerID string, x, y, width, height int) bool
-	// RenderGameOver renders a custom game-over screen into buf. Returns false
-	// to use the framework's default game-over screen with figlet title + results.
-	RenderGameOver(buf *render.ImageBuffer, playerID string, x, y, width, height int, results []GameResult) bool
+	// RenderStarting renders a custom starting screen into buf. Returns false to
+	// use the framework's default figlet-based starting screen.
+	RenderStarting(buf *render.ImageBuffer, playerID string, x, y, width, height int) bool
+	// RenderEnding renders a custom ending screen into buf. Returns false
+	// to use the framework's default ending screen with figlet title + results.
+	RenderEnding(buf *render.ImageBuffer, playerID string, x, y, width, height int, results []GameResult) bool
 	// Layout returns a declarative widget tree describing the game window.
 	// If it returns nil, the framework falls back to wrapping Render() in a
 	// default gameview node. Games can mix NC panels with raw Render() output
 	// by including {type: "gameview"} nodes in their tree.
 	Layout(playerID string, width, height int) *WidgetNode
-	StatusBar(playerID string) string  // game-controlled status bar (second row, below menu bar)
-	CommandBar(playerID string) string // game-controlled command bar (above framework status bar)
-	Commands() []Command
-	Menus() []MenuDef
-	CharMap() *render.CharMapDef // returns nil if the game doesn't use a charmap
 	// RenderCanvas calls the game's renderCanvas(ctx, w, h) hook if defined.
 	// Returns the rendered image as PNG bytes, or nil if the game has no canvas hook.
 	// The canvas dimensions are viewport cells × canvasScale pixels per cell.
@@ -129,22 +138,25 @@ type Game interface {
 	// instead of PNG bytes. Used by quadrant rendering to avoid encode/decode overhead.
 	RenderCanvasImage(playerID string, width, height int) *image.RGBA
 	HasCanvasMode() bool // true if game defines renderCanvas hook
-	Unload()
 
-	// State returns the game's current Game.state object (exported for
-	// suspend/resume and client-side state replication). Returns nil if the
-	// game has no state property.
-	State() any
-	// SetState replaces the game's Game.state object. Used by the framework
-	// to restore state on resume after a cold reload.
-	SetState(state any)
+	// --- Properties ---
+
+	GameName() string     // display name (fallback: filename stem)
+	TeamRange() TeamRange // supported team count range (zero = no constraint)
+	StatusBar(playerID string) string  // game-controlled status bar (second row, below menu bar)
+	CommandBar(playerID string) string // game-controlled command bar (above framework status bar)
+	Commands() []Command
+	Menus() []MenuDef
+	CharMap() *render.CharMapDef // returns nil if the game doesn't use a charmap
+
+	// --- Source delivery ---
 
 	// GameSource returns all JS files (main + includes) for client-side replication.
 	GameSource() []GameSourceFile
 
 	// GameAssets returns binary asset files (audio, images) bundled with the game folder.
 	// Returns nil for single-file games. Called once per game load to send assets to
-	// graphical clients during the splash phase.
+	// graphical clients during the starting phase.
 	GameAssets() []GameAsset
 }
 

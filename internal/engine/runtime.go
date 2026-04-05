@@ -63,7 +63,7 @@ func Watchdog(vm *goja.Runtime, method string) func() {
 //   - Chat output: buffered channel drained by a server goroutine
 //
 // Callers (server.go, chrome.go) must release state.mu BEFORE calling
-// any Runtime Game method (Init, Start, View, OnInput, etc.).
+// any Runtime Game method (Load, Begin, View, OnInput, etc.).
 
 // Runtime wraps a goja JS runtime and implements domain.Game.
 type Runtime struct {
@@ -83,27 +83,28 @@ type Runtime struct {
 	SourceFiles []domain.GameSourceFile
 
 	// game object methods (nil if not defined)
-	updateFn        goja.Callable
-	onPlayerLeave   goja.Callable
-	onInput         goja.Callable
-	renderFn         goja.Callable
-	renderCanvasFn   goja.Callable
-	renderSplashFn   goja.Callable
-	renderGameOverFn goja.Callable
-	layoutFn         goja.Callable
-	statusBarFn     goja.Callable
-	commandBarFn    goja.Callable
+	updateFn          goja.Callable
+	onPlayerLeave     goja.Callable
+	onInput           goja.Callable
+	renderFn          goja.Callable
+	renderCanvasFn    goja.Callable
+	renderStartingFn  goja.Callable
+	renderEndingFn    goja.Callable
+	layoutFn          goja.Callable
+	statusBarFn       goja.Callable
+	commandBarFn      goja.Callable
 
 	// lifecycle
 	gameNameProp  string
 	teamRangeProp domain.TeamRange
-	initFn           goja.Callable
-	startFn          goja.Callable
+	loadFn        goja.Callable
+	beginFn       goja.Callable
+	endFn         goja.Callable
+	unloadFn      goja.Callable
 
 	// gameOver() callback state — set by JS, detected by tick loop
 	gameOverPending bool
 	gameOverResults []domain.GameResult // results passed to gameOver()
-	gameOverState   goja.Value          // state argument passed as second arg to gameOver()
 
 	menus        []domain.MenuDef
 	showDialogFn func(playerID string, d domain.DialogRequest) // injected by server
@@ -113,8 +114,8 @@ type Runtime struct {
 }
 
 // LoadGame loads and executes a game script (.js), extracts the Game
-// object, and returns a domain.Game. Init() is NOT called here — the server
-// calls it at the splash→playing transition when GamePlayerIDs are set.
+// object, and returns a domain.Game. Load() is NOT called here — the server
+// calls it after teams are set up, before PhaseStarting.
 func LoadGame(path string, logFn func(string), chatCh chan domain.Message, clock domain.Clock, dataDir string) (domain.Game, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
@@ -151,40 +152,53 @@ func LoadGame(path string, logFn func(string), chatCh chan domain.Message, clock
 	return rt, nil
 }
 
-func (r *Runtime) Init(savedState any) {
+func (r *Runtime) Load(savedState any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	defer r.recoverJS("Init")
-	defer traceCall(r.vm, "Init")()
-	cancel := Watchdog(r.vm, "Init")
+	defer r.recoverJS("Load")
+	defer traceCall(r.vm, "Load")()
+	cancel := Watchdog(r.vm, "Load")
 	defer cancel()
-	_, _ = r.initFn(goja.Undefined(), r.vm.ToValue(savedState))
+	_, _ = r.loadFn(goja.Undefined(), r.vm.ToValue(savedState))
 
-	// Re-read renderSplash — init() may have defined it dynamically.
+	// Re-read renderGameStart/renderGameEnd — load() may have defined them dynamically.
 	gameVal := r.vm.Get("Game")
 	if gameVal != nil && !goja.IsUndefined(gameVal) && !goja.IsNull(gameVal) {
 		if obj := gameVal.ToObject(r.vm); obj != nil {
-			if r.renderSplashFn == nil {
-				r.renderSplashFn = extractCallable(obj, "renderSplash")
+			if r.renderStartingFn == nil {
+				r.renderStartingFn = extractCallable(obj, "renderGameStart")
 			}
-			if r.renderGameOverFn == nil {
-				r.renderGameOverFn = extractCallable(obj, "renderGameOver")
+			if r.renderEndingFn == nil {
+				r.renderEndingFn = extractCallable(obj, "renderGameEnd")
 			}
 		}
 	}
 }
 
-func (r *Runtime) Start() {
-	if r.startFn == nil {
+func (r *Runtime) Begin() {
+	if r.beginFn == nil {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	defer r.recoverJS("Start")
-	defer traceCall(r.vm, "Start")()
-	cancel := Watchdog(r.vm, "Start")
+	defer r.recoverJS("Begin")
+	defer traceCall(r.vm, "Begin")()
+	cancel := Watchdog(r.vm, "Begin")
 	defer cancel()
-	_, _ = r.startFn(goja.Undefined())
+	_, _ = r.beginFn(goja.Undefined())
+}
+
+func (r *Runtime) End() {
+	if r.endFn == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defer r.recoverJS("End")
+	defer traceCall(r.vm, "End")()
+	cancel := Watchdog(r.vm, "End")
+	defer cancel()
+	_, _ = r.endFn(goja.Undefined())
 }
 
 func (r *Runtime) extractGameObject() error {
@@ -204,18 +218,20 @@ func (r *Runtime) extractGameObject() error {
 	r.onInput = extractCallable(gameObj, "onInput")
 	r.renderFn = extractCallable(gameObj, "render")
 	r.renderCanvasFn = extractCallable(gameObj, "renderCanvas")
-	r.renderSplashFn = extractCallable(gameObj, "renderSplash")
-	r.renderGameOverFn = extractCallable(gameObj, "renderGameOver")
+	r.renderStartingFn = extractCallable(gameObj, "renderGameStart")
+	r.renderEndingFn = extractCallable(gameObj, "renderGameEnd")
 	r.layoutFn = extractCallable(gameObj, "layout")
 	r.statusBarFn = extractCallable(gameObj, "statusBar")
 	r.commandBarFn = extractCallable(gameObj, "commandBar")
 
-	// init and start are mandatory
-	r.initFn = extractCallable(gameObj, "init")
-	if r.initFn == nil {
-		return fmt.Errorf("Game must define an init(savedState) function")
+	// load is mandatory; begin, end, unload are optional
+	r.loadFn = extractCallable(gameObj, "load")
+	if r.loadFn == nil {
+		return fmt.Errorf("Game must define a load(savedState) function")
 	}
-	r.startFn = extractCallable(gameObj, "start")
+	r.beginFn = extractCallable(gameObj, "begin")
+	r.endFn = extractCallable(gameObj, "end")
+	r.unloadFn = extractCallable(gameObj, "unload")
 
 	// Read gameName property (string, not callable)
 	if v := gameObj.Get("gameName"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
@@ -389,10 +405,28 @@ func (r *Runtime) Commands() []domain.Command {
 	return result
 }
 
-func (r *Runtime) Unload() {
+// Unload calls the optional JS unload() hook to collect the session state to
+// persist, then interrupts the VM. Returns the exported state value, or nil.
+func (r *Runtime) Unload() any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	var result any
+	if r.unloadFn != nil {
+		func() {
+			defer r.recoverJS("Unload")
+			defer traceCall(r.vm, "Unload")()
+			cancel := Watchdog(r.vm, "Unload")
+			defer cancel()
+			val, err := r.unloadFn(goja.Undefined())
+			if err == nil && val != nil && !goja.IsUndefined(val) && !goja.IsNull(val) {
+				result = val.Export()
+			}
+		}()
+	}
+
 	r.vm.Interrupt("game unloaded")
+	return result
 }
 
 func (r *Runtime) Menus() []domain.MenuDef {
@@ -475,34 +509,34 @@ func (r *Runtime) RenderCanvasImage(playerID string, width, height int) *image.R
 	return canvas.ToRGBA()
 }
 
-func (r *Runtime) RenderSplash(buf *render.ImageBuffer, playerID string, x, y, width, height int) bool {
-	if r.renderSplashFn == nil {
+func (r *Runtime) RenderStarting(buf *render.ImageBuffer, playerID string, x, y, width, height int) bool {
+	if r.renderStartingFn == nil {
 		return false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	defer r.recoverJS("RenderSplash")
-	defer traceCall(r.vm, "RenderSplash")()
-	cancel := Watchdog(r.vm, "RenderSplash")
+	defer r.recoverJS("RenderStarting")
+	defer traceCall(r.vm, "RenderStarting")()
+	cancel := Watchdog(r.vm, "RenderStarting")
 	defer cancel()
 	jsBuf := r.newJSImageBuffer(buf, x, y, width, height)
-	_, err := r.renderSplashFn(goja.Undefined(), r.vm.ToValue(jsBuf), r.vm.ToValue(playerID), r.vm.ToValue(x), r.vm.ToValue(y), r.vm.ToValue(width), r.vm.ToValue(height))
+	_, err := r.renderStartingFn(goja.Undefined(), r.vm.ToValue(jsBuf), r.vm.ToValue(playerID), r.vm.ToValue(x), r.vm.ToValue(y), r.vm.ToValue(width), r.vm.ToValue(height))
 	if err != nil {
-		slog.Error("JS RenderSplash error", "error", err)
+		slog.Error("JS RenderStarting error", "error", err)
 		return false
 	}
 	return true
 }
 
-func (r *Runtime) RenderGameOver(buf *render.ImageBuffer, playerID string, x, y, width, height int, results []domain.GameResult) bool {
-	if r.renderGameOverFn == nil {
+func (r *Runtime) RenderEnding(buf *render.ImageBuffer, playerID string, x, y, width, height int, results []domain.GameResult) bool {
+	if r.renderEndingFn == nil {
 		return false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	defer r.recoverJS("RenderGameOver")
-	defer traceCall(r.vm, "RenderGameOver")()
-	cancel := Watchdog(r.vm, "RenderGameOver")
+	defer r.recoverJS("RenderEnding")
+	defer traceCall(r.vm, "RenderEnding")()
+	cancel := Watchdog(r.vm, "RenderEnding")
 	defer cancel()
 	jsBuf := r.newJSImageBuffer(buf, x, y, width, height)
 	// Convert results to JS-friendly array of {name, result} objects.
@@ -510,9 +544,9 @@ func (r *Runtime) RenderGameOver(buf *render.ImageBuffer, playerID string, x, y,
 	for i, r := range results {
 		jsResults[i] = map[string]any{"name": r.Name, "result": r.Result}
 	}
-	_, err := r.renderGameOverFn(goja.Undefined(), r.vm.ToValue(jsBuf), r.vm.ToValue(playerID), r.vm.ToValue(x), r.vm.ToValue(y), r.vm.ToValue(width), r.vm.ToValue(height), r.vm.ToValue(jsResults))
+	_, err := r.renderEndingFn(goja.Undefined(), r.vm.ToValue(jsBuf), r.vm.ToValue(playerID), r.vm.ToValue(x), r.vm.ToValue(y), r.vm.ToValue(width), r.vm.ToValue(height), r.vm.ToValue(jsResults))
 	if err != nil {
-		slog.Error("JS RenderGameOver error", "error", err)
+		slog.Error("JS RenderEnding error", "error", err)
 		return false
 	}
 	return true
@@ -536,19 +570,9 @@ func (r *Runtime) GameOverResults() []domain.GameResult {
 	return r.gameOverResults
 }
 
-// GameOverStateExport returns the state object passed as the second arg to gameOver().
-func (r *Runtime) GameOverStateExport() any {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.gameOverState == nil || goja.IsUndefined(r.gameOverState) || goja.IsNull(r.gameOverState) {
-		return nil
-	}
-	return r.gameOverState.Export()
-}
-
 // State returns the current value of the JS Game.state property.
-// The framework reads this for suspend (persisting session state) and for
-// client-side state replication. Returns nil if Game.state is not set.
+// Used by the framework for OSC push to local renderers. Returns nil if
+// Game.state is not set.
 func (r *Runtime) State() any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -565,22 +589,6 @@ func (r *Runtime) State() any {
 		return nil
 	}
 	return v.Export()
-}
-
-// SetState replaces the JS Game.state property. Used by the framework to
-// restore state on cold resume after reloading the game JS.
-func (r *Runtime) SetState(state any) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	gameVal := r.vm.Get("Game")
-	if gameVal == nil || goja.IsUndefined(gameVal) || goja.IsNull(gameVal) {
-		return
-	}
-	obj := gameVal.ToObject(r.vm)
-	if obj == nil {
-		return
-	}
-	obj.Set("state", r.vm.ToValue(state))
 }
 
 // GameSource returns all JS source files for client-side replication.

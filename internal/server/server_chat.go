@@ -17,6 +17,19 @@ import (
 
 // --- Broadcast and messaging ---
 
+// safeSend sends msg to p in a goroutine, recovering from any panic (e.g.
+// if the program has already shut down).
+func safeSend(p *tea.Program, msg tea.Msg) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("Send panic", "panic", r)
+			}
+		}()
+		p.Send(msg)
+	}()
+}
+
 // broadcastRepaint sends a full-screen repaint to all player programs.
 // This discards the renderer's diff cache, causing the next render to emit
 // a complete frame — recovering from any accumulated display artifacts.
@@ -28,7 +41,7 @@ func (a *Server) broadcastRepaint() {
 	}
 	a.programsMu.Unlock()
 	for _, p := range progs {
-		go p.Send(tea.ClearScreen())
+		safeSend(p, tea.ClearScreen())
 	}
 }
 
@@ -41,14 +54,14 @@ func (a *Server) broadcastMsg(msg tea.Msg) {
 	a.programsMu.Unlock()
 
 	for _, p := range progs {
-		go p.Send(msg)
+		safeSend(p, msg)
 	}
 
 	a.consoleProgramMu.Lock()
 	cp := a.consoleProgram
 	a.consoleProgramMu.Unlock()
 	if cp != nil {
-		go cp.Send(msg)
+		safeSend(cp, msg)
 	}
 }
 
@@ -99,7 +112,7 @@ func (a *Server) sendToPlayer(playerID string, msg tea.Msg) {
 	p := a.programs[playerID]
 	a.programsMu.Unlock()
 	if p != nil {
-		go p.Send(msg)
+		safeSend(p, msg)
 	}
 }
 
@@ -109,7 +122,7 @@ func (a *Server) ShowDialog(playerID string, d domain.DialogRequest) {
 	prog := a.programs[playerID]
 	a.programsMu.Unlock()
 	if prog != nil {
-		prog.Send(widget.ShowDialogMsg{Dialog: d})
+		safeSend(prog, widget.ShowDialogMsg{Dialog: d})
 	}
 }
 

@@ -16,7 +16,7 @@ func TestProbeGameTeamRange(t *testing.T) {
 
 	// Game with teamRange.
 	ranged := filepath.Join(dir, "ranged.js")
-	os.WriteFile(ranged, []byte(`var Game = { teamRange: { min: 2, max: 4 }, init: function(){} };`), 0o644)
+	os.WriteFile(ranged, []byte(`var Game = { teamRange: { min: 2, max: 4 }, load: function(){} };`), 0o644)
 	tr := ProbeGameTeamRange(ranged)
 	if tr.Min != 2 || tr.Max != 4 {
 		t.Fatalf("expected {2,4}, got {%d,%d}", tr.Min, tr.Max)
@@ -24,7 +24,7 @@ func TestProbeGameTeamRange(t *testing.T) {
 
 	// Game without teamRange.
 	noRange := filepath.Join(dir, "norange.js")
-	os.WriteFile(noRange, []byte(`var Game = { init: function(){} };`), 0o644)
+	os.WriteFile(noRange, []byte(`var Game = { load: function(){} };`), 0o644)
 	tr = ProbeGameTeamRange(noRange)
 	if tr.Min != 0 || tr.Max != 0 {
 		t.Fatalf("expected {0,0}, got {%d,%d}", tr.Min, tr.Max)
@@ -43,7 +43,7 @@ func TestProbeGameTeamRangeWithInclude(t *testing.T) {
 	mainJS := filepath.Join(dir, "main.js")
 	os.WriteFile(mainJS, []byte(`
 		include("config.js");
-		var Game = { teamRange: TEAMS, init: function(){} };
+		var Game = { teamRange: TEAMS, load: function(){} };
 	`), 0o644)
 
 	tr := ProbeGameTeamRange(mainJS)
@@ -54,8 +54,8 @@ func TestProbeGameTeamRangeWithInclude(t *testing.T) {
 
 func TestFormatGameList(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "simple.js"), []byte(`var Game = { init: function(){} };`), 0o644)
-	os.WriteFile(filepath.Join(dir, "teams.js"), []byte(`var Game = { teamRange: {min: 2, max: 2}, init: function(){} };`), 0o644)
+	os.WriteFile(filepath.Join(dir, "simple.js"), []byte(`var Game = { load: function(){} };`), 0o644)
+	os.WriteFile(filepath.Join(dir, "teams.js"), []byte(`var Game = { teamRange: {min: 2, max: 2}, load: function(){} };`), 0o644)
 
 	result := FormatGameList(dir, []string{"simple", "teams"}, "simple", 2)
 
@@ -232,7 +232,7 @@ func TestLoadShaderWithInit(t *testing.T) {
 	os.WriteFile(path, []byte(`
 		var initialized = false;
 		var Shader = {
-			init: function() { initialized = true; },
+			load: function() { initialized = true; },
 			process: function(buf, elapsed) {}
 		};
 	`), 0o644)

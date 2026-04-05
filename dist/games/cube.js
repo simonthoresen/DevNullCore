@@ -280,14 +280,14 @@ var Game = {
                +  "║                           ║\n"
                +  "╚═══════════════════════════╝",
 
-    init: function(savedState) {
+    load: function(savedState) {
         Game.state.elapsed = 0;
         Game.state.angleX = 0;
         Game.state.angleY = 0;
         Game.state.angleZ = 0;
     },
 
-    start: function() {
+    begin: function() {
         Game.state.elapsed = 0;
         log("Spinning Cube started");
     },

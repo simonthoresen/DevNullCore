@@ -6,7 +6,7 @@ height: 5
 player_id: alice
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "Hello, " + playerID + "!", null, null);
     }
@@ -26,7 +26,7 @@ width: 20
 height: 3
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         var row = "";
         for (var i = 0; i < w; i++) row += "-";
@@ -46,7 +46,7 @@ width: 20
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "Row 0", null, null);
         buf.writeString(0, 1, "Row 1", null, null);
@@ -68,7 +68,7 @@ width: 20
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "Row 0", null, null);
         buf.writeString(0, 1, "Row 1", null, null);
@@ -91,7 +91,7 @@ width: 20
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "Row 0", null, null);
         buf.writeString(0, 1, "Row 1", null, null);
@@ -115,7 +115,7 @@ width: 20
 height: 3
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "Hi", null, null);
     }
@@ -134,7 +134,7 @@ width: 20
 height: 3
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234", null, null);
     }
@@ -153,7 +153,7 @@ width: 20
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "OK", null, null);
         buf.setChar(w,     0, "X", null, null); // x == w → beyond right edge
@@ -178,7 +178,7 @@ width: 20
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "AB", null, null);                         // short
         var dashes = ""; for (var i = 0; i < w; i++) dashes += "-";

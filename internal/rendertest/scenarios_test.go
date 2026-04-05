@@ -139,7 +139,7 @@ var scenarios = []renderScenario{
 		},
 	},
 	{
-		name:          "playing_splash",
+		name:          "playing_starting",
 		playerID:      "alice",
 		inActiveGame:  true,
 		gameName:      "testgame",
@@ -153,7 +153,7 @@ var scenarios = []renderScenario{
 			}
 			st.ActiveGame = &mockGame{}
 			st.GameName = "testgame"
-			st.GamePhase = domain.PhaseSplash
+			st.GamePhase = domain.PhaseStarting
 		},
 	},
 

@@ -6,7 +6,7 @@ width: 30
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     layout: function(playerID, w, h) {
         return {
             type: "label",
@@ -30,7 +30,7 @@ width: 30
 height: 5
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     layout: function(playerID, w, h) {
         return {
             type: "label",
@@ -55,7 +55,7 @@ width: 30
 height: 7
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     layout: function(playerID, w, h) {
         return {
             type: "table",
@@ -84,7 +84,7 @@ width: 30
 height: 7
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     layout: function(playerID, w, h) {
         return {
             type: "panel",
@@ -114,7 +114,7 @@ width: 20
 height: 3
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "\x1b[31mRed\x1b[0m \x1b[32mGreen\x1b[0m", null, null);
     }
@@ -133,7 +133,7 @@ width: 40
 height: 7
 --- js
 var Game = {
-    init: function(s) {},
+    load: function(s) {},
     render: function(buf, playerID, x, y, w, h) {
         buf.writeString(0, 0, "\x1b[31mR\x1b[32mG\x1b[34mB\x1b[0m line", null, null);
         buf.writeString(0, 1, "row 2", null, null);

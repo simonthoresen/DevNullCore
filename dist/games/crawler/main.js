@@ -86,13 +86,13 @@ var Game = {
         messages: {}   // playerID -> [strings]
     },
 
-    init: function(savedState) {
+    load: function(savedState) {
         Game.state.maze = generateMaze(MAZE_W, MAZE_H);
         Game.state.items = scatterItems(Game.state.maze, Game.state.floor);
         Game.state.monsters = spawnMonsters(Game.state.maze, Game.state.floor);
     },
 
-    start: function() {
+    begin: function() {
         var t = teams();
         for (var i = 0; i < t.length; i++) {
             for (var j = 0; j < t[i].players.length; j++) {

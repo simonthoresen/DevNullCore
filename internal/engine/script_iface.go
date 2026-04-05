@@ -10,6 +10,7 @@ type ScriptRuntime interface {
 	SetShowDialogFn(fn func(playerID string, d domain.DialogRequest))
 	IsGameOverPending() bool
 	GameOverResults() []domain.GameResult
-	GameOverStateExport() any
+	// State returns the current JS Game.state for OSC push to local renderers.
+	State() any
 	CloseChatCh()
 }

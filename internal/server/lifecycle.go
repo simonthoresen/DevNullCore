@@ -26,27 +26,15 @@ func (a *Server) checkGameOver() {
 		return
 	}
 
-	// Save state if the game passed one as the second arg to gameOver().
-	gameOverState := srt.GameOverStateExport()
+	// Call End() hook before transitioning phase.
+	game.End()
 
-	a.state.RLock()
-	gameName := a.state.GameName
-	a.state.RUnlock()
-
-	if gameOverState != nil {
-		if err := state.SaveGameState(a.dataDir, gameName, gameOverState); err != nil {
-			a.serverLog(fmt.Sprintf("warning: could not save game state: %v", err))
-		} else {
-			a.serverLog(fmt.Sprintf("game state saved: %s", gameName))
-		}
-	}
-
-	a.state.SetGamePhase(domain.PhaseGameOver)
+	a.state.SetGamePhase(domain.PhaseEnding)
 	a.state.Lock()
 	a.state.GameOverResults = srt.GameOverResults()
 	a.state.Unlock()
 
-	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseGameOver})
+	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseEnding})
 	a.broadcastChat(domain.Message{Text: "Game over!"})
 	a.serverLog("game over — waiting for players to acknowledge")
 
@@ -60,8 +48,8 @@ func (a *Server) gameOverTimeout() {
 	case <-time.After(15 * time.Second):
 	case <-a.gameOverTimer:
 	}
-	// Only unload if still in game-over phase.
-	if a.state.GetGamePhase() == domain.PhaseGameOver {
+	// Only unload if still in ending phase.
+	if a.state.GetGamePhase() == domain.PhaseEnding {
 		a.unloadGame()
 	}
 }
@@ -141,7 +129,7 @@ func (a *Server) loadGame(path string) error {
 	a.state.GameDisconnected = make(map[string]string)
 	a.state.ActiveGame = rt
 	a.state.GameName = name
-	a.state.GamePhase = domain.PhaseSplash
+	a.state.GamePhase = domain.PhaseStarting
 	a.state.Unlock()
 
 	// Populate the teams cache so script teams() returns correct data.
@@ -156,12 +144,12 @@ func (a *Server) loadGame(path string) error {
 		}
 	}()
 
-	// Call init — teams() now returns game participants via cached snapshot.
+	// Call Load — teams() now returns game participants via cached snapshot.
 	savedState, err := state.LoadGameState(a.dataDir, name)
 	if err != nil {
 		a.serverLog(fmt.Sprintf("warning: could not load saved state: %v", err))
 	}
-	rt.Init(savedState)
+	rt.Load(savedState)
 
 	// Register game commands.
 	for _, cmd := range rt.Commands() {
@@ -169,25 +157,25 @@ func (a *Server) loadGame(path string) error {
 	}
 
 	a.broadcastMsg(domain.GameLoadedMsg{Name: name})
-	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseSplash})
+	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseStarting})
 	a.broadcastChat(domain.Message{Text: fmt.Sprintf("Game loaded: %s", name)})
-	a.serverLog(fmt.Sprintf("game loaded: %s (%s, splash)", name, path))
+	a.serverLog(fmt.Sprintf("game loaded: %s (%s, starting)", name, path))
 
-	// Start splash goroutine: waits up to 10s or until admin triggers start.
-	a.splashDone = make(chan struct{})
-	go a.splashTimer()
+	// Start starting goroutine: waits up to 10s or until admin triggers start.
+	a.startingDone = make(chan struct{})
+	go a.startingTimer()
 
 	return nil
 }
 
-func (a *Server) splashTimer() {
+func (a *Server) startingTimer() {
 	select {
 	case <-time.After(10 * time.Second):
-	case <-a.splashDone:
+	case <-a.startingDone:
 	}
-	// Only transition if still in splash phase.
+	// Only transition if still in starting phase.
 	a.state.Lock()
-	if a.state.GamePhase != domain.PhaseSplash {
+	if a.state.GamePhase != domain.PhaseStarting {
 		a.state.Unlock()
 		return
 	}
@@ -203,27 +191,27 @@ func (a *Server) splashTimer() {
 	a.serverLog("game started (playing)")
 
 	if game != nil {
-		game.Start()
+		game.Begin()
 	}
 }
 
-// StartGame is called when an admin acknowledges the splash screen.
+// StartGame is called when an admin acknowledges the starting screen.
 func (a *Server) StartGame() {
 	select {
-	case <-a.splashDone:
+	case <-a.startingDone:
 		// already closed
 	default:
-		close(a.splashDone)
+		close(a.startingDone)
 	}
 }
 
 func (a *Server) unloadGame() {
-	// Cancel any pending splash or game-over timers.
-	if a.splashDone != nil {
+	// Cancel any pending starting or game-over timers.
+	if a.startingDone != nil {
 		select {
-		case <-a.splashDone:
+		case <-a.startingDone:
 		default:
-			close(a.splashDone)
+			close(a.startingDone)
 		}
 	}
 	if a.gameOverTimer != nil {
@@ -236,6 +224,7 @@ func (a *Server) unloadGame() {
 
 	a.state.Lock()
 	game := a.state.ActiveGame
+	gameName := a.state.GameName
 	if game == nil {
 		a.state.Unlock()
 		return // already unloaded
@@ -249,11 +238,22 @@ func (a *Server) unloadGame() {
 	for _, cmd := range game.Commands() {
 		a.registry.Unregister(cmd.Name)
 	}
-	game.Unload()
+
+	// Unload returns the session state to persist (nil if no state).
+	gameState := game.Unload()
 
 	// Close the script chat channel so the drainer goroutine exits.
 	if srt, ok := game.(engine.ScriptRuntime); ok {
 		srt.CloseChatCh()
+	}
+
+	// Save state returned by Unload.
+	if gameState != nil && gameName != "" {
+		if err := state.SaveGameState(a.dataDir, gameName, gameState); err != nil {
+			a.serverLog(fmt.Sprintf("warning: could not save game state: %v", err))
+		} else {
+			a.serverLog(fmt.Sprintf("game state saved: %s", gameName))
+		}
 	}
 
 	a.broadcastMsg(domain.GameUnloadedMsg{})
@@ -287,7 +287,9 @@ func (a *Server) buildTeamsCache() []map[string]any {
 	return result
 }
 
-// suspendGame suspends the active game, persisting its session state.
+// suspendGame suspends the active game by unloading the runtime and persisting
+// its session state. After suspension the phase returns to PhaseNone; the save
+// file on disk signals that the game can be resumed.
 func (a *Server) suspendGame(saveName string) error {
 	a.state.RLock()
 	game := a.state.ActiveGame
@@ -299,10 +301,23 @@ func (a *Server) suspendGame(saveName string) error {
 		return fmt.Errorf("no game is currently playing")
 	}
 
-	// Read Game.state directly — no special suspend hook needed.
-	sessionState := game.State()
+	// Cancel any pending timers.
+	if a.startingDone != nil {
+		select {
+		case <-a.startingDone:
+		default:
+			close(a.startingDone)
+		}
+	}
+	if a.gameOverTimer != nil {
+		select {
+		case <-a.gameOverTimer:
+		default:
+			close(a.gameOverTimer)
+		}
+	}
 
-	// Build the save.
+	// Copy team state for the save before unloading.
 	a.state.RLock()
 	teams := make([]domain.Team, len(a.state.GameTeams))
 	for i, t := range a.state.GameTeams {
@@ -318,6 +333,20 @@ func (a *Server) suspendGame(saveName string) error {
 	}
 	a.state.RUnlock()
 
+	// Unregister game commands.
+	for _, cmd := range game.Commands() {
+		a.registry.Unregister(cmd.Name)
+	}
+
+	// Unload the runtime to get the session state.
+	sessionState := game.Unload()
+
+	// Close the script chat channel.
+	if srt, ok := game.(engine.ScriptRuntime); ok {
+		srt.CloseChatCh()
+	}
+
+	// Persist the save.
 	save := &state.SuspendSave{
 		GameName:     gameName,
 		SaveName:     saveName,
@@ -330,71 +359,37 @@ func (a *Server) suspendGame(saveName string) error {
 		return fmt.Errorf("save suspend state: %w", err)
 	}
 
-	// Unregister game commands.
-	for _, cmd := range game.Commands() {
-		a.registry.Unregister(cmd.Name)
-	}
-
-	// Transition to suspended phase — runtime stays alive.
+	// Clean up server state — runtime is now dead.
 	a.state.Lock()
-	a.state.GamePhase = domain.PhaseSuspended
+	a.state.ActiveGame = nil
+	a.state.GameName = ""
+	a.state.GamePhase = domain.PhaseNone
+	a.state.GameOverReady = nil
 	a.state.Unlock()
 
-	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseSuspended})
+	a.broadcastMsg(domain.GameUnloadedMsg{})
+	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhaseNone})
 	a.broadcastMsg(domain.GameSuspendedMsg{Name: gameName})
 	a.broadcastChat(domain.Message{Text: fmt.Sprintf("Game suspended: %s (save: %s)", gameName, saveName)})
 	a.serverLog(fmt.Sprintf("game suspended: %s/%s", gameName, saveName))
 	return nil
 }
 
-// resumeGame resumes a suspended game. If the runtime is still alive (warm),
-// calls Resume(nil). If loading from disk (cold), loads the game JS fresh,
-// calls init(globalState)+start(), then Resume(sessionState).
+// resumeGame loads a suspended game from the save file and restores session state
+// via Load(). Suspend always tears down the runtime, so every resume is a fresh load.
 func (a *Server) resumeGame(gameName, saveName string) error {
 	save, err := state.LoadSuspend(a.dataDir, gameName, saveName)
 	if err != nil {
 		return fmt.Errorf("load suspend save: %w", err)
 	}
 
-	// Validate team count against the lobby teams if this is a cold resume
-	// (warm resume keeps the original game teams).
+	// Unload any currently running game.
 	a.state.RLock()
 	currentGame := a.state.ActiveGame
-	currentName := a.state.GameName
-	currentPhase := a.state.GamePhase
 	a.state.RUnlock()
-
-	isWarm := currentGame != nil && currentName == gameName && currentPhase == domain.PhaseSuspended
-
-	if isWarm {
-		// Warm resume — runtime is alive, Game.state is intact. Just unpause.
-		// Re-register game commands.
-		for _, cmd := range currentGame.Commands() {
-			a.registry.Register(cmd)
-		}
-
-		a.state.Lock()
-		a.state.GamePhase = domain.PhasePlaying
-		a.state.Unlock()
-
-		a.lastUpdateMu.Lock()
-		a.lastUpdate = a.clock.Now()
-		a.lastUpdateMu.Unlock()
-		a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhasePlaying})
-		a.broadcastMsg(domain.GameResumedMsg{Name: gameName})
-		a.broadcastChat(domain.Message{Text: fmt.Sprintf("Game resumed: %s", gameName)})
-		a.serverLog(fmt.Sprintf("game resumed (warm): %s/%s", gameName, saveName))
-		return nil
-	}
-
-	// Cold resume — load the game fresh and restore from save.
 	if currentGame != nil {
 		a.unloadGame()
 	}
-
-	// Validate team count.
-	tr := domain.TeamRange{} // will be updated after loading
-	_ = tr
 
 	gamesDir := filepath.Join(a.dataDir, "games")
 	path := engine.ResolveGamePath(gamesDir, gameName)
@@ -410,7 +405,7 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 	}
 
 	// Validate team count against game's declared range.
-	tr = rt.TeamRange()
+	tr := rt.TeamRange()
 	teamCount := len(save.Teams)
 	if tr.Min > 0 && teamCount < tr.Min {
 		close(gameChatCh)
@@ -430,7 +425,7 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 	}
 	a.state.ActiveGame = rt
 	a.state.GameName = gameName
-	a.state.GamePhase = domain.PhasePlaying // skip splash
+	a.state.GamePhase = domain.PhasePlaying // skip starting screen
 	a.state.Unlock()
 
 	// Populate teams cache.
@@ -445,18 +440,12 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 		}
 	}()
 
-	// Call init with global saved state (high scores etc), then start.
-	globalState, err := state.LoadGameState(a.dataDir, gameName)
-	if err != nil {
-		a.serverLog(fmt.Sprintf("warning: could not load global state: %v", err))
-	}
-	rt.Init(globalState)
-	rt.Start()
+	// Call Load with the suspend save's session state (which carries both global
+	// high scores and the suspended session state).
+	rt.Load(save.GameState)
 
-	// Restore Game.state from the suspend save.
-	if save.GameState != nil {
-		rt.SetState(save.GameState)
-	}
+	// Call Begin to start the game loop immediately (no starting screen on resume).
+	rt.Begin()
 
 	// Register game commands.
 	for _, cmd := range rt.Commands() {
@@ -470,7 +459,7 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 	a.broadcastMsg(domain.GamePhaseMsg{Phase: domain.PhasePlaying})
 	a.broadcastMsg(domain.GameResumedMsg{Name: gameName})
 	a.broadcastChat(domain.Message{Text: fmt.Sprintf("Game resumed: %s (from save: %s)", gameName, saveName)})
-	a.serverLog(fmt.Sprintf("game resumed (cold): %s/%s", gameName, saveName))
+	a.serverLog(fmt.Sprintf("game resumed: %s/%s", gameName, saveName))
 
 	// Clean up the suspend save after successful resume.
 	if err := state.DeleteSuspend(a.dataDir, gameName, saveName); err != nil {

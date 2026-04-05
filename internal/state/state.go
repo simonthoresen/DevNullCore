@@ -170,7 +170,7 @@ func (s *CentralState) SetGamePhase(phase domain.GamePhase) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.GamePhase = phase
-	if phase == domain.PhaseGameOver {
+	if phase == domain.PhaseEnding {
 		s.GameOverReady = make(map[string]bool)
 	} else {
 		s.GameOverReady = nil

@@ -130,7 +130,6 @@ func (r *Runtime) registerGlobals() {
 	r.vm.Set("gameOver", func(call goja.FunctionCall) goja.Value {
 		r.gameOverPending = true
 		r.gameOverResults = nil
-		r.gameOverState = nil
 
 		// First arg: results array [{name, result}, ...]
 		if len(call.Arguments) > 0 {
@@ -158,11 +157,6 @@ func (r *Runtime) registerGlobals() {
 					}
 				}
 			}
-		}
-
-		// Second arg: state to persist
-		if len(call.Arguments) > 1 {
-			r.gameOverState = call.Argument(1)
 		}
 
 		return goja.Undefined()

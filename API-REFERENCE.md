@@ -65,7 +65,7 @@ The zip is extracted to `dist/games/mygame/` and then loaded normally.
 
 ## Writing a game
 
-A game file must define a global `Game` object. `init` and `render` are required; all other hooks are optional.
+A game file must define a global `Game` object. `load` and `render` are required; all other hooks are optional.
 
 ```js
 var Game = {
@@ -136,37 +136,31 @@ var Game = {
 
     // --- Lifecycle ---
 
-    // Called before splash with persisted state (or null on first run). Mandatory.
-    // teams() global is available.
-    init: function(savedState) {
+    // Called on game load with persisted state (or null on first run). Mandatory.
+    // teams() global is available. Use savedState to restore previous session.
+    load: function(savedState) {
         if (savedState) {
             // restore previous state
+            score = savedState.score;
         }
     },
 
-    // Called at splash→playing transition. Set up game state here. Optional.
-    start: function() {
+    // Called at starting→playing transition. Set up real-time game state here. Optional.
+    begin: function() {
         // game begins — teams() available
     },
 
-    // --- Suspend/resume (optional, requires canSuspend: true) ---
-
-    // Set to true to enable /game suspend and the Resume Game menu.
-    canSuspend: true,
-
-    // Called when admin runs /game suspend. Return session state to persist.
-    // This is separate from gameOver state — suspend saves are per-session.
-    suspend: function() {
-        return { board: board, turn: turn };
+    // Called when the game signals game-over, before the ending screen is shown. Optional.
+    // Use this for cleanup, final score calculations, etc.
+    end: function() {
+        // optional cleanup
     },
 
-    // Called when game is resumed. sessionState is null for warm resume
-    // (runtime still in memory), or the saved state for cold resume.
-    resume: function(sessionState) {
-        if (sessionState) {
-            board = sessionState.board;
-            turn = sessionState.turn;
-        }
+    // Called when the game is unloaded (game-over acknowledged, or /game unload).
+    // Return a state object to persist to disk — passed back via load(savedState) on next run.
+    // Also called during /game suspend; the returned state is saved and restored on resume.
+    unload: function() {
+        return { score: score, highScore: highScore };
     }
 };
 ```
@@ -209,15 +203,15 @@ var Game = {
         }
     },
 
-    // Custom splash screen rendering. Optional — if omitted or returns false,
+    // Custom starting screen rendering. Optional — if omitted or returns false,
     // the framework renders a figlet game name centered in the viewport.
     // Same buf API as render(). Return true to indicate custom rendering was done.
-    // renderSplash: function(buf, playerID, ox, oy, width, height) { ... return true; },
+    // renderGameStart: function(buf, playerID, ox, oy, width, height) { ... return true; },
 
-    // Custom game-over screen rendering. Optional — if omitted or returns false,
+    // Custom ending screen rendering. Optional — if omitted or returns false,
     // the framework renders a figlet "GAME OVER" title with ranked results.
     // results is an array of {name, result} objects in ranked order.
-    // renderGameOver: function(buf, playerID, ox, oy, width, height, results) { ... return true; },
+    // renderGameEnd: function(buf, playerID, ox, oy, width, height, results) { ... return true; },
 
     statusBar: function(playerID) {
         var p = players[playerID];
@@ -266,9 +260,8 @@ These are available in games.
 | `registerCommand(spec)` | Registers a slash command. See below. |
 | `addMenu(label, items)` | Adds a top-level menu to the NC action bar. Call at the top level of your script. `label` is the menu title. `items` is an array of menu item objects; see below. |
 | `messageBox(playerID, opts)` | Shows a modal dialog to a specific player. `opts` is `{ title, message, buttons, onClose }`. See below. |
-| `gameOver()` | Signals that the game has ended. Transitions to the game-over screen. |
-| `gameOver(results)` | Same as above, with ranked results displayed on the game-over screen. `results` is an array of `{ name, result }` in ranked order. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). |
-| `gameOver(results, state)` | Same as above, plus persists `state` to `dist/state/<gamename>.json` for the next run. Received via `config.savedState` in `init()`. |
+| `gameOver()` | Signals that the game has ended. Transitions to the ending screen. |
+| `gameOver(results)` | Same as above, with ranked results displayed on the ending screen. `results` is an array of `{ name, result }` in ranked order. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). |
 | `now()` | Returns the server time as epoch milliseconds (same as `Date.now()` but uses the framework's central clock, which is mockable in tests). Available in both games and plugins. |
 | `include(name)` | Evaluates another `.js` file from the same directory as the game file. Used for multi-file games in `games/<name>/` folders. The `.js` extension is added automatically if omitted. Each file is only included once (idempotent). Path traversal (`..`) is rejected. |
 

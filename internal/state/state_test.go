@@ -56,9 +56,9 @@ func TestSetGamePhase(t *testing.T) {
 	s.AddPlayer(&domain.Player{ID: "p1", Name: "alice"})
 
 	// Transition to game over creates the ready map.
-	s.SetGamePhase(domain.PhaseGameOver)
-	if s.GetGamePhase() != domain.PhaseGameOver {
-		t.Fatal("expected PhaseGameOver")
+	s.SetGamePhase(domain.PhaseEnding)
+	if s.GetGamePhase() != domain.PhaseEnding {
+		t.Fatal("expected PhaseEnding")
 	}
 	s.RLock()
 	if s.GameOverReady == nil {
@@ -233,7 +233,7 @@ func TestAllPlayersReady(t *testing.T) {
 	}
 	s.Unlock()
 
-	s.SetGamePhase(domain.PhaseGameOver)
+	s.SetGamePhase(domain.PhaseEnding)
 
 	if s.AllPlayersReady() {
 		t.Fatal("expected not all ready")
@@ -261,7 +261,7 @@ func TestAllPlayersReadyIgnoresDisconnected(t *testing.T) {
 	}
 	s.Unlock()
 
-	s.SetGamePhase(domain.PhaseGameOver)
+	s.SetGamePhase(domain.PhaseEnding)
 	s.MarkPlayerReady("p1")
 
 	// p2 is disconnected (not in Players), so only p1 needs to be ready.

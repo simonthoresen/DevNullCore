@@ -382,7 +382,7 @@ func (m *Model) syncChat() {
 func (m *Model) resizeViewports() {
 	phase := m.api.State().GetGamePhase()
 
-	if !m.inActiveGame || phase == domain.PhaseNone || phase == domain.PhaseSuspended {
+	if !m.inActiveGame || phase == domain.PhaseNone {
 		// Lobby — chatH for scroll math.
 		windowH := m.height - 2 // minus menu bar and status bar
 		chatH := max(1, windowH-4) // approx: borders + divider + cmd bar

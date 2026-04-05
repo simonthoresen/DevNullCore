@@ -19,15 +19,16 @@ const minimalGameJS = `
 var Game = {
     gameName: "test-game",
     state: { score: 0 },
-    init: function(saved) {
+    load: function(saved) {
         if (saved && saved.score) Game.state.score = saved.score;
     },
-    start: function() {},
+    begin: function() {},
     update: function(dt) {},
+    unload: function() { return Game.state; },
     onInput: function(pid, key) {
         if (key === "space") {
             Game.state.score++;
-            gameOver([{name: "player", result: Game.state.score + " pts"}], {score: Game.state.score});
+            gameOver([{name: "player", result: Game.state.score + " pts"}]);
         }
     },
     render: function(buf, pid, ox, oy, w, h) {
@@ -80,8 +81,8 @@ func TestLoadAndUnloadGame(t *testing.T) {
 	}
 
 	// Verify state transitions.
-	if s.state.GetGamePhase() != domain.PhaseSplash {
-		t.Fatalf("expected PhaseSplash, got %d", s.state.GetGamePhase())
+	if s.state.GetGamePhase() != domain.PhaseStarting {
+		t.Fatalf("expected PhaseStarting, got %d", s.state.GetGamePhase())
 	}
 	s.state.RLock()
 	name := s.state.GameName
@@ -120,8 +121,8 @@ func TestGameLifecycle(t *testing.T) {
 	if err := s.loadGame(gamePath); err != nil {
 		t.Fatalf("loadGame: %v", err)
 	}
-	if s.state.GetGamePhase() != domain.PhaseSplash {
-		t.Fatalf("expected PhaseSplash")
+	if s.state.GetGamePhase() != domain.PhaseStarting {
+		t.Fatalf("expected PhaseStarting")
 	}
 
 	// Start game (admin acknowledges splash).
@@ -154,12 +155,7 @@ func TestGameLifecycle(t *testing.T) {
 		t.Fatalf("unexpected results: %v", results)
 	}
 
-	// State should have been passed to gameOver.
-	if rt.GameOverStateExport() == nil {
-		t.Fatal("expected game-over state export")
-	}
-
-	// Unload.
+	// Unload — unloadGame saves state returned by game.Unload() to disk.
 	s.unloadGame()
 	if s.state.GetGamePhase() != domain.PhaseNone {
 		t.Fatalf("expected PhaseNone after unload")
@@ -189,8 +185,8 @@ func TestSuspendResume(t *testing.T) {
 	if err := s.suspendGame("save1"); err != nil {
 		t.Fatalf("suspendGame: %v", err)
 	}
-	if s.state.GetGamePhase() != domain.PhaseSuspended {
-		t.Fatalf("expected PhaseSuspended")
+	if s.state.GetGamePhase() != domain.PhaseNone {
+		t.Fatalf("expected PhaseNone after suspend")
 	}
 
 	// Verify save file exists.
@@ -202,12 +198,12 @@ func TestSuspendResume(t *testing.T) {
 		t.Fatalf("expected 'save1', got %q", saves[0].SaveName)
 	}
 
-	// Warm resume (runtime still alive).
+	// Resume from save (always a fresh load since suspend tears down the runtime).
 	if err := s.resumeGame("test-game", "save1"); err != nil {
-		t.Fatalf("resumeGame (warm): %v", err)
+		t.Fatalf("resumeGame: %v", err)
 	}
 	if s.state.GetGamePhase() != domain.PhasePlaying {
-		t.Fatalf("expected PhasePlaying after warm resume")
+		t.Fatalf("expected PhasePlaying after resume")
 	}
 }
 
@@ -217,7 +213,7 @@ var Game = {
     gameName: "team-required",
     teamRange: { min: 2, max: 4 },
     state: {},
-    init: function(saved) {},
+    load: function(saved) {},
     render: function(buf, pid, ox, oy, w, h) {}
 };
 `

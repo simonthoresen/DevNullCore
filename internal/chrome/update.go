@@ -164,20 +164,13 @@ func (m Model) handleGameUnloaded() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleGamePhase(msg domain.GamePhaseMsg) (tea.Model, tea.Cmd) {
-	if msg.Phase == domain.PhaseGameOver {
+	if msg.Phase == domain.PhaseEnding {
 		m.gameOverStart = time.Now()
 	}
 	if msg.Phase == domain.PhaseNone {
 		m.inActiveGame = false
 		m.lobbyWindow.FocusIdx = 4
 		cmd := m.lobbyInput.Model.Focus()
-		m.resizeViewports()
-		return m, cmd
-	}
-	if msg.Phase == domain.PhaseSuspended {
-		m.lobbyWindow.FocusIdx = 4
-		cmd := m.lobbyInput.Model.Focus()
-		m.playingInput.Model.Blur()
 		m.resizeViewports()
 		return m, cmd
 	}

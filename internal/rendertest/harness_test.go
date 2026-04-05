@@ -135,9 +135,11 @@ type mockGame struct{}
 
 func (g *mockGame) GameName() string                                              { return "Test Game" }
 func (g *mockGame) TeamRange() domain.TeamRange                                  { return domain.TeamRange{} }
-func (g *mockGame) Init(any)                                                      {}
-func (g *mockGame) Start()                                                        {}
+func (g *mockGame) Load(any)                                                      {}
+func (g *mockGame) Begin()                                                        {}
 func (g *mockGame) Update(float64)                                                {}
+func (g *mockGame) End()                                                          {}
+func (g *mockGame) Unload() any                                                   { return nil }
 func (g *mockGame) OnPlayerLeave(string)                                          {}
 func (g *mockGame) OnInput(string, string)                                        {}
 func (g *mockGame) StatusBar(string) string                                       { return "score: 42 | level: 3" }
@@ -148,9 +150,6 @@ func (g *mockGame) CharMap() *render.CharMapDef                                 
 func (g *mockGame) RenderCanvas(string, int, int) []byte                          { return nil }
 func (g *mockGame) RenderCanvasImage(string, int, int) *image.RGBA                { return nil }
 func (g *mockGame) HasCanvasMode() bool                                           { return false }
-func (g *mockGame) Unload()                                                       {}
-func (g *mockGame) State() any                                                    { return nil }
-func (g *mockGame) SetState(any)                                                  {}
 func (g *mockGame) GameSource() []domain.GameSourceFile                           { return nil }
 func (g *mockGame) GameAssets() []domain.GameAsset                                { return nil }
 func (g *mockGame) Layout(string, int, int) *domain.WidgetNode                   { return nil }
@@ -167,11 +166,11 @@ func (g *mockGame) Render(buf *render.ImageBuffer, _ string, x, y, w, h int) {
 	buf.WriteString(x, y+h-1, "[ game over: press enter ]", nil, nil, 0)
 }
 
-func (g *mockGame) RenderSplash(_ *render.ImageBuffer, _ string, _, _, _, _ int) bool {
+func (g *mockGame) RenderStarting(_ *render.ImageBuffer, _ string, _, _, _, _ int) bool {
 	return false // use framework default
 }
 
-func (g *mockGame) RenderGameOver(_ *render.ImageBuffer, _ string, _, _, _, _ int, _ []domain.GameResult) bool {
+func (g *mockGame) RenderEnding(_ *render.ImageBuffer, _ string, _, _, _, _ int, _ []domain.GameResult) bool {
 	return false // use framework default
 }
 

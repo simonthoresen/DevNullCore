@@ -38,7 +38,7 @@ func (m Model) View() tea.View {
 	phase := m.api.State().GamePhase
 	m.api.State().RUnlock()
 
-	if (!m.inActiveGame || phase == domain.PhaseNone || phase == domain.PhaseSuspended) && m.teamEditing {
+	if (!m.inActiveGame || phase == domain.PhaseNone) && m.teamEditing {
 		SetInputStyle(&m.teamEditInput, m.theme.LayerAt(0).InputBg, m.theme.LayerAt(0).InputFg)
 	}
 
@@ -52,7 +52,7 @@ func (m Model) View() tea.View {
 	}
 	buf := m.renderBuf
 
-	if !m.inActiveGame || phase == domain.PhaseNone || phase == domain.PhaseSuspended {
+	if !m.inActiveGame || phase == domain.PhaseNone {
 		m.renderLobby(buf, menus)
 	} else {
 		m.renderPlaying(buf, menus, game, gameName, phase)
@@ -137,7 +137,11 @@ func (m Model) View() tea.View {
 
 			// Send Game.state if it changed since last frame (for local rendering).
 			if m.localRendering && phase == domain.PhasePlaying {
-				if stateJSON := render.EncodeStateOSC(game.State()); stateJSON != "" && stateJSON != m.lastStateJSON {
+				var gameState any
+				if srt, ok := game.(engine.ScriptRuntime); ok {
+					gameState = srt.State()
+				}
+				if stateJSON := render.EncodeStateOSC(gameState); stateJSON != "" && stateJSON != m.lastStateJSON {
 					oscPrefix += stateJSON
 					m.lastStateJSON = stateJSON
 				}
@@ -160,7 +164,7 @@ func (m Model) View() tea.View {
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 
-	isLobby := !m.inActiveGame || phase == domain.PhaseNone || phase == domain.PhaseSuspended
+	isLobby := !m.inActiveGame || phase == domain.PhaseNone
 
 	if isLobby && m.lobbyWindow.FocusIdx == 4 {
 		if cx, cy, visible := m.lobbyWindow.CursorPosition(); visible {
@@ -232,13 +236,6 @@ func (m Model) renderLobby(buf *render.ImageBuffer, menus []domain.MenuDef) {
 
 	// Update status bar.
 	statusLeft := fmt.Sprintf(" null-space | %d players | uptime %s", m.api.State().PlayerCount(), m.api.Uptime())
-	m.api.State().RLock()
-	suspPhase := m.api.State().GamePhase
-	suspName := m.api.State().GameName
-	m.api.State().RUnlock()
-	if suspPhase == domain.PhaseSuspended && suspName != "" {
-		statusLeft += fmt.Sprintf(" | suspended: %s", suspName)
-	}
 	m.lobbyStatusBar.LeftText = statusLeft
 	m.lobbyStatusBar.RightText = m.api.Clock().Now().Format(domain.TimeFormatDateTime) + " "
 
@@ -276,23 +273,23 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 
 	// Wire gameview rendering based on phase.
 	switch phase {
-	case domain.PhaseSplash:
+	case domain.PhaseStarting:
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
-			if !game.RenderSplash(gbuf, m.playerID, x, y, w, h) {
-				m.defaultRenderSplash(gbuf, displayName, x, y, w, h)
+			if !game.RenderStarting(gbuf, m.playerID, x, y, w, h) {
+				m.defaultRenderStarting(gbuf, displayName, x, y, w, h)
 			}
 		}
-		m.playingGameView.OnKey = nil // splash ignores game keys
-	case domain.PhaseGameOver:
+		m.playingGameView.OnKey = nil // starting screen ignores game keys
+	case domain.PhaseEnding:
 		m.api.State().RLock()
 		results := m.api.State().GameOverResults
 		m.api.State().RUnlock()
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
-			if !game.RenderGameOver(gbuf, m.playerID, x, y, w, h, results) {
-				m.defaultRenderGameOver(gbuf, results, x, y, w, h)
+			if !game.RenderEnding(gbuf, m.playerID, x, y, w, h, results) {
+				m.defaultRenderEnding(gbuf, results, x, y, w, h)
 			}
 		}
-		m.playingGameView.OnKey = nil // game-over ignores game keys
+		m.playingGameView.OnKey = nil // ending screen ignores game keys
 	default: // PhasePlaying
 		if ncTree := game.Layout(m.playerID, m.width, gameH); ncTree != nil {
 			// NC-tree game: reconcile into a GameWindow and render/route through it.
@@ -339,7 +336,7 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 	// Update menu bar and status bar.
 	m.playingMenuBar.Menus = menus
 	switch phase {
-	case domain.PhaseSplash:
+	case domain.PhaseStarting:
 		player := m.api.State().GetPlayer(m.playerID)
 		isAdmin := player != nil && player.IsAdmin
 		if isAdmin {
@@ -347,7 +344,7 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 		} else {
 			m.playingStatusBar.LeftText = " Waiting for host to start..."
 		}
-	case domain.PhaseGameOver:
+	case domain.PhaseEnding:
 		remaining := 15 - int(time.Since(m.gameOverStart).Seconds())
 		if remaining < 0 {
 			remaining = 0
@@ -374,8 +371,8 @@ func (m Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, ga
 	m.chatScrollOffset = m.playingChatView.ScrollOffset
 }
 
-// defaultRenderSplash renders a figlet game name centered in the viewport.
-func (m Model) defaultRenderSplash(buf *render.ImageBuffer, name string, x, y, w, h int) {
+// defaultRenderStarting renders a figlet game name centered in the viewport.
+func (m Model) defaultRenderStarting(buf *render.ImageBuffer, name string, x, y, w, h int) {
 	figletTitle := strings.TrimRight(engine.Figlet(name, ""), "\n")
 	var lines []string
 	if figletTitle != "" {
@@ -412,8 +409,8 @@ func (m Model) defaultRenderSplash(buf *render.ImageBuffer, name string, x, y, w
 	}
 }
 
-// defaultRenderGameOver renders a figlet "GAME OVER" title with ranked results.
-func (m Model) defaultRenderGameOver(buf *render.ImageBuffer, results []domain.GameResult, x, y, w, h int) {
+// defaultRenderEnding renders a figlet "GAME OVER" title with ranked results.
+func (m Model) defaultRenderEnding(buf *render.ImageBuffer, results []domain.GameResult, x, y, w, h int) {
 	var lines []string
 
 	// Figlet title.

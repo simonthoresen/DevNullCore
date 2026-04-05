@@ -118,11 +118,7 @@ func (m *Model) showGamesDialog() {
 
 	// Current game status.
 	if phase != domain.PhaseNone && gameName != "" {
-		status := "playing"
-		if phase == domain.PhaseSuspended {
-			status = "suspended"
-		}
-		lines = append(lines, fmt.Sprintf("Current: %s (%s)", gameName, status))
+		lines = append(lines, fmt.Sprintf("Current: %s (playing)", gameName))
 		lines = append(lines, "")
 	}
 

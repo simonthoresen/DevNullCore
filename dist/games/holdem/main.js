@@ -493,7 +493,7 @@ var Game = {
         eliminated: []
     },
 
-    init: function(savedState) {
+    load: function(savedState) {
         var t = teams();
         var playerCount = 0;
         for (var i = 0; i < t.length; i++) playerCount += t[i].players.length;
@@ -505,7 +505,7 @@ var Game = {
         Game.splashScreen = splash;
     },
 
-    start: function() {
+    begin: function() {
         var t = teams();
         for (var i = 0; i < t.length; i++) {
             var team = t[i];

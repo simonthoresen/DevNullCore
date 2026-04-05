@@ -20,7 +20,7 @@ func TestIncludeSingleFile(t *testing.T) {
 		include("helper.js");
 		var Game = {
 			gameName: greet("World"),
-			init: function(s) {}
+			load: function(s) {}
 		};
 	`), 0o644)
 
@@ -47,7 +47,7 @@ func TestIncludeIdempotent(t *testing.T) {
 		include("counter.js");
 		var Game = {
 			gameName: "count-" + counter,
-			init: function(s) {}
+			load: function(s) {}
 		};
 	`), 0o644)
 
@@ -67,7 +67,7 @@ func TestIncludeRejectsPathTraversal(t *testing.T) {
 	mainJS := filepath.Join(dir, "main.js")
 	os.WriteFile(mainJS, []byte(`
 		include("../etc/passwd");
-		var Game = { init: function(s) {} };
+		var Game = { load: function(s) {} };
 	`), 0o644)
 
 	chatCh := make(chan domain.Message, 8)

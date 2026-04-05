@@ -283,8 +283,8 @@ func renderGameCase(t *testing.T, tc gameCase, profile colorprofile.Profile, bas
 	}
 	defer game.Unload()
 
-	game.Init(nil)
-	game.Start()
+	game.Load(nil)
+	game.Begin()
 
 	// All modes wrap their render output in a GameWindow so the expected
 	// output includes the Window border, matching the in-game presentation.
@@ -431,7 +431,7 @@ mode: text
 width: 10
 height: 3
 --- js
-var Game = { init: function(){}, render: function(buf){} };
+var Game = { load: function(){}, render: function(buf){} };
 ---
 ===
 hello

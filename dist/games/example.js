@@ -18,7 +18,7 @@ var Game = {
 
     // Called before splash. Restore state, set up splash screen.
     // players() and teams() are available.
-    init: function(savedState) {
+    load: function(savedState) {
         if (savedState && savedState.highScore) {
             Game.state.highScore = savedState.highScore;
         }
@@ -39,7 +39,7 @@ var Game = {
     },
 
     // Called at splash→playing transition. Set up game Game.state.
-    start: function() {
+    begin: function() {
         var t = teams();
         for (var i = 0; i < t.length; i++) {
             for (var j = 0; j < t[i].players.length; j++) {

@@ -63,7 +63,7 @@ type Server struct {
 	tickInterval  time.Duration   // how often the server ticks (default 100ms)
 	lastUpdateMu  sync.Mutex     // protects lastUpdate
 	lastUpdate    time.Time      // last time Update() was called on the active game
-	splashDone    chan struct{}   // closed to end splash phase early
+	startingDone  chan struct{}   // closed to end starting phase early
 	gameOverTimer chan struct{}   // closed to end game-over phase early
 
 	localPlayerName string // non-empty in --local mode; that player gets auto-admin

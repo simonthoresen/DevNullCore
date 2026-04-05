@@ -49,9 +49,9 @@ var Game = {
         teamColors: []
     },
 
-    init: function(savedState) {},
+    load: function(savedState) {},
 
-    start: function() {
+    begin: function() {
         var t = teams();
         Game.state.teamColors = [];
         for (var i = 0; i < t.length; i++) {

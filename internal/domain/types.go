@@ -42,11 +42,10 @@ type GameAsset struct {
 type GamePhase int
 
 const (
-	PhaseNone      GamePhase = 0 // lobby — no game loaded
-	PhaseSplash    GamePhase = 1 // splash screen before game starts
-	PhasePlaying   GamePhase = 2 // game is actively running
-	PhaseGameOver  GamePhase = 3 // game-over screen, waiting for acknowledgment
-	PhaseSuspended GamePhase = 4 // game suspended — runtime may be alive or restored from disk
+	PhaseNone     GamePhase = 0 // lobby — no game loaded
+	PhaseStarting GamePhase = 1 // starting screen before game begins
+	PhasePlaying  GamePhase = 2 // game is actively running
+	PhaseEnding   GamePhase = 3 // ending screen, waiting for acknowledgment
 )
 
 // GameResult is a single entry in the game-over results, displayed in the

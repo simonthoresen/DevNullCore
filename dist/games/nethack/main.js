@@ -60,7 +60,7 @@ var Game = {
 
     splashScreen: "",
 
-    init: function(savedState) {
+    load: function(savedState) {
         if (savedState && savedState.highScores) {
             Game.state.highScores = savedState.highScores;
         }
@@ -85,7 +85,7 @@ var Game = {
         Game.splashScreen = splash;
     },
 
-    start: function() {
+    begin: function() {
         // Generate first level
         getOrCreateLevel(1);
 

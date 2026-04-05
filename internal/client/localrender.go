@@ -94,9 +94,9 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 		lr.canvasFn = fn
 	}
 
-	// Call init with nil (we'll receive state via SetState).
-	if initFn, ok := goja.AssertFunction(gameObj.Get("init")); ok {
-		initFn(goja.Undefined(), goja.Null())
+	// Call load with nil (we'll receive state via SetState).
+	if loadFn, ok := goja.AssertFunction(gameObj.Get("load")); ok {
+		loadFn(goja.Undefined(), goja.Null())
 	}
 
 	lr.loaded = true
