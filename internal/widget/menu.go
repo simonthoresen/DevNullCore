@@ -213,7 +213,13 @@ func (o *OverlayState) handleDropdownKey(key string, menus []domain.MenuDef, pla
 	n := len(menus)
 	switch key {
 	case "up":
-		o.DropCursor = PrevSelectable(items, o.DropCursor)
+		prev := PrevSelectable(items, o.DropCursor)
+		if prev == o.DropCursor {
+			// Already at top — close dropdown, return focus to menu bar.
+			o.OpenMenu = -1
+		} else {
+			o.DropCursor = prev
+		}
 	case "down":
 		o.DropCursor = NextSelectable(items, o.DropCursor)
 	case "left":
