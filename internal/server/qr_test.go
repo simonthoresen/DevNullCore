@@ -1,47 +1,59 @@
 package server
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 )
 
-func TestRenderQR(t *testing.T) {
-	const invite = `$env:NS='ABCDEFGH';irm https://raw.githubusercontent.com/simonthoresen/null-space/main/join.ps1|iex`
+const wantInvite = `$env:NS='ABCDEFGH';irm https://raw.githubusercontent.com/simonthoresen/null-space/main/join.ps1|iex`
 
-	qr, err := renderQR(invite)
+const wantQR = "" +
+	"                         \n" +
+	"                         \n" +
+	"  ▛▀▀▌ ▚▟▙▝▞▟▟▗▐▝▞ ▛▀▀▌  \n" +
+	"  ▌█▌▌▝▖▚▖▙█▗▘ ▚▝▞▘▌█▌▌  \n" +
+	"  ▌▀▘▌▟█▛▙▞▚▝▝▐▐▙▙▖▌▀▘▌  \n" +
+	"  ▀▀▀▘▚▚▚▙▙▘▙▘▘▙▚▙▌▀▀▀▘  \n" +
+	"  ▚▐▞▘▛▙▌▙▘▖▟▝▗▚█▝▐▞ ▗▖  \n" +
+	"  ▜▙▄▀▖▜▄▚▞▐█▄▄▙▞▟ ▀▝▌   \n" +
+	"  ▜▖▐▀▞▞▘▌▜▖▐▖▞▖▐▐█▀ ▐▘  \n" +
+	"  ▜█▚▚ ▟▀▝▟▚▚▟▟▄▜ ▗▖▟▀▌  \n" +
+	"   ▗▀▀▝▄█▀▀▝▝▚▙▖▟ ▜▝  ▖  \n" +
+	"  ▛▝ ▚▙ ▄▚▚▌▞▖▖▌▙▙▄▘▐▐▌  \n" +
+	"  ▌▝▀▚▜ ▛▚▐▛▖ ▟▌▄▝▐▛ ▙▌  \n" +
+	"  ▞▌▀▘▝▛▙ ▌▐▚▖▄▄ ▛ ▀▘▖▖  \n" +
+	"  ▘▘▖▀▙▗▝█▜▄▀ ▘▐▘▗▐▀▗▗▘  \n" +
+	"  ▀█▚▚▌▟▛█▐▗█▟▚▌▐▌▜▖▞▝▌  \n" +
+	"  ▚▀▝▚▞▗▚▜▀▚▀▜▙ █▞▚▖▐▗▖  \n" +
+	"  ▘█▛▀▖▟▙█▄█▙▄ ▖▚▚▟▝▖▐▘  \n" +
+	"  ▘▝ ▘█▞▞▛▖▝▐ ▀▀▖▐▛▀▌▛▖  \n" +
+	"  ▛▀▀▌▞▞▐▞▜▐▚▄█▖▛ ▌▘▙█   \n" +
+	"  ▌█▌▌▞▟▛▙▖▐▄▀▛▝▜▚▀▛▙▟▘  \n" +
+	"  ▌▀▘▌ ▘ ▄▖▘▟▀▐▙▙▀█▚▛▐▘  \n" +
+	"  ▀▀▀▘▀ ▝ ▝ ▀▘▀   ▀▝▝▝   \n" +
+	"                         \n" +
+	"                         \n"
+
+func TestRenderQR(t *testing.T) {
+	got, err := renderQR(wantInvite)
 	if err != nil {
 		t.Fatalf("renderQR: %v", err)
 	}
-
-	lines := strings.Split(strings.TrimRight(qr, "\n"), "\n")
-	if len(lines) < 5 {
-		t.Fatalf("expected at least 5 lines, got %d", len(lines))
+	if got != wantQR {
+		t.Errorf("QR mismatch\ngot:\n%s\nwant:\n%s", got, wantQR)
 	}
+}
 
-	// All lines must have equal length (square QR modules → equal char columns).
-	width := len([]rune(lines[0]))
-	for i, line := range lines {
-		if got := len([]rune(line)); got != width {
-			t.Errorf("line %d width %d, want %d", i, got, width)
-		}
-	}
+func TestInviteString(t *testing.T) {
+	const wantPrefix = "$env:NS='"
+	const wantSuffix = "irm https://raw.githubusercontent.com/simonthoresen/null-space/main/join.ps1|iex"
 
-	// Every rune must be one of the 16 quadrant characters (or space).
-	valid := map[rune]bool{
-		' ': true, '▗': true, '▖': true, '▄': true,
-		'▝': true, '▐': true, '▞': true, '▟': true,
-		'▘': true, '▚': true, '▌': true, '▙': true,
-		'▀': true, '▜': true, '▛': true, '█': true,
+	if len(wantInvite) == 0 {
+		t.Fatal("invite string is empty")
 	}
-	for i, line := range lines {
-		for _, r := range line {
-			if !valid[r] {
-				t.Errorf("line %d contains unexpected rune %q (U+%04X)", i, r, r)
-			}
-		}
+	if wantInvite[:len(wantPrefix)] != wantPrefix {
+		t.Errorf("invite does not start with %q: %q", wantPrefix, wantInvite)
 	}
-
-	// Print so `go test -v` shows the QR code.
-	fmt.Printf("\n%s%s\n", qr, invite)
+	if wantInvite[len(wantInvite)-len(wantSuffix):] != wantSuffix {
+		t.Errorf("invite does not end with %q: %q", wantSuffix, wantInvite)
+	}
 }
