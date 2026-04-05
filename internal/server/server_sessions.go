@@ -164,6 +164,14 @@ func (a *Server) registerSession(sess ssh.Session) *domain.Player {
 
 	a.broadcastMsg(domain.TeamUpdatedMsg{})
 
+	// Send the current game phase to the joining player so their model
+	// initialises correctly (focus, inActiveGame, etc.) without waiting for
+	// a future phase transition.
+	a.state.RLock()
+	currentPhase := a.state.GamePhase
+	a.state.RUnlock()
+	a.sendToPlayer(player.ID, domain.GamePhaseMsg{Phase: currentPhase})
+
 	// Check if this player was disconnected from a running game.
 	a.state.Lock()
 	if oldID, ok := a.state.GameDisconnected[player.Name]; ok {

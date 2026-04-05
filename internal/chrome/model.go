@@ -190,7 +190,7 @@ func NewModel(api ServerAPI, playerID string) Model {
 	lobbyInputModel.SetWidth(78)
 	lobbyInputCtrl := &widget.CommandInput{TextInput: widget.TextInput{Model: lobbyInputModel}}
 	lobbyWindow := &widget.Window{
-		FocusIdx: 2, // lobbyInput focused by default
+		FocusIdx: 4, // lobbyInput focused by default (index 4 in Children)
 		Children: []widget.GridChild{
 			{Control: lobbyChatView, TabIndex: 1, Constraint: widget.GridConstraint{
 				Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: widget.FillBoth,
