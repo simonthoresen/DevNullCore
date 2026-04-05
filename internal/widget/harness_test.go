@@ -384,7 +384,7 @@ func buildWidget(tc widgetCase) Control {
 		for i, r := range rawRows {
 			rows[i] = strings.Split(r, "|")
 		}
-		return &Table{Rows: rows}
+		return &Table{Rows: rows, ScrollTop: propInt(tc.props, "scroll_top", 0)}
 
 	case "panel":
 		childText := propStr(tc.props, "child_text", "")

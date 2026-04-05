@@ -101,7 +101,6 @@ func (a *TextArea) Update(msg tea.Msg) {
 
 func (a *TextArea) Render(buf *render.ImageBuffer, x, y, width, height int, focused bool, layer *theme.Layer) {
 	a.height = height
-	fieldW := max(1, width-2) // -2 for "[" and "]"
 	baseFg := layer.Fg
 	baseBg := layer.Bg
 	inputFg := layer.InputFg
@@ -118,6 +117,14 @@ func (a *TextArea) Render(buf *render.ImageBuffer, x, y, width, height int, focu
 	}
 	if a.CursorRow >= a.ScrollTop+height {
 		a.ScrollTop = a.CursorRow - height + 1
+	}
+
+	n := len(a.Lines)
+	showScrollbar := n > height
+	// -2 for "[" and "]"; -1 more when scrollbar occupies the last content col.
+	fieldW := max(1, width-2)
+	if showScrollbar {
+		fieldW = max(1, fieldW-1)
 	}
 
 	for i := 0; i < height; i++ {
@@ -142,7 +149,7 @@ func (a *TextArea) Render(buf *render.ImageBuffer, x, y, width, height int, focu
 				buf.SetChar(x+1+col, row, r, inputFg, inputBg, render.AttrNone)
 				col++
 			}
-			// Dots for remaining.
+			// Dots for remaining content columns.
 			for col < fieldW {
 				buf.SetChar(x+1+col, row, '·', inputFg, inputBg, render.AttrFaint)
 				col++
@@ -152,5 +159,11 @@ func (a *TextArea) Render(buf *render.ImageBuffer, x, y, width, height int, focu
 				buf.SetChar(x+1+col, row, '·', inputFg, inputBg, render.AttrFaint)
 			}
 		}
+	}
+
+	if showScrollbar {
+		maxTop := n - height
+		offset := maxTop - a.ScrollTop // convert top-based to bottom-based
+		RenderScrollbarBuf(buf, x+1+fieldW, y, n, height, offset, baseFg, baseBg)
 	}
 }
