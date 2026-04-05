@@ -66,7 +66,7 @@ item: &Save
 item: ---
 item: E&xit
 ===
-►File │ Edit
+ File │ Edit
 ╔══════════════╗
 ║►Open         ║
 ║ Save         ║
@@ -89,7 +89,7 @@ item: &Save
 item: ---
 item: E&xit
 ===
-►File │ Edit
+ File │ Edit
 ╔══════════════╗
 ║ Open         ║
 ║ Save         ║
@@ -110,7 +110,7 @@ drop_cursor: 0
 item: &Undo
 item: &Redo
 ===
- File │►Edit
+ File │ Edit
        ╔══════════════╗
        ║►Undo         ║
        ║ Redo         ║

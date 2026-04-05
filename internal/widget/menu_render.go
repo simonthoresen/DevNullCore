@@ -35,7 +35,14 @@ func (o *OverlayState) RenderMenuBar(width int, menus []domain.MenuDef, layer *t
 		}
 		focused := (o.MenuFocused || o.OpenMenu >= 0) && i == o.MenuCursor
 		if focused {
-			sb.WriteString(activeStyle.Render("►"))
+			// ► only when bar is focused with no open dropdown — once a
+			// dropdown is open the cursor lives there, not in the bar.
+			barCursor := o.OpenMenu < 0
+			marker := " "
+			if barCursor {
+				marker = "►"
+			}
+			sb.WriteString(activeStyle.Render(marker))
 			sb.WriteString(RenderLabel(m.Label, activeStyle, activeAccent))
 			sb.WriteString(activeStyle.Render(" "))
 		} else {
