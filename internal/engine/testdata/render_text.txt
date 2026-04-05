@@ -60,3 +60,138 @@ var Game = {
 ║Row 1             ║
 ║Row 2             ║
 ╚══════════════════╝
+
+=== fewer_rows
+# Game writes fewer rows than the content height; remaining rows stay blank.
+mode: text
+width: 20
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "Row 0", null, null);
+        buf.writeString(0, 1, "Row 1", null, null);
+        // Row 2 omitted — should remain blank.
+    }
+};
+---
+===
+╔══════════════════╗
+║Row 0             ║
+║Row 1             ║
+║                  ║
+╚══════════════════╝
+
+=== more_rows_clipped
+# Game writes at y >= h; excess writes must be discarded and must not
+# corrupt the bottom border.
+mode: text
+width: 20
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "Row 0", null, null);
+        buf.writeString(0, 1, "Row 1", null, null);
+        buf.writeString(0, 2, "Row 2", null, null);
+        buf.writeString(0, 3, "OVERFLOW", null, null); // y == h → must be ignored
+        buf.writeString(0, 4, "OVERFLOW", null, null); // y > h → must be ignored
+    }
+};
+---
+===
+╔══════════════════╗
+║Row 0             ║
+║Row 1             ║
+║Row 2             ║
+╚══════════════════╝
+
+=== short_line
+# A line shorter than the content width; remaining cells stay blank.
+mode: text
+width: 20
+height: 3
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "Hi", null, null);
+    }
+};
+---
+===
+╔══════════════════╗
+║Hi                ║
+╚══════════════════╝
+
+=== long_line_clipped
+# A line longer than the content width must be clipped and must not
+# overwrite the right border.
+mode: text
+width: 20
+height: 3
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234", null, null);
+    }
+};
+---
+===
+╔══════════════════╗
+║ABCDEFGHIJKLMNOPQR║
+╚══════════════════╝
+
+=== setchar_beyond_bounds
+# setChar calls outside the viewport bounds must be silently ignored
+# and must not corrupt the border.
+mode: text
+width: 20
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "OK", null, null);
+        buf.setChar(w,     0, "X", null, null); // x == w → beyond right edge
+        buf.setChar(0,     h, "Y", null, null); // y == h → beyond bottom edge
+        buf.setChar(w + 1, 0, "Z", null, null); // x > w
+        buf.setChar(0, h + 1, "W", null, null); // y > h
+    }
+};
+---
+===
+╔══════════════════╗
+║OK                ║
+║                  ║
+║                  ║
+╚══════════════════╝
+
+=== dim_mismatch_combo
+# Combination: short row, exact-fit row, long row (clipped), and rows
+# beyond h (ignored) — borders must remain intact throughout.
+mode: text
+width: 20
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    render: function(buf, playerID, x, y, w, h) {
+        buf.writeString(0, 0, "AB", null, null);                         // short
+        var dashes = ""; for (var i = 0; i < w; i++) dashes += "-";
+        buf.writeString(0, 1, dashes, null, null);                       // exact fit
+        buf.writeString(0, 2, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", null, null); // too long
+        buf.writeString(0, 3, "IGNORED", null, null);                    // y == h
+        buf.setChar(0, h + 1, "!", null, null);                          // y > h
+    }
+};
+---
+===
+╔══════════════════╗
+║AB                ║
+║------------------║
+║ABCDEFGHIJKLMNOPQR║
+╚══════════════════╝

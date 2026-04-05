@@ -373,24 +373,35 @@ func (r *JSRuntime) newJSImageBuffer(buf *render.ImageBuffer, ox, oy, w, h int) 
 		"setChar": func(call goja.FunctionCall) goja.Value {
 			x := int(call.Argument(0).ToInteger())
 			y := int(call.Argument(1).ToInteger())
+			if x < 0 || x >= w || y < 0 || y >= h {
+				return goja.Undefined()
+			}
 			ch := call.Argument(2).String()
 			fg := ParseJSColor(call.Argument(3))
 			bg := ParseJSColor(call.Argument(4))
 			attr := ParseJSAttr(call.Argument(5))
 			if len(ch) > 0 {
 				r := []rune(ch)[0]
-				buf.SetChar(ox+x, oy+y, r, fg, bg, attr)
+				buf.SetCharInherit(ox+x, oy+y, r, fg, bg, attr)
 			}
 			return goja.Undefined()
 		},
 		"writeString": func(call goja.FunctionCall) goja.Value {
 			x := int(call.Argument(0).ToInteger())
 			y := int(call.Argument(1).ToInteger())
+			if y < 0 || y >= h || x >= w {
+				return goja.Undefined()
+			}
+			if x < 0 {
+				x = 0
+			}
 			text := call.Argument(2).String()
 			fg := ParseJSColor(call.Argument(3))
 			bg := ParseJSColor(call.Argument(4))
 			attr := ParseJSAttr(call.Argument(5))
-			buf.WriteString(ox+x, oy+y, text, fg, bg, attr)
+			// Clip to viewport width; WriteString uses buf.Width which can
+			// spill one cell into the right border.
+			buf.PaintANSILine(ox+x, oy+y, w-x, text, fg, bg, attr)
 			return goja.Undefined()
 		},
 		"fill": func(call goja.FunctionCall) goja.Value {
@@ -406,7 +417,25 @@ func (r *JSRuntime) newJSImageBuffer(buf *render.ImageBuffer, ox, oy, w, h int) 
 			if len(ch) > 0 {
 				fillCh = []rune(ch)[0]
 			}
-			buf.Fill(ox+x, oy+y, fw, fh, fillCh, fg, bg, attr)
+			// Clip to viewport bounds so JS cannot overwrite the border.
+			if x < 0 {
+				fw += x
+				x = 0
+			}
+			if y < 0 {
+				fh += y
+				y = 0
+			}
+			if x+fw > w {
+				fw = w - x
+			}
+			if y+fh > h {
+				fh = h - y
+			}
+			if fw <= 0 || fh <= 0 {
+				return goja.Undefined()
+			}
+			buf.FillInherit(ox+x, oy+y, fw, fh, fillCh, fg, bg, attr)
 			return goja.Undefined()
 		},
 	}

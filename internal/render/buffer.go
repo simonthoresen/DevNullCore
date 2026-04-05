@@ -118,6 +118,23 @@ func (b *ImageBuffer) SetChar(x, y int, ch rune, fg, bg color.Color, attr PixelA
 	}
 }
 
+// SetCharInherit is like SetChar but preserves the existing cell's fg and/or bg
+// when the provided color is nil. Games that pass null colors inherit the
+// background already painted by the window, avoiding a visual mismatch between
+// the theme background and the terminal's own default background.
+func (b *ImageBuffer) SetCharInherit(x, y int, ch rune, fg, bg color.Color, attr PixelAttr) {
+	if c := b.at(x, y); c != nil {
+		c.Char = ch
+		if fg != nil {
+			c.Fg = fg
+		}
+		if bg != nil {
+			c.Bg = bg
+		}
+		c.Attr = attr
+	}
+}
+
 // Fill fills a rectangle with the given character and style.
 func (b *ImageBuffer) Fill(x, y, w, h int, ch rune, fg, bg color.Color, attr PixelAttr) {
 	for row := y; row < y+h; row++ {
@@ -126,6 +143,25 @@ func (b *ImageBuffer) Fill(x, y, w, h int, ch rune, fg, bg color.Color, attr Pix
 				c.Char = ch
 				c.Fg = fg
 				c.Bg = bg
+				c.Attr = attr
+			}
+		}
+	}
+}
+
+// FillInherit is like Fill but preserves the existing cell's fg and/or bg
+// when the provided color is nil (same semantics as SetCharInherit).
+func (b *ImageBuffer) FillInherit(x, y, w, h int, ch rune, fg, bg color.Color, attr PixelAttr) {
+	for row := y; row < y+h; row++ {
+		for col := x; col < x+w; col++ {
+			if c := b.at(col, row); c != nil {
+				c.Char = ch
+				if fg != nil {
+					c.Fg = fg
+				}
+				if bg != nil {
+					c.Bg = bg
+				}
 				c.Attr = attr
 			}
 		}
@@ -288,6 +324,25 @@ func (b *ImageBuffer) PaintANSI(x, y, w, h int, s string, defaultFg, defaultBg c
 		}
 		i += size
 	}
+}
+
+// PaintANSILine paints a single row, clipped to width w.
+// Unlike WriteString (which clips to buf.Width), this clips to the given w so
+// callers can enforce a viewport boundary narrower than the full buffer.
+// Styling attributes in text are handled by PaintANSI's SGR parser; the attr
+// parameter pre-applies a uniform attribute before ANSI codes can override it.
+func (b *ImageBuffer) PaintANSILine(x, y, w int, s string, defaultFg, defaultBg color.Color, attr PixelAttr) {
+	if w <= 0 {
+		return
+	}
+	if attr != AttrNone {
+		for i := 0; i < w; i++ {
+			if c := b.at(x+i, y); c != nil {
+				c.Attr = attr
+			}
+		}
+	}
+	b.PaintANSI(x, y, w, 1, s, defaultFg, defaultBg)
 }
 
 // WrapANSI splits s into lines of at most width visible characters,
