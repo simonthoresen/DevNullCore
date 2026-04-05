@@ -65,6 +65,8 @@ type Server struct {
 	lastUpdate    time.Time      // last time Update() was called on the active game
 	splashDone    chan struct{}   // closed to end splash phase early
 	gameOverTimer chan struct{}   // closed to end game-over phase early
+
+	localPlayerName string // non-empty in --local mode; that player gets auto-admin
 }
 
 func New(address, password, dataDir string, tickInterval time.Duration) (*Server, error) {

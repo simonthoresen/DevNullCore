@@ -153,6 +153,9 @@ func (a *Server) registerSession(sess ssh.Session) *domain.Player {
 	a.sessionsMu.Unlock()
 
 	a.state.AddPlayer(player)
+	if a.localPlayerName != "" && player.Name == a.localPlayerName {
+		a.state.SetPlayerAdmin(player.ID, true)
+	}
 	slog.Info("player joined", "player_id", player.ID, "name", player.Name)
 
 	joinMsg := domain.Message{

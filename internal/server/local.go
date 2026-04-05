@@ -39,6 +39,9 @@ func (a *Server) PreloadResume(gameName, saveName string) error {
 // termOverride, if non-empty, requests a specific color profile for this session
 // (values: truecolor, 256color, ansi, ascii).
 func (a *Server) RunLocalSSH(ctx context.Context, playerName string, port int, termOverride string) error {
+	// Mark this player name for auto-admin on connect.
+	a.localPlayerName = playerName
+
 	// Start SSH server and wait for it to be ready.
 	ready := make(chan struct{})
 	serverErr := make(chan error, 1)
