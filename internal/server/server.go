@@ -350,10 +350,14 @@ func (a *Server) LogInviteCommand() {
 func (a *Server) runTicker(ctx context.Context) {
 	ticker := time.NewTicker(a.tickInterval)
 	defer ticker.Stop()
+	repaintTicker := time.NewTicker(30 * time.Second)
+	defer repaintTicker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-repaintTicker.C:
+			a.broadcastRepaint()
 		case <-ticker.C:
 			a.state.Lock()
 			a.state.TickN++

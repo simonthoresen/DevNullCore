@@ -17,6 +17,21 @@ import (
 
 // --- Broadcast and messaging ---
 
+// broadcastRepaint sends a full-screen repaint to all player programs.
+// This discards the renderer's diff cache, causing the next render to emit
+// a complete frame — recovering from any accumulated display artifacts.
+func (a *Server) broadcastRepaint() {
+	a.programsMu.Lock()
+	progs := make([]*tea.Program, 0, len(a.programs))
+	for _, p := range a.programs {
+		progs = append(progs, p)
+	}
+	a.programsMu.Unlock()
+	for _, p := range progs {
+		go p.Send(tea.ClearScreen())
+	}
+}
+
 func (a *Server) broadcastMsg(msg tea.Msg) {
 	a.programsMu.Lock()
 	progs := make([]*tea.Program, 0, len(a.programs))
