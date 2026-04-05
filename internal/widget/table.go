@@ -16,7 +16,7 @@ type Table struct {
 
 func (t *Table) Update(_ tea.Msg)    {}
 func (t *Table) Focusable() bool     { return false }
-func (t *Table) MinSize() (int, int) { return 1, len(t.Rows) }
+func (t *Table) MinSize() (int, int) { return 1, 1 }
 
 func (t *Table) Render(buf *render.ImageBuffer, x, y, width, height int, _ bool, layer *theme.Layer) {
 	fg := layer.Fg

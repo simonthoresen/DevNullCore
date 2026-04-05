@@ -105,13 +105,23 @@ func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, l
 				if cx == x+1 {
 					buf.SetChar(x, cy, render.RuneOf(layer.CrossL), fg, bg, render.AttrNone)
 				} else {
-					buf.SetChar(cx-1, cy, render.RuneOf(layer.InnerCrossL), fg, bg, render.AttrNone)
+					// Upgrade to CrossX if a complementary InnerCrossR is already there.
+					ch := render.RuneOf(layer.InnerCrossL)
+					if buf.CharAt(cx-1, cy) == render.RuneOf(layer.InnerCrossR) {
+						ch = render.RuneOf(layer.CrossX)
+					}
+					buf.SetChar(cx-1, cy, ch, fg, bg, render.AttrNone)
 				}
 				// Right junction: outer border or inner VDivider?
 				if cx+cw == x+width-1 {
 					buf.SetChar(x+width-1, cy, render.RuneOf(layer.CrossR), fg, bg, render.AttrNone)
 				} else {
-					buf.SetChar(cx+cw, cy, render.RuneOf(layer.InnerCrossR), fg, bg, render.AttrNone)
+					// Upgrade to CrossX if a complementary InnerCrossL is already there.
+					ch := render.RuneOf(layer.InnerCrossR)
+					if buf.CharAt(cx+cw, cy) == render.RuneOf(layer.InnerCrossL) {
+						ch = render.RuneOf(layer.CrossX)
+					}
+					buf.SetChar(cx+cw, cy, ch, fg, bg, render.AttrNone)
 				}
 			}
 		case *VDivider:
@@ -120,13 +130,23 @@ func (w *Window) RenderToBuf(buf *render.ImageBuffer, x, y, width, height int, l
 				if cy == y+1 {
 					buf.SetChar(cx, y, render.RuneOf(layer.CrossT), fg, bg, render.AttrNone)
 				} else {
-					buf.SetChar(cx, cy-1, render.RuneOf(layer.InnerCrossT), fg, bg, render.AttrNone)
+					// Upgrade to CrossX if a complementary InnerCrossB is already there.
+					ch := render.RuneOf(layer.InnerCrossT)
+					if buf.CharAt(cx, cy-1) == render.RuneOf(layer.InnerCrossB) {
+						ch = render.RuneOf(layer.CrossX)
+					}
+					buf.SetChar(cx, cy-1, ch, fg, bg, render.AttrNone)
 				}
 				// Bottom junction: outer border or inner HDivider?
 				if cy+ch >= boty {
 					buf.SetChar(cx, boty, render.RuneOf(layer.CrossB), fg, bg, render.AttrNone)
 				} else {
-					buf.SetChar(cx, cy+ch, render.RuneOf(layer.InnerCrossB), fg, bg, render.AttrNone)
+					// Upgrade to CrossX if a complementary InnerCrossT is already there.
+					jch := render.RuneOf(layer.InnerCrossB)
+					if buf.CharAt(cx, cy+ch) == render.RuneOf(layer.InnerCrossT) {
+						jch = render.RuneOf(layer.CrossX)
+					}
+					buf.SetChar(cx, cy+ch, jch, fg, bg, render.AttrNone)
 				}
 			}
 		}

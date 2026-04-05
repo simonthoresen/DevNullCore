@@ -450,9 +450,9 @@ func (r *JSRuntime) RenderCanvas(playerID string, width, height int) []byte {
 	cancel := WatchdogJS(r.vm, "RenderCanvas")
 	defer cancel()
 
-	canvas := NewJSCanvas(width, height)
+	canvas := NewJSCanvas(width, height, 2.0)
 	ctx := canvas.ToJSObject(r.vm)
-	_, err := r.renderCanvasFn(goja.Undefined(), r.vm.ToValue(ctx), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(height))
+	_, err := r.renderCanvasFn(goja.Undefined(), r.vm.ToValue(ctx), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(canvas.height))
 	if err != nil {
 		slog.Error("JS RenderCanvas error", "error", err)
 		return nil
@@ -477,9 +477,9 @@ func (r *JSRuntime) RenderCanvasImage(playerID string, width, height int) *image
 	cancel := WatchdogJS(r.vm, "RenderCanvasImage")
 	defer cancel()
 
-	canvas := NewJSCanvas(width, height)
+	canvas := NewJSCanvas(width, height, 2.0)
 	ctx := canvas.ToJSObject(r.vm)
-	_, err := r.renderCanvasFn(goja.Undefined(), r.vm.ToValue(ctx), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(height))
+	_, err := r.renderCanvasFn(goja.Undefined(), r.vm.ToValue(ctx), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(canvas.height))
 	if err != nil {
 		slog.Error("JS RenderCanvasImage error", "error", err)
 		return nil

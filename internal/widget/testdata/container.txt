@@ -1,0 +1,67 @@
+=== horizontal_two
+# Container horizontal split — two equal children side by side.
+widget: container
+horizontal: true
+width: 24
+height: 5
+child: Left panel
+child: Right panel
+===
+╔══════════════════════╗
+║Left panel Right panel║
+║                      ║
+║                      ║
+╚══════════════════════╝
+
+=== horizontal_three
+# Container horizontal split — three equal children.
+widget: container
+horizontal: true
+width: 30
+height: 5
+child: One
+child: Two
+child: Three
+===
+╔════════════════════════════╗
+║One       Two      Three    ║
+║                            ║
+║                            ║
+╚════════════════════════════╝
+
+=== vertical_two
+# Container vertical split — two equal children stacked.
+widget: container
+horizontal: false
+width: 22
+height: 7
+child: Top section
+child: Bottom section
+===
+╔════════════════════╗
+║Top section         ║
+║                    ║
+║                    ║
+║Bottom section      ║
+║                    ║
+╚════════════════════╝
+
+=== vertical_three
+# Container vertical split — three equal children.
+widget: container
+horizontal: false
+width: 22
+height: 9
+child: First
+child: Second
+child: Third
+===
+╔════════════════════╗
+║First               ║
+║                    ║
+║                    ║
+║Second              ║
+║                    ║
+║Third               ║
+║                    ║
+╚════════════════════╝

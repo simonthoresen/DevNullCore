@@ -100,6 +100,14 @@ func (b *ImageBuffer) at(x, y int) *Pixel {
 	return &b.Pixels[y*b.Width+x]
 }
 
+// CharAt returns the rune at (x, y), or 0 if out of bounds.
+func (b *ImageBuffer) CharAt(x, y int) rune {
+	if c := b.at(x, y); c != nil {
+		return c.Char
+	}
+	return 0
+}
+
 // SetChar sets a single cell at (x, y). Out-of-bounds writes are silently ignored.
 func (b *ImageBuffer) SetChar(x, y int, ch rune, fg, bg color.Color, attr PixelAttr) {
 	if c := b.at(x, y); c != nil {

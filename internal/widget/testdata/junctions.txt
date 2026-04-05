@@ -1,0 +1,68 @@
+=== vdivider_connected
+# VDivider Connected in a 3-col window: Label|VDivider|Label.
+# VDivider touches top and bottom borders → CrossT (╤) and CrossB (╧).
+widget: junction
+layout: vdivider_connected
+width: 24
+height: 5
+===
+╔══════════╤═══════════╗
+║Left      │Right      ║
+║          │           ║
+║          │           ║
+╚══════════╧═══════════╝
+
+=== hdivider_inner_cross
+# VDivider(Connected) full-height at left, HDivider(Connected) at right-col mid-row.
+# VDivider: CrossT + CrossB at outer borders.
+# HDivider: InnerCrossL (├) where it starts next to VDivider; CrossR (╢) at right border.
+widget: junction
+layout: hdivider_inner_cross
+width: 24
+height: 7
+===
+╔╤═════════════════════╗
+║│Top                  ║
+║│                     ║
+║├─────────────────────╢
+║│Bottom               ║
+║│                     ║
+╚╧═════════════════════╝
+
+=== vdivider_inner_cross
+# HDivider(Connected) full-width at top row, VDivider(Connected) in mid-col bottom row.
+# HDivider: CrossL (╟) + CrossR (╢) at outer borders.
+# VDivider: InnerCrossT (┬) where it starts below HDivider; CrossB (╧) at bottom border.
+widget: junction
+layout: vdivider_inner_cross
+width: 24
+height: 7
+===
+╔══════════════════════╗
+╟──────────┬───────────╢
+║Left      │Right      ║
+║          │           ║
+║          │           ║
+║          │           ║
+╚══════════╧═══════════╝
+
+=== grid_cross
+# 3×3 grid: VDivider full-height at col 1, HDividers at row 1 in col 0 and col 2.
+# CrossT + CrossB on VDivider (outer borders).
+# CrossL on HDivider(col=0) (left outer border).
+# CrossR on HDivider(col=2) (right outer border).
+# CrossX (┼) where both HDividers meet the VDivider — upgraded from InnerCrossR+InnerCrossL.
+widget: junction
+layout: grid_cross
+width: 24
+height: 9
+===
+╔═══════════╤══════════╗
+║TL         │TR        ║
+║           │          ║
+║           │          ║
+╟───────────┼──────────╢
+║BL         │BR        ║
+║           │          ║
+║           │          ║
+╚═══════════╧══════════╝

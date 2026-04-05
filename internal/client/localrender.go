@@ -174,7 +174,7 @@ func (lr *LocalRenderer) RenderCanvas(playerID string, pixelW, pixelH int) *ebit
 		return nil
 	}
 
-	canvas := engine.NewJSCanvas(pixelW, pixelH)
+	canvas := engine.NewJSCanvas(pixelW, pixelH, 1.0)
 	ctx := canvas.ToJSObject(lr.vm)
 
 	func() {

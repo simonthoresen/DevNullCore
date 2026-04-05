@@ -1,0 +1,39 @@
+=== standalone
+# VDivider not connected — │ characters fill the inner column.
+widget: vdivider
+width: 8
+height: 5
+===
+╔══════╗
+║│     ║
+║│     ║
+║│     ║
+╚══════╝
+
+=== standalone_tall
+# VDivider standalone, taller window.
+widget: vdivider
+width: 8
+height: 7
+===
+╔══════╗
+║│     ║
+║│     ║
+║│     ║
+║│     ║
+║│     ║
+╚══════╝
+
+=== connected
+# VDivider Connected=true — junction chars would appear at top/bottom borders
+# when placed in a multi-column layout. Standalone here still renders │.
+widget: vdivider
+connected: true
+width: 8
+height: 5
+===
+╔╤═════╗
+║│     ║
+║│     ║
+║│     ║
+╚╧═════╝

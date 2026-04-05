@@ -18,9 +18,20 @@ type JSCanvas struct {
 }
 
 // NewJSCanvas creates a new headless canvas with the given pixel dimensions.
-func NewJSCanvas(width, height int) *JSCanvas {
+// scaleY scales the drawing context vertically, allowing games to work in a
+// logical coordinate space where Y units are visually square. Pass 1.0 for
+// no scaling (graphical clients rendering real pixels). For terminal quadrant
+// rendering pass 2.0: terminal cells are ~2× taller than wide, so a raw
+// w*2 × h*2 pixel canvas has Y pixels that are twice as tall as X pixels;
+// scaling by 2 presents a logical height of h (half the pixel height) so
+// games can treat the canvas as square-pixel space.
+func NewJSCanvas(width, height int, scaleY float64) *JSCanvas {
 	dc := gg.NewContext(width, height)
-	return &JSCanvas{dc: dc, width: width, height: height}
+	logicalH := int(math.Round(float64(height) / scaleY))
+	if scaleY != 1.0 {
+		dc.Scale(1.0, scaleY)
+	}
+	return &JSCanvas{dc: dc, width: width, height: logicalH}
 }
 
 // ToPNG renders the canvas to a PNG byte slice.

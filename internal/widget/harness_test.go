@@ -51,6 +51,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
+	"null-space/internal/domain"
 	"null-space/internal/render"
 )
 
@@ -193,20 +194,113 @@ func buildTestWindow(tc widgetCase) (*Window, int, int) {
 	h := propInt(tc.props, "height", 5)
 	title := propStr(tc.props, "title", "")
 	focused := propBool(tc.props, "focused", false)
+	widgetType := strings.ToLower(strings.TrimSpace(tc.props["widget"]))
 
-	ctrl := buildWidget(tc)
-
-	win := &Window{
-		Title: title,
-		Children: []GridChild{{
-			Control:    ctrl,
-			Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth},
-		}},
+	var win *Window
+	if widgetType == "junction" {
+		win = buildJunctionWindow(tc)
+	} else {
+		ctrl := buildWidget(tc)
+		win = &Window{
+			Children: []GridChild{{
+				Control:    ctrl,
+				Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth},
+			}},
+		}
 	}
+	win.Title = title
 	if focused {
 		win.FocusFirst()
 	}
 	return win, w, h
+}
+
+// buildJunctionWindow builds a multi-child Window for junction character tests.
+// The layout prop selects the specific grid configuration.
+func buildJunctionWindow(tc widgetCase) *Window {
+	layout := propStr(tc.props, "layout", "")
+	lbl := func(text string) GridChild {
+		return GridChild{
+			Control:    &Label{Text: text, Align: "left"},
+			Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth},
+		}
+	}
+	lblAt := func(text string, col, row int) GridChild {
+		return GridChild{
+			Control:    &Label{Text: text, Align: "left"},
+			Constraint: GridConstraint{Col: col, Row: row, WeightX: 1, WeightY: 1, Fill: FillBoth},
+		}
+	}
+	vdiv := func(col, row, rowSpan int, connected bool) GridChild {
+		rs := rowSpan
+		if rs < 1 {
+			rs = 1
+		}
+		return GridChild{
+			Control:    &VDivider{Connected: connected},
+			Constraint: GridConstraint{Col: col, Row: row, RowSpan: rs, MinW: 1, WeightY: 1, Fill: FillBoth},
+		}
+	}
+	hdiv := func(col, row, colSpan int, connected bool) GridChild {
+		cs := colSpan
+		if cs < 1 {
+			cs = 1
+		}
+		return GridChild{
+			Control:    &HDivider{Connected: connected},
+			Constraint: GridConstraint{Col: col, Row: row, ColSpan: cs, MinH: 1, WeightX: 1, Fill: FillBoth},
+		}
+	}
+	_ = lbl
+
+	switch layout {
+	case "vdivider_connected":
+		// 3-col: Label | VDivider(Connected) | Label — produces CrossT + CrossB.
+		return &Window{Children: []GridChild{
+			{Control: &Label{Text: "Left", Align: "left"}, Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth}},
+			vdiv(1, 0, 1, true),
+			{Control: &Label{Text: "Right", Align: "left"}, Constraint: GridConstraint{Col: 2, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth}},
+		}}
+
+	case "hdivider_inner_cross":
+		// 2-col 3-row: VDivider(Connected) full height at col 0, labels and HDivider at col 1.
+		// HDivider at (col=1, row=1) ends at right border → CrossR; starts after VDivider → InnerCrossL.
+		// VDivider at (col=0, rows 0-2) → CrossT + CrossB.
+		return &Window{Children: []GridChild{
+			vdiv(0, 0, 3, true),
+			lblAt("Top", 1, 0),
+			hdiv(1, 1, 1, true),
+			lblAt("Bottom", 1, 2),
+		}}
+
+	case "vdivider_inner_cross":
+		// 3-col 2-row: HDivider(Connected) full width at row 0, labels and VDivider at row 1.
+		// VDivider at (col=1, row=1) starts below HDivider → InnerCrossT; ends at bottom border → CrossB.
+		// HDivider at (col=0..2, row=0) → CrossL + CrossR.
+		return &Window{Children: []GridChild{
+			hdiv(0, 0, 3, true),
+			lblAt("Left", 0, 1),
+			vdiv(1, 1, 1, true),
+			lblAt("Right", 2, 1),
+		}}
+
+	case "grid_cross":
+		// 3-col 3-row grid: VDivider full height at col 1, HDivider at row 1 in col 0 and col 2.
+		// Produces: CrossT + CrossB on VDivider, CrossL on HDivider(col=0), CrossR on HDivider(col=2),
+		// InnerCrossR where HDivider(col=0) meets VDivider, InnerCrossL where HDivider(col=2) meets VDivider.
+		return &Window{Children: []GridChild{
+			lblAt("TL", 0, 0),
+			vdiv(1, 0, 3, true),
+			lblAt("TR", 2, 0),
+			hdiv(0, 1, 1, true),
+			hdiv(2, 1, 1, true),
+			lblAt("BL", 0, 2),
+			lblAt("BR", 2, 2),
+		}}
+
+	default:
+		panic(fmt.Sprintf("harness: unknown junction layout %q", layout))
+	}
 }
 
 // buildWidget constructs the Control described by the config props.
@@ -249,6 +343,9 @@ func buildWidget(tc widgetCase) Control {
 	case "hdivider":
 		return &HDivider{Connected: propBool(tc.props, "connected", false)}
 
+	case "vdivider":
+		return &VDivider{Connected: propBool(tc.props, "connected", false)}
+
 	case "statusbar":
 		return &StatusBar{
 			LeftText:  propStr(tc.props, "left_text", ""),
@@ -266,6 +363,83 @@ func buildWidget(tc widgetCase) Control {
 			m.SetValue(val)
 		}
 		return &TextInput{Model: m}
+
+	case "textarea":
+		lines := propList(tc.props, tc.lists, "lines")
+		if len(lines) == 0 {
+			lines = []string{""}
+		}
+		return &TextArea{
+			Lines:     lines,
+			CursorRow: propInt(tc.props, "cursor_row", 0),
+			CursorCol: propInt(tc.props, "cursor_col", 0),
+		}
+
+	case "gameview":
+		return &GameView{}
+
+	case "table":
+		rawRows := propList(tc.props, tc.lists, "row")
+		rows := make([][]string, len(rawRows))
+		for i, r := range rawRows {
+			rows[i] = strings.Split(r, "|")
+		}
+		return &Table{Rows: rows}
+
+	case "panel":
+		childText := propStr(tc.props, "child_text", "")
+		return &Panel{
+			Title: propStr(tc.props, "panel_title", ""),
+			Children: []GridChild{{
+				Control:    &Label{Text: childText, Align: "left"},
+				Constraint: GridConstraint{Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: FillBoth},
+			}},
+		}
+
+	case "container":
+		children := propList(tc.props, tc.lists, "child")
+		if len(children) == 0 {
+			children = []string{"A", "B"}
+		}
+		cc := make([]ContainerChild, len(children))
+		for i, text := range children {
+			cc[i] = ContainerChild{Control: &Label{Text: text, Align: "left"}, Weight: 1}
+		}
+		return &Container{
+			Horizontal: propBool(tc.props, "horizontal", true),
+			Children:   cc,
+		}
+
+	case "teampanel":
+		rawTeams := propList(tc.props, tc.lists, "team")
+		var teams []domain.Team
+		for _, rt := range rawTeams {
+			parts := strings.SplitN(rt, "|", 3)
+			name, color := "", "#888888"
+			var players []string
+			if len(parts) >= 1 {
+				name = strings.TrimSpace(parts[0])
+			}
+			if len(parts) >= 2 {
+				color = strings.TrimSpace(parts[1])
+			}
+			if len(parts) >= 3 {
+				for _, p := range strings.Split(parts[2], ",") {
+					if p = strings.TrimSpace(p); p != "" {
+						players = append(players, p)
+					}
+				}
+			}
+			teams = append(teams, domain.Team{Name: name, Color: color, Players: players})
+		}
+		unassigned := propList(tc.props, tc.lists, "unassigned")
+		return &TeamPanel{
+			Teams:      teams,
+			Unassigned: unassigned,
+			MyTeamIdx:  propInt(tc.props, "my_team_idx", -1),
+			PlayerID:   propStr(tc.props, "player_id", ""),
+			ShowCreate: propBool(tc.props, "show_create", false),
+		}
 
 	default:
 		panic(fmt.Sprintf("harness: unknown widget type %q", widgetType))
@@ -287,6 +461,23 @@ func renderCase(tc widgetCase, profile colorprofile.Profile) string {
 	case "statusbar":
 		ctrl := buildWidget(tc)
 		ctrl.Render(buf, 0, 0, w, h, false, layer)
+		return normaliseWidgetOutput(buf.ToString(profile))
+
+	case "menubar":
+		rawMenus := propList(tc.props, tc.lists, "menu")
+		menus := make([]domain.MenuDef, len(rawMenus))
+		for i, m := range rawMenus {
+			menus[i] = domain.MenuDef{Label: m}
+		}
+		cursor := propInt(tc.props, "menu_cursor", -1)
+		menuFocused := propBool(tc.props, "menu_focused", false)
+		overlay := &OverlayState{
+			MenuCursor:  cursor,
+			MenuFocused: menuFocused,
+			OpenMenu:    -1,
+		}
+		mb := &MenuBar{Menus: menus, Overlay: overlay}
+		mb.Render(buf, 0, 0, w, h, false, layer)
 		return normaliseWidgetOutput(buf.ToString(profile))
 	}
 

@@ -1,0 +1,79 @@
+=== unassigned_only
+# TeamPanel with only unassigned players, no teams.
+widget: teampanel
+width: 24
+height: 7
+unassigned: alice
+unassigned: bob
+player_id: alice
+===
+╔══════════════════════╗
+║    Unassigned        ║
+║    alice             ║
+║    bob               ║
+║                      ║
+║                      ║
+╚══════════════════════╝
+
+=== one_team
+# TeamPanel with one team and one unassigned player.
+widget: teampanel
+width: 24
+height: 10
+unassigned: charlie
+team: Red Team|#dd2222|alice,bob
+player_id: alice
+my_team_idx: 0
+===
+╔══════════════════════╗
+║    Unassigned        ║
+║    charlie           ║
+║                      ║
+║    Red Team          ║
+║    alice             ║
+║    bob               ║
+║                      ║
+║                      ║
+╚══════════════════════╝
+
+=== two_teams
+# TeamPanel with two teams, no unassigned players.
+widget: teampanel
+width: 24
+height: 12
+team: Red Team|#dd2222|alice
+team: Blue Team|#2222dd|bob,charlie
+player_id: alice
+my_team_idx: 0
+===
+╔══════════════════════╗
+║    Unassigned        ║
+║                      ║
+║    Red Team          ║
+║    alice             ║
+║                      ║
+║    Blue Team         ║
+║    bob               ║
+║    charlie           ║
+║                      ║
+║                      ║
+╚══════════════════════╝
+
+=== show_create
+# TeamPanel with unassigned players and the Create Team button visible.
+widget: teampanel
+width: 24
+height: 8
+unassigned: alice
+unassigned: bob
+player_id: alice
+show_create: true
+===
+╔══════════════════════╗
+║    Unassigned        ║
+║    alice             ║
+║    bob               ║
+║                      ║
+║ [+ Create Team]      ║
+║                      ║
+╚══════════════════════╝

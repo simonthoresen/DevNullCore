@@ -1,0 +1,52 @@
+=== no_menus
+# MenuBar with no menus — empty bar.
+widget: menubar
+width: 30
+height: 1
+===
+
+=== single_menu
+# MenuBar with one menu entry; no focus.
+widget: menubar
+width: 30
+height: 1
+menu: &File
+===
+ File
+
+=== multiple_menus
+# MenuBar with three menu entries; no focus.
+widget: menubar
+width: 40
+height: 1
+menu: &File
+menu: &Edit
+menu: &Help
+===
+ File │ Edit │ Help
+
+=== focused_first
+# MenuBar with focus on the first menu (cursor=0, menu_focused=true).
+widget: menubar
+width: 40
+height: 1
+menu: &File
+menu: &Edit
+menu: &Help
+menu_cursor: 0
+menu_focused: true
+===
+ File │ Edit │ Help
+
+=== focused_second
+# MenuBar with focus on the second menu.
+widget: menubar
+width: 40
+height: 1
+menu: &File
+menu: &Edit
+menu: &Help
+menu_cursor: 1
+menu_focused: true
+===
+ File │ Edit │ Help

@@ -1,0 +1,46 @@
+=== single_column
+# Table with a single column.
+widget: table
+width: 20
+height: 5
+row: Alpha
+row: Beta
+row: Gamma
+===
+╔══════════════════╗
+║Alpha             ║
+║Beta              ║
+║Gamma             ║
+╚══════════════════╝
+
+=== two_columns
+# Table with two columns; cells are padded to the widest in each column.
+widget: table
+width: 24
+height: 5
+row: Name|Score
+row: Alice|100
+row: Bob|42
+row: Charlie|9999
+===
+╔══════════════════════╗
+║Name    Score         ║
+║Alice   100           ║
+║Bob     42            ║
+╚══════════════════════╝
+
+=== three_columns
+# Table with three columns.
+widget: table
+width: 30
+height: 5
+row: ID|Name|Status
+row: 1|Alice|active
+row: 2|Bob|inactive
+row: 3|Charlie|active
+===
+╔════════════════════════════╗
+║ID Name    Status           ║
+║1  Alice   active           ║
+║2  Bob     inactive         ║
+╚════════════════════════════╝

@@ -1,0 +1,24 @@
+=== no_render_fn
+# GameView with no RenderFn — fills inner area with spaces.
+widget: gameview
+width: 20
+height: 5
+===
+╔══════════════════╗
+║                  ║
+║                  ║
+║                  ║
+╚══════════════════╝
+
+=== titled
+# GameView with a window title.
+widget: gameview
+title: Game
+width: 20
+height: 5
+===
+╔═ Game ═══════════╗
+║                  ║
+║                  ║
+║                  ║
+╚══════════════════╝

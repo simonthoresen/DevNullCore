@@ -1,0 +1,58 @@
+=== empty
+# TextArea with no content — all lines show dot placeholders.
+widget: textarea
+width: 22
+height: 5
+===
+╔════════════════════╗
+║[··················]║
+║[··················]║
+║[··················]║
+╚════════════════════╝
+
+=== with_lines
+# TextArea with two lines of text.
+widget: textarea
+width: 22
+height: 5
+lines: Hello, world!
+lines: Second line.
+===
+╔════════════════════╗
+║[Hello, world!·····]║
+║[Second line.······]║
+║[··················]║
+╚════════════════════╝
+
+=== cursor_mid
+# TextArea cursor on second row, mid-column.
+widget: textarea
+width: 22
+height: 5
+lines: First line
+lines: Second line
+cursor_row: 1
+cursor_col: 3
+===
+╔════════════════════╗
+║[First line········]║
+║[Second line·······]║
+║[··················]║
+╚════════════════════╝
+
+=== overflow_scroll
+# TextArea with more lines than visible height — shows first 3 lines (cursor at row 0).
+widget: textarea
+width: 22
+height: 5
+lines: Line one
+lines: Line two
+lines: Line three
+lines: Line four
+lines: Line five
+===
+╔════════════════════╗
+║[Line one··········]║
+║[Line two··········]║
+║[Line three········]║
+╚════════════════════╝
