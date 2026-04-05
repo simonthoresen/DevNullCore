@@ -1,0 +1,57 @@
+=== solid_white
+# Full white canvas → all cells render as solid block █.
+mode: canvas
+width: 4
+height: 2
+--- js
+var Game = {
+    init: function(s) {},
+    renderCanvas: function(ctx, playerID, w, h) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+    }
+};
+---
+===
+████
+████
+
+=== solid_black
+# Full black canvas → after ANSI stripping still shows block chars (color info dropped).
+mode: canvas
+width: 4
+height: 2
+--- js
+var Game = {
+    init: function(s) {},
+    renderCanvas: function(ctx, playerID, w, h) {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, w, h);
+    }
+};
+---
+===
+████
+████
+
+=== top_half_white
+# White top half, black bottom half — exercises the quadrant image pipeline.
+# h/2 split at pixel level aligns with cell boundaries (each cell = 2 pixel rows),
+# so cell row 0 is all-white and cell row 1 is all-black; both render as solid █.
+mode: canvas
+width: 4
+height: 2
+--- js
+var Game = {
+    init: function(s) {},
+    renderCanvas: function(ctx, playerID, w, h) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h / 2);
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, h / 2, w, h / 2);
+    }
+};
+---
+===
+████
+████

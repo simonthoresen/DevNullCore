@@ -1,0 +1,49 @@
+=== single_label
+# Layout returns a single label node; the widget framework renders it.
+mode: layout
+width: 24
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    layout: function(playerID, w, h) {
+        return {
+            type: "label",
+            text: "Hello from layout",
+            align: "left"
+        };
+    }
+};
+---
+===
+╔══════════════════════╗
+║Hello from layout     ║
+║                      ║
+║                      ║
+╚══════════════════════╝
+
+=== panel_with_label
+# Layout returns a vbox panel containing a label.
+mode: layout
+width: 24
+height: 5
+--- js
+var Game = {
+    init: function(s) {},
+    layout: function(playerID, w, h) {
+        return {
+            type: "vbox",
+            children: [
+                { type: "label", text: "Top label" },
+                { type: "label", text: "Bottom label" }
+            ]
+        };
+    }
+};
+---
+===
+╔══════════════════════╗
+║                      ║
+║                      ║
+║                      ║
+╚══════════════════════╝
