@@ -398,6 +398,14 @@ func (w *Window) CursorPosition() (cx, cy int, visible bool) {
 	return cx, cy, true
 }
 
+// FocusedControl returns the control that currently has focus, or nil.
+func (w *Window) FocusedControl() Control {
+	if w.FocusIdx < 0 || w.FocusIdx >= len(w.Children) {
+		return nil
+	}
+	return w.Children[w.FocusIdx].Control
+}
+
 // HandleClick routes a mouse click to the correct child.
 // If the child implements Clickable, it receives the click with relative coords.
 func (w *Window) HandleClick(mx, my int) bool {

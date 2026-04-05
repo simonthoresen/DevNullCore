@@ -60,7 +60,11 @@ type DialogRequest struct {
 	// OverlayState and passed to OnListAction when a button is pressed.
 	ListItems    []string
 	ListTags     []string                       // optional right-aligned tags per item (e.g. "[active]")
+	ListCursor   int                            // initial cursor position for the list
 	OnListAction func(button string, idx int)   // called instead of OnClose when ListItems is set
+	// OnListEnter is called when Enter is pressed on the focused list item,
+	// without closing the dialog. Use PopDialog+PushDialog inside to refresh.
+	OnListEnter  func(idx int)
 
 	// Input support — when InputPrompt is non-empty, the dialog shows a single-line
 	// text input field above the buttons. OnInputClose receives the button label

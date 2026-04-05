@@ -51,6 +51,9 @@ func (o *OverlayState) buildDialogWindow(d domain.DialogRequest) *dialogEntry {
 	// --- Content area: body text OR list ---
 	if hasList {
 		lb := &ListBox{Items: d.ListItems, Tags: d.ListTags}
+		if d.ListCursor > 0 && d.ListCursor < len(d.ListItems) {
+			lb.Cursor = d.ListCursor
+		}
 		entry.listBox = lb
 		children = append(children, GridChild{
 			Control:  lb,
@@ -270,10 +273,19 @@ func (o *OverlayState) HandleDialogMsg(msg tea.Msg) (bool, tea.Cmd) {
 		return false, nil
 	}
 
-	// Esc dismisses the dialog.
-	if km, ok := msg.(tea.KeyPressMsg); ok && km.String() == "esc" {
-		o.fireDialogCloseEntry(entry, "")
-		return true, nil
+	if km, ok := msg.(tea.KeyPressMsg); ok {
+		switch km.String() {
+		case "esc":
+			o.fireDialogCloseEntry(entry, "")
+			return true, nil
+		case "enter":
+			// Enter on focused listbox triggers OnListEnter without closing the dialog.
+			if entry.listBox != nil && entry.request.OnListEnter != nil &&
+				entry.window.FocusedControl() == entry.listBox {
+				entry.request.OnListEnter(entry.listBox.Cursor)
+				return true, nil
+			}
+		}
 	}
 
 	cmd := entry.window.HandleUpdate(msg)
