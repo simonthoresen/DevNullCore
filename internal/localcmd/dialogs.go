@@ -151,20 +151,11 @@ func PushGameDialog(cursor int, opts GameDialogOptions) {
 			tags[i] = "(○)"
 		}
 	}
-	// Buttons that require list navigation to become active.
-	var requireNav []string
-	if opts.CanLoad {
-		requireNav = append(requireNav, "Load")
-	}
-	if opts.CanRemove {
-		requireNav = append(requireNav, "Remove")
-	}
 	opts.Overlay.PushDialog(domain.DialogRequest{
-		Title:                 "Games",
-		ListItems:             available,
-		ListTags:              tags,
-		Buttons:               gameButtons(opts, true),
-		RequireListNavigation: requireNav,
+		Title:     "Games",
+		ListItems: available,
+		ListTags:  tags,
+		Buttons:   gameButtons(opts, true),
 		OnListEnter: func(idx int) {
 			// Mark the entered item as selected and reload.
 			opts.SelectedGame = available[idx]
@@ -193,14 +184,15 @@ func PushGameDialog(cursor int, opts GameDialogOptions) {
 }
 
 func gameButtons(opts GameDialogOptions, hasItems bool) []string {
+	selected := hasItems && opts.SelectedGame != ""
 	var btns []string
-	if opts.CanLoad && hasItems {
+	if opts.CanLoad && selected {
 		btns = append(btns, "Load")
 	}
 	if opts.CanAdd {
 		btns = append(btns, "Add")
 	}
-	if opts.CanRemove && hasItems {
+	if opts.CanRemove && selected {
 		btns = append(btns, "Remove")
 	}
 	return append(btns, "Close")
