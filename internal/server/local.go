@@ -6,11 +6,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	xterm "github.com/charmbracelet/x/term"
 
+	"dev-null/internal/chrome"
 	"dev-null/internal/client"
+	"dev-null/internal/domain"
 	"dev-null/internal/network"
 )
 
@@ -107,4 +113,78 @@ func (a *Server) RunLocalSSH(ctx context.Context, playerName string, port int, t
 	// Wait for either direction to finish (e.g. server closes session, or user quits).
 	wg.Wait()
 	return nil
+}
+
+// RunDirect runs the player chrome model directly against the local terminal
+// without any SSH transport. Used by the test-game binary to isolate rendering
+// from SSH/PTY/transport variables.
+func (a *Server) RunDirect(ctx context.Context, playerName, termFlag string) error {
+	// Initialise lastUpdate so the first game tick dt isn't enormous.
+	a.lastUpdateMu.Lock()
+	a.lastUpdate = time.Now()
+	a.lastUpdateMu.Unlock()
+
+	go a.runTicker(ctx)
+
+	playerID := "test-game-" + playerName
+	player := &domain.Player{ID: playerID, Name: playerName}
+	a.state.AddPlayer(player)
+	a.state.SetPlayerAdmin(playerID, true)
+	defer a.state.RemovePlayer(playerID)
+
+	// Detect color profile from the local environment, defaulting to TrueColor.
+	envs := os.Environ()
+	hasColorTerm := false
+	for _, e := range envs {
+		if strings.HasPrefix(e, "COLORTERM=") {
+			hasColorTerm = true
+			break
+		}
+	}
+	if !hasColorTerm {
+		envs = append(envs, "COLORTERM=truecolor")
+	}
+	cp := colorprofile.Env(envs)
+	if termFlag != "" {
+		if p, ok := parseDevNullTerm(termFlag); ok {
+			cp = p
+		}
+	}
+
+	model := chrome.NewModel(a, playerID)
+	model.ColorProfile = cp
+	model.QuitOnGameEnd = true
+
+	program := tea.NewProgram(model,
+		tea.WithInput(os.Stdin),
+		tea.WithOutput(os.Stdout),
+		tea.WithFPS(60),
+		tea.WithColorProfile(cp),
+	)
+
+	a.programsMu.Lock()
+	a.programs[playerID] = program
+	a.programsMu.Unlock()
+	defer func() {
+		a.programsMu.Lock()
+		delete(a.programs, playerID)
+		a.programsMu.Unlock()
+	}()
+
+	// Deliver the current game phase so the model initialises correctly.
+	a.state.RLock()
+	currentPhase := a.state.GamePhase
+	a.state.RUnlock()
+	a.sendToPlayer(playerID, domain.GamePhaseMsg{Phase: currentPhase})
+
+	// Raw mode so ANSI sequences pass through without line-buffering.
+	oldState, err := xterm.MakeRaw(os.Stdin.Fd())
+	if err == nil {
+		defer xterm.Restore(os.Stdin.Fd(), oldState)
+	}
+	// Guarantee alt-screen exit even if the program closes unexpectedly.
+	defer fmt.Fprint(os.Stdout, "\x1b[?1049l\x1b[?25h")
+
+	_, err = program.Run()
+	return err
 }
