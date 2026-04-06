@@ -186,11 +186,10 @@ func (m *Model) pushThemeDialog(cursor int) {
 		}
 	}
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:      "Themes",
-		ListItems:  available,
-		ListTags:   tags,
-		ListCursor: cursor,
-		Buttons:    []string{"Add", "Close"},
+		Title:     "Themes",
+		ListItems: available,
+		ListTags:  tags,
+		Buttons:   []string{"Add", "Close"},
 		OnListEnter: func(idx int) {
 			name := available[idx]
 			path := filepath.Join(m.api.DataDir(), "themes", name+".json")
@@ -203,7 +202,8 @@ func (m *Model) pushThemeDialog(cursor int) {
 			m.gameWindow = nil
 			m.persistClientConfig()
 			m.overlay.PopDialog()
-			m.pushThemeDialog(idx)
+			m.pushThemeDialog(0)
+			m.overlay.SetTopListCursor(idx)
 		},
 		OnListAction: func(btn string, idx int) {
 			if btn == "Add" {
@@ -211,6 +211,7 @@ func (m *Model) pushThemeDialog(cursor int) {
 			}
 		},
 	})
+	m.overlay.SetTopListCursor(cursor)
 }
 
 func (m *Model) showThemeAddDialog(returnCursor int) {
@@ -270,11 +271,10 @@ func (m *Model) pushPluginDialog(cursor int) {
 	}
 
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:      "Plugins",
-		ListItems:  items,
-		ListTags:   tags,
-		ListCursor: cursor,
-		Buttons:    []string{"Add", "Close"},
+		Title:     "Plugins",
+		ListItems: items,
+		ListTags:  tags,
+		Buttons:   []string{"Add", "Close"},
 		OnListEnter: func(idx int) {
 			var newCursor int
 			if idx < activeCount {
@@ -302,7 +302,8 @@ func (m *Model) pushPluginDialog(cursor int) {
 				}
 			}
 			m.overlay.PopDialog()
-			m.pushPluginDialog(newCursor)
+			m.pushPluginDialog(0)
+			m.overlay.SetTopListCursor(newCursor)
 		},
 		OnListAction: func(btn string, idx int) {
 			if btn == "Add" {
@@ -310,6 +311,7 @@ func (m *Model) pushPluginDialog(cursor int) {
 			}
 		},
 	})
+	m.overlay.SetTopListCursor(cursor)
 }
 
 func (m *Model) showPluginAddDialog(returnCursor int) {
@@ -372,11 +374,10 @@ func (m *Model) pushShaderDialog(cursor int) {
 	}
 
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:      "Shaders",
-		ListItems:  items,
-		ListTags:   tags,
-		ListCursor: cursor,
-		Buttons:    []string{"Add", "Close"},
+		Title:     "Shaders",
+		ListItems: items,
+		ListTags:  tags,
+		Buttons:   []string{"Add", "Close"},
 		OnListEnter: func(idx int) {
 			var newCursor int
 			if idx < activeCount {
@@ -405,7 +406,8 @@ func (m *Model) pushShaderDialog(cursor int) {
 				}
 			}
 			m.overlay.PopDialog()
-			m.pushShaderDialog(newCursor)
+			m.pushShaderDialog(0)
+			m.overlay.SetTopListCursor(newCursor)
 		},
 		OnListAction: func(btn string, idx int) {
 			if btn == "Add" {
@@ -413,6 +415,7 @@ func (m *Model) pushShaderDialog(cursor int) {
 			}
 		},
 	})
+	m.overlay.SetTopListCursor(cursor)
 }
 
 func (m *Model) showShaderAddDialog(returnCursor int) {

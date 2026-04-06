@@ -403,11 +403,10 @@ func (m *Model) pushConsoleThemeDialog(cursor int) {
 		}
 	}
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:      "Themes",
-		ListItems:  available,
-		ListTags:   tags,
-		ListCursor: cursor,
-		Buttons:    []string{"Add", "Remove", "Close"},
+		Title:     "Themes",
+		ListItems: available,
+		ListTags:  tags,
+		Buttons:   []string{"Add", "Remove", "Close"},
 		OnListEnter: func(idx int) {
 			name := available[idx]
 			path := filepath.Join(m.api.DataDir(), "themes", name+".json")
@@ -419,7 +418,8 @@ func (m *Model) pushConsoleThemeDialog(cursor int) {
 			m.themeName = name
 			m.persistServerConfig()
 			m.overlay.PopDialog()
-			m.pushConsoleThemeDialog(idx)
+			m.pushConsoleThemeDialog(0)
+			m.overlay.SetTopListCursor(idx)
 		},
 		OnListAction: func(btn string, idx int) {
 			switch btn {
@@ -430,6 +430,7 @@ func (m *Model) pushConsoleThemeDialog(cursor int) {
 			}
 		},
 	})
+	m.overlay.SetTopListCursor(cursor)
 }
 
 func (m *Model) showConsoleThemeAddDialog(returnCursor int) {
@@ -508,7 +509,6 @@ func (m *Model) pushConsolePluginDialog(cursor int) {
 		Title:                 "Plugins",
 		ListItems:             items,
 		ListTags:              tags,
-		ListCursor:            cursor,
 		Buttons:               []string{"Add", "Remove", "Close"},
 		RequireListNavigation: []string{"Remove"},
 		OnListEnter: func(idx int) {
@@ -538,7 +538,8 @@ func (m *Model) pushConsolePluginDialog(cursor int) {
 				}
 			}
 			m.overlay.PopDialog()
-			m.pushConsolePluginDialog(newCursor)
+			m.pushConsolePluginDialog(0)
+			m.overlay.SetTopListCursor(newCursor)
 		},
 		OnListAction: func(btn string, idx int) {
 			switch btn {
@@ -560,6 +561,7 @@ func (m *Model) pushConsolePluginDialog(cursor int) {
 			}
 		},
 	})
+	m.overlay.SetTopListCursor(cursor)
 }
 
 func (m *Model) showConsolePluginAddDialog(returnCursor int) {
@@ -644,7 +646,6 @@ func (m *Model) pushConsoleShaderDialog(cursor int) {
 		Title:                 "Shaders",
 		ListItems:             items,
 		ListTags:              tags,
-		ListCursor:            cursor,
 		Buttons:               []string{"Add", "Remove", "Close"},
 		RequireListNavigation: []string{"Remove"},
 		OnListEnter: func(idx int) {
@@ -675,7 +676,8 @@ func (m *Model) pushConsoleShaderDialog(cursor int) {
 				}
 			}
 			m.overlay.PopDialog()
-			m.pushConsoleShaderDialog(newCursor)
+			m.pushConsoleShaderDialog(0)
+			m.overlay.SetTopListCursor(newCursor)
 		},
 		OnListAction: func(btn string, idx int) {
 			switch btn {
@@ -699,6 +701,7 @@ func (m *Model) pushConsoleShaderDialog(cursor int) {
 			}
 		},
 	})
+	m.overlay.SetTopListCursor(cursor)
 }
 
 func (m *Model) showConsoleShaderAddDialog(returnCursor int) {

@@ -51,9 +51,6 @@ func (o *OverlayState) buildDialogWindow(d domain.DialogRequest) *dialogEntry {
 	// --- Content area: body text OR list ---
 	if hasList {
 		lb := &ListBox{Items: d.ListItems, Tags: d.ListTags}
-		if d.ListCursor > 0 && d.ListCursor < len(d.ListItems) {
-			lb.Cursor = d.ListCursor
-		}
 		entry.listBox = lb
 		children = append(children, GridChild{
 			Control:  lb,

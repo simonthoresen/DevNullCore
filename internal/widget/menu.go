@@ -108,6 +108,16 @@ func (o *OverlayState) PopDialog() {
 	o.popDialogEntry()
 }
 
+// SetTopListCursor sets the cursor on the top dialog's list without resetting scroll.
+func (o *OverlayState) SetTopListCursor(idx int) {
+	e := o.topEntry()
+	if e == nil || e.listBox == nil {
+		return
+	}
+	e.listBox.Cursor = idx
+	e.listBox.ensureVisible()
+}
+
 // IsActive returns true when any overlay is intercepting input.
 func (o *OverlayState) IsActive() bool {
 	return o.HasDialog() || o.MenuFocused || o.OpenMenu >= 0

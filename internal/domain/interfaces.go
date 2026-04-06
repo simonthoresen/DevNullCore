@@ -59,9 +59,8 @@ type DialogRequest struct {
 	// scrollable list instead of the Body text. The list cursor is tracked by
 	// OverlayState and passed to OnListAction when a button is pressed.
 	ListItems    []string
-	ListTags     []string                       // optional right-aligned tags per item (e.g. "[active]")
-	ListCursor   int                            // initial cursor position for the list
-	OnListAction func(button string, idx int)   // called instead of OnClose when ListItems is set
+	ListTags     []string                     // optional right-aligned tags per item (e.g. "[active]")
+	OnListAction func(button string, idx int) // called instead of OnClose when ListItems is set
 	// OnListEnter is called when Enter is pressed on the focused list item,
 	// without closing the dialog. Use PopDialog+PushDialog inside to refresh.
 	OnListEnter func(idx int)
