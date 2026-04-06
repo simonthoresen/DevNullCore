@@ -1,7 +1,6 @@
 package localcmd
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -266,7 +265,7 @@ func PushSaveDialog(cursor int, opts SaveDialogOptions) {
 		if key == opts.SelectedSave {
 			tags[i] = "(●)"
 		} else {
-			tags[i] = fmt.Sprintf("(%s)", s.SavedAt.Format("2006-01-02"))
+			tags[i] = "(○)"
 		}
 	}
 	var btns []string
