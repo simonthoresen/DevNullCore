@@ -1,0 +1,7 @@
+{
+  "gameName": "orbits",
+  "saveName": "autosave",
+  "savedAt": "2026-04-01T10:00:00Z",
+  "teams": [{"name":"Red","color":"#ff5555"},{"name":"Blue","color":"#5555ff"}],
+  "disconnected": {}
+}

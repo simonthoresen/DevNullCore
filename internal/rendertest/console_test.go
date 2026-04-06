@@ -46,7 +46,7 @@ func TestConsoleRenders(t *testing.T) {
 					}
 					st.Unlock()
 
-					api := newMockConsoleAPI(st)
+					api := newMockConsoleAPI(st, sc.dataDir)
 					got := renderConsole(api, sc.consoleKeys, cv.profile, termW, termH)
 
 					path := goldenPath(sc.name, "console", cv.name)

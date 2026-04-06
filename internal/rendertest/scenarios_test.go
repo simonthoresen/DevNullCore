@@ -15,6 +15,9 @@ type renderScenario struct {
 	// SSH connection) adds the player automatically, so the resulting state and
 	// any "joined" chat messages match between unit and integration runs.
 	setup func(st *state.CentralState)
+	// dataDir is the data directory passed to the mock APIs. Defaults to "".
+	// Use a fixtures directory when the scenario needs games or saves on disk.
+	dataDir string
 	// playerID is the player whose chrome view is rendered. Defaults to "alice".
 	// Must be lowercase (matching the server's sanitizePlayerName behaviour).
 	playerID string
@@ -172,6 +175,124 @@ var scenarios = []renderScenario{
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
 		consoleKeys:   []string{"ctrl+q"},
+		noIntegration: true,
+	},
+
+	// ── Games dialog ───────────────────────────────────────────────────────────
+	{
+		// Alt+F → Enter: open Games dialog with no games on disk.
+		name:          "games_dialog_empty",
+		playerID:      "alice",
+		setup:         func(st *state.CentralState) {},
+		chromeKeys:    []string{"alt+f", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Games dialog showing a populated list; alice is admin so Load/Add visible.
+		name:     "games_dialog_list",
+		dataDir:  "testdata/fixtures",
+		playerID: "alice",
+		setup: func(st *state.CentralState) {
+			st.Lock()
+			defer st.Unlock()
+			st.Players["alice"] = &domain.Player{
+				ID: "alice", Name: "alice", IsAdmin: true,
+				TermWidth: termW, TermHeight: termH,
+			}
+		},
+		chromeKeys:    []string{"alt+f", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Games list with first item selected (Enter on item reveals Load button).
+		name:     "games_dialog_selected",
+		dataDir:  "testdata/fixtures",
+		playerID: "alice",
+		setup: func(st *state.CentralState) {
+			st.Lock()
+			defer st.Unlock()
+			st.Players["alice"] = &domain.Player{
+				ID: "alice", Name: "alice", IsAdmin: true,
+				TermWidth: termW, TermHeight: termH,
+			}
+		},
+		chromeKeys:    []string{"alt+f", "enter", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Console Games dialog with no games on disk.
+		name:          "games_dialog_empty_console",
+		playerID:      "alice",
+		setup:         func(st *state.CentralState) {},
+		consoleKeys:   []string{"alt+f", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Console Games list with first item selected (Enter reveals Remove button).
+		name:     "games_dialog_selected_console",
+		dataDir:  "testdata/fixtures",
+		playerID: "alice",
+		setup:    func(st *state.CentralState) {},
+		consoleKeys: []string{"alt+f", "enter", "enter"},
+		noIntegration: true,
+	},
+
+	// ── Saves dialog ───────────────────────────────────────────────────────────
+	{
+		// Alt+F → down → Enter: open Saves dialog with no saves on disk.
+		name:          "saves_dialog_empty",
+		playerID:      "alice",
+		setup:         func(st *state.CentralState) {},
+		chromeKeys:    []string{"alt+f", "down", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Saves dialog listing orbits/autosave; alice is admin so Load visible.
+		name:     "saves_dialog_list",
+		dataDir:  "testdata/fixtures",
+		playerID: "alice",
+		setup: func(st *state.CentralState) {
+			st.Lock()
+			defer st.Unlock()
+			st.Players["alice"] = &domain.Player{
+				ID: "alice", Name: "alice", IsAdmin: true,
+				TermWidth: termW, TermHeight: termH,
+			}
+		},
+		chromeKeys:    []string{"alt+f", "down", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Saves list with autosave selected; Load button becomes visible.
+		name:     "saves_dialog_selected",
+		dataDir:  "testdata/fixtures",
+		playerID: "alice",
+		setup: func(st *state.CentralState) {
+			st.Lock()
+			defer st.Unlock()
+			st.Players["alice"] = &domain.Player{
+				ID: "alice", Name: "alice", IsAdmin: true,
+				TermWidth: termW, TermHeight: termH,
+			}
+		},
+		chromeKeys:    []string{"alt+f", "down", "enter", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Console Saves dialog with no saves on disk.
+		name:          "saves_dialog_empty_console",
+		playerID:      "alice",
+		setup:         func(st *state.CentralState) {},
+		consoleKeys:   []string{"alt+f", "down", "enter"},
+		noIntegration: true,
+	},
+	{
+		// Console Saves list with autosave selected; Remove button becomes visible.
+		name:     "saves_dialog_selected_console",
+		dataDir:  "testdata/fixtures",
+		playerID: "alice",
+		setup:    func(st *state.CentralState) {},
+		consoleKeys: []string{"alt+f", "down", "enter", "enter"},
 		noIntegration: true,
 	},
 }

@@ -34,7 +34,7 @@ func TestChromeRenders(t *testing.T) {
 							st := state.New("")
 							sc.setup(st)
 
-							api := newMockChromeAPI(st)
+							api := newMockChromeAPI(st, sc.dataDir)
 							playerID := sc.playerID
 							if playerID == "" {
 								playerID = "alice"

@@ -78,24 +78,26 @@ func sanitize(s string) string {
 // ─── Mock console API ────────────────────────────────────────────────────────
 
 type mockConsoleAPI struct {
-	st     *state.CentralState
-	clock  *domain.MockClock
-	chatCh chan domain.Message
-	slogCh chan console.SlogLine
+	st      *state.CentralState
+	clock   *domain.MockClock
+	chatCh  chan domain.Message
+	slogCh  chan console.SlogLine
+	dataDir string
 }
 
-func newMockConsoleAPI(st *state.CentralState) *mockConsoleAPI {
+func newMockConsoleAPI(st *state.CentralState, dataDir string) *mockConsoleAPI {
 	return &mockConsoleAPI{
-		st:     st,
-		clock:  &domain.MockClock{T: fixedTime},
-		chatCh: make(chan domain.Message),
-		slogCh: make(chan console.SlogLine),
+		st:      st,
+		clock:   &domain.MockClock{T: fixedTime},
+		chatCh:  make(chan domain.Message),
+		slogCh:  make(chan console.SlogLine),
+		dataDir: dataDir,
 	}
 }
 
 func (a *mockConsoleAPI) State() *state.CentralState                        { return a.st }
 func (a *mockConsoleAPI) Clock() domain.Clock                                { return a.clock }
-func (a *mockConsoleAPI) DataDir() string                                    { return "" }
+func (a *mockConsoleAPI) DataDir() string                                    { return a.dataDir }
 func (a *mockConsoleAPI) Uptime() string                                     { return "0s" }
 func (a *mockConsoleAPI) BroadcastChat(msg domain.Message)                   {}
 func (a *mockConsoleAPI) ChatCh() <-chan domain.Message                      { return a.chatCh }
@@ -107,20 +109,22 @@ func (a *mockConsoleAPI) SetConsoleWidth(int)                                {}
 // ─── Mock chrome API ─────────────────────────────────────────────────────────
 
 type mockChromeAPI struct {
-	st    *state.CentralState
-	clock *domain.MockClock
+	st      *state.CentralState
+	clock   *domain.MockClock
+	dataDir string
 }
 
-func newMockChromeAPI(st *state.CentralState) *mockChromeAPI {
+func newMockChromeAPI(st *state.CentralState, dataDir string) *mockChromeAPI {
 	return &mockChromeAPI{
-		st:    st,
-		clock: &domain.MockClock{T: fixedTime},
+		st:      st,
+		clock:   &domain.MockClock{T: fixedTime},
+		dataDir: dataDir,
 	}
 }
 
 func (a *mockChromeAPI) State() *state.CentralState                        { return a.st }
 func (a *mockChromeAPI) Clock() domain.Clock                                { return a.clock }
-func (a *mockChromeAPI) DataDir() string                                    { return "" }
+func (a *mockChromeAPI) DataDir() string                                    { return a.dataDir }
 func (a *mockChromeAPI) Uptime() string                                     { return "0s" }
 func (a *mockChromeAPI) BroadcastChat(domain.Message)                       {}
 func (a *mockChromeAPI) BroadcastMsg(tea.Msg)                               {}
