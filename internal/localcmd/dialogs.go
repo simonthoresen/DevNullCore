@@ -112,15 +112,16 @@ func pushThemeAddDialog(opts ThemeDialogOptions, returnCursor int) {
 
 // GameDialogOptions configures the Games dialog.
 type GameDialogOptions struct {
-	DataDir     string
-	Overlay     *widget.OverlayState
-	CurrentGame string // name of active game, or ""
-	CanLoad     bool   // show Load button (admin in chrome, always in console)
-	CanAdd      bool   // show Add button (same visibility as Load)
-	CanRemove   bool   // show Remove button (console only)
-	OnLoad      func(name string)              // called when Load is pressed or Add input confirmed
-	OnRemove    func(name string, cursor int)  // nil → no Remove button
-	Reload      func(cursor int)
+	DataDir      string
+	Overlay      *widget.OverlayState
+	CurrentGame  string // name of the currently loaded game, or ""
+	SelectedGame string // name selected in the list (drives Load/Remove), or ""
+	CanLoad      bool   // show Load button (chrome admin only)
+	CanAdd       bool   // show Add button
+	CanRemove    bool   // show Remove button (console only)
+	OnLoad       func(name string)             // called when Load is pressed or Add input confirmed
+	OnRemove     func(name string, cursor int) // nil → no Remove button
+	Reload       func(cursor int)
 }
 
 // PushGameDialog opens the Games dialog on opts.Overlay.
@@ -141,17 +142,35 @@ func PushGameDialog(cursor int, opts GameDialogOptions) {
 	}
 	tags := make([]string, len(available))
 	for i, name := range available {
-		if strings.EqualFold(name, opts.CurrentGame) {
+		switch {
+		case strings.EqualFold(name, opts.SelectedGame):
 			tags[i] = "(●)"
-		} else {
+		case strings.EqualFold(name, opts.CurrentGame):
+			tags[i] = "(◉)" // loaded but not selected
+		default:
 			tags[i] = "(○)"
 		}
 	}
+	// Buttons that require list navigation to become active.
+	var requireNav []string
+	if opts.CanLoad {
+		requireNav = append(requireNav, "Load")
+	}
+	if opts.CanRemove {
+		requireNav = append(requireNav, "Remove")
+	}
 	opts.Overlay.PushDialog(domain.DialogRequest{
-		Title:     "Games",
-		ListItems: available,
-		ListTags:  tags,
-		Buttons:   gameButtons(opts, true),
+		Title:                 "Games",
+		ListItems:             available,
+		ListTags:              tags,
+		Buttons:               gameButtons(opts, true),
+		RequireListNavigation: requireNav,
+		OnListEnter: func(idx int) {
+			// Mark the entered item as selected and reload.
+			opts.SelectedGame = available[idx]
+			opts.Overlay.PopDialog()
+			PushGameDialog(idx, opts)
+		},
 		OnListAction: func(btn string, idx int) {
 			switch btn {
 			case "Load":

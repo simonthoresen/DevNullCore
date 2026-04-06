@@ -445,7 +445,6 @@ func (m *Model) pushGamesDialog(cursor int) {
 		DataDir:     m.api.DataDir(),
 		Overlay:     &m.overlay,
 		CurrentGame: currentGame,
-		CanLoad:     true,
 		CanAdd:      true,
 		CanRemove:   true,
 		OnLoad: func(name string) {
