@@ -119,10 +119,6 @@ type Model struct {
 	// Auto-selected to the best available mode on game load; changeable via View menu.
 	renderMode domain.RenderMode
 
-	// QuitOnGameEnd makes the Bubble Tea program quit when the active game
-	// transitions back to PhaseNone. Used by the test-game binary.
-	QuitOnGameEnd bool
-
 	// Enhanced client protocol (dev-null-client with charmap/canvas/local-render support).
 	IsEnhancedClient bool
 	IsTerminalClient bool     // true = enhanced but terminal-only (no charmap/canvas)

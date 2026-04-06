@@ -168,9 +168,6 @@ func (m *Model) handleGamePhase(msg domain.GamePhaseMsg) (tea.Model, tea.Cmd) {
 		m.gameOverStart = time.Now()
 	}
 	if msg.Phase == domain.PhaseNone {
-		if m.QuitOnGameEnd && m.inActiveGame {
-			return m, tea.Quit
-		}
 		m.inActiveGame = false
 		m.lobbyWindow.FocusIdx = 4
 		cmd := m.lobbyInput.Model.Focus()

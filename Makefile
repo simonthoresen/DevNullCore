@@ -1,4 +1,4 @@
-.PHONY: build build-server build-client build-test-game run-server run-server-lan run-server-local run-client run-client-local run-test-game test clean
+.PHONY: build build-server build-client run-server run-server-lan run-server-local run-client run-client-local test clean
 
 ifeq ($(OS),Windows_NT)
   GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>nul || echo dev)
@@ -20,9 +20,6 @@ build-server:
 build-client:
 	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/dev-null-client.exe ./cmd/dev-null-client
 
-build-test-game:
-	go build -o dist/test-game.exe ./cmd/test-game
-
 # Server: normal mode (SSH server + console TUI)
 run-server: build-server
 	./dist/dev-null-server.exe --data-dir dist
@@ -43,14 +40,10 @@ run-client: build-client
 run-client-local: build-client
 	./dist/dev-null-client.exe --data-dir dist --local
 
-# Test: direct chrome rendering with no SSH (GAME=cube|crawler|etc.)
-run-test-game: build-test-game
-	./dist/test-game.exe --data-dir dist --game $(GAME)
-
 # Run all tests
 test:
 	go test -v ./...
 
 # Remove build outputs from dist/ (keeps games/, fonts/, logs/)
 clean:
-	rm -f dist/dev-null-server.exe dist/dev-null-client.exe dist/pinggy-helper.exe dist/test-game.exe
+	rm -f dist/dev-null-server.exe dist/dev-null-client.exe dist/pinggy-helper.exe
