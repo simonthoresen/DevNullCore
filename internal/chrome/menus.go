@@ -26,6 +26,7 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 
 	fileItems := []domain.MenuItemDef{
 		{Label: "&Games...", Handler: func(_ string) { m.pushGamesDialog(0) }},
+		{Label: "&Saves...", Handler: func(_ string) { m.pushSavesDialog(0) }},
 		{Label: "---"},
 		{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
 		{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
@@ -115,6 +116,18 @@ func (m *Model) pushGamesDialog(cursor int) {
 			m.dispatchInput("/game load " + name)
 		},
 		Reload: m.pushGamesDialog,
+	})
+}
+
+func (m *Model) pushSavesDialog(cursor int) {
+	localcmd.PushSaveDialog(cursor, localcmd.SaveDialogOptions{
+		DataDir:  m.api.DataDir(),
+		Overlay:  &m.overlay,
+		CanLoad:  m.isAdmin(),
+		OnLoad: func(gameName, saveName string) {
+			m.dispatchInput("/game resume " + gameName + "/" + saveName)
+		},
+		Reload: m.pushSavesDialog,
 	})
 }
 

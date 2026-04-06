@@ -321,6 +321,7 @@ func (m *Model) consoleMenus() []domain.MenuDef {
 			Label: "&File",
 			Items: []domain.MenuItemDef{
 				{Label: "&Games...", Handler: func(_ string) { m.pushGamesDialog(0) }},
+				{Label: "&Saves...", Handler: func(_ string) { m.pushSavesDialog(0) }},
 				{Label: "---"},
 				{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
 				{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
@@ -483,6 +484,34 @@ func (m *Model) showGameRemoveConfirm(name string, cursor int) {
 				}
 			}
 			m.pushGamesDialog(cursor)
+		},
+	})
+}
+
+func (m *Model) pushSavesDialog(cursor int) {
+	localcmd.PushSaveDialog(cursor, localcmd.SaveDialogOptions{
+		DataDir:   m.api.DataDir(),
+		Overlay:   &m.overlay,
+		CanRemove: true,
+		OnLoad: func(gameName, saveName string) {
+			m.submitInput("/game resume " + gameName + "/" + saveName)
+		},
+		OnRemove: m.showSaveRemoveConfirm,
+		Reload:   m.pushSavesDialog,
+	})
+}
+
+func (m *Model) showSaveRemoveConfirm(gameName, saveName string, cursor int) {
+	m.overlay.PushDialog(domain.DialogRequest{
+		Title:   "Delete Save",
+		Body:    fmt.Sprintf("Delete save?\n\n  %s/%s\n\nThis cannot be undone.", gameName, saveName),
+		Buttons: []string{"Delete", "Cancel"},
+		Warning: true,
+		OnClose: func(btn string) {
+			if btn == "Delete" {
+				state.DeleteSuspend(m.api.DataDir(), gameName, saveName) //nolint:errcheck
+			}
+			m.pushSavesDialog(cursor)
 		},
 	})
 }
