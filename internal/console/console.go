@@ -571,7 +571,7 @@ func (m *Model) showConsolePluginRemoveConfirm(names []string, returnCursor int)
 	if len(names) > 1 {
 		noun = fmt.Sprintf("%d plugins", len(names))
 	}
-	body := fmt.Sprintf("Delete active %s from the plugins folder?\n%s\nThis cannot be undone.", noun, strings.Join(lines, "\n"))
+	body := fmt.Sprintf("Delete active %s from the plugins folder?\n\n%s\n\nThis cannot be undone.", noun, strings.Join(lines, "\n"))
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:   "Delete Plugin Files",
 		Body:    body,
@@ -686,7 +686,7 @@ func (m *Model) showConsoleShaderRemoveConfirm(names []string, returnCursor int)
 	if len(names) > 1 {
 		noun = fmt.Sprintf("%d shaders", len(names))
 	}
-	body := fmt.Sprintf("Delete active %s from the shaders folder?\n%s\nThis cannot be undone.", noun, strings.Join(lines, "\n"))
+	body := fmt.Sprintf("Delete active %s from the shaders folder?\n\n%s\n\nThis cannot be undone.", noun, strings.Join(lines, "\n"))
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:   "Delete Shader Files",
 		Body:    body,
