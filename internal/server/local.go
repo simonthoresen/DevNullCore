@@ -94,6 +94,11 @@ func (a *Server) RunLocalSSH(ctx context.Context, playerName string, port int, t
 	}
 	defer xterm.Restore(os.Stdin.Fd(), oldState)
 
+	// Configure stdout for raw VT output (Windows: enable VT processing,
+	// disable auto-CRLF; Unix: no-op — MakeRaw already handles it).
+	restoreOutput := configureLocalOutput()
+	defer restoreOutput()
+
 	// Forward terminal resize events (platform-specific).
 	stopResize := watchTerminalResize(conn)
 	defer stopResize()

@@ -12,6 +12,10 @@ import (
 	"dev-null/internal/client"
 )
 
+// configureLocalOutput is a no-op on Unix — the terminal is already in raw
+// mode via xterm.MakeRaw, which disables ONLCR output processing.
+func configureLocalOutput() func() { return func() {} }
+
 // watchTerminalResize listens for SIGWINCH and forwards resize events to the
 // SSH session. Returns a stop function to clean up.
 func watchTerminalResize(conn *client.SSHConn) func() {
