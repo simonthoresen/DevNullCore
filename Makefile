@@ -1,22 +1,24 @@
 .PHONY: build build-server build-client run-server run-server-lan run-server-local run-client run-client-local test clean
 
 ifeq ($(OS),Windows_NT)
-  GIT_COMMIT := $(shell git rev-parse --short HEAD 2>nul || echo dev)
+  GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>nul || echo dev)
   BUILD_DATE  := $(shell git log -1 --format=%cI 2>nul || echo unknown)
+  GIT_REMOTE  := $(shell git remote get-url origin 2>nul || echo "")
 else
-  GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
+  GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
   BUILD_DATE  := $(shell git log -1 --format=%cI 2>/dev/null || echo unknown)
+  GIT_REMOTE  := $(shell git remote get-url origin 2>/dev/null || echo "")
 endif
 
 # Build all binaries into dist/ (strip debug info for smaller binaries)
 build: build-server build-client
 
 build-server:
-	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)'" -o dist/dev-null-server.exe ./cmd/dev-null-server
+	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/dev-null-server.exe ./cmd/dev-null-server
 	go build -ldflags="-s -w" -o dist/pinggy-helper.exe ./cmd/pinggy-helper
 
 build-client:
-	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)'" -o dist/dev-null-client.exe ./cmd/dev-null-client
+	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/dev-null-client.exe ./cmd/dev-null-client
 
 # Server: normal mode (SSH server + console TUI)
 run-server: build-server

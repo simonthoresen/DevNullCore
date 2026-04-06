@@ -26,15 +26,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"dev-null/internal/client"
+	"dev-null/internal/engine"
 	"dev-null/internal/server"
 )
 
-// buildCommit and buildDate are injected at build time via -ldflags.
+// buildCommit, buildDate, and buildRemote are injected at build time via -ldflags.
 var buildCommit = "dev"
 var buildDate = "unknown"
+var buildRemote = ""
 
 func main() {
 	fmt.Printf("dev-null-client %s (%s)\n", buildCommit, buildDate)
+	engine.SetBuildInfo(buildDate, buildRemote)
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
 	player := flag.String("player", defaultPlayer(), "player name")

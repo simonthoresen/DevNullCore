@@ -39,6 +39,11 @@ var (
 	// The line is: " dev-null | N players | uptime T   DATE"
 	// T and DATE have variable widths / values.
 	lobbyStatusBarPattern = regexp.MustCompile(` dev-null \| (\d+) players \| uptime \S+ +\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} *`)
+
+	// aboutBracketPattern matches the bracket columns in the About dialog logo.
+	// The content (date + fill + remote URL) varies by build and is replaced
+	// with a fixed placeholder so golden files stay stable.
+	aboutBracketPattern = regexp.MustCompile(`(\[) (.{21}) (\])`)
 )
 
 // sanitize replaces wall-clock timestamps and uptime values with fixed
@@ -64,6 +69,9 @@ func sanitize(s string) string {
 	})
 	// Replace any remaining datetime stamps (e.g. playing view's status bar).
 	out = tsPattern.ReplaceAllString(out, fixedTimestamp)
+	// Normalise About dialog bracket content: date + fill dots + remote URL all vary.
+	// Preserve only the surrounding "[ " and " ]" markers.
+	out = aboutBracketPattern.ReplaceAllString(out, "$1 XXXXXXXXXXXXXXXXXXXXX $3")
 	return out
 }
 

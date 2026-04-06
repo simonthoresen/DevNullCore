@@ -19,14 +19,16 @@ import (
 	"log/slog"
 
 	"dev-null/internal/console"
+	"dev-null/internal/engine"
 	"dev-null/internal/runlog"
 	"dev-null/internal/server"
 )
 
-// buildCommit and buildDate are injected at build time via -ldflags.
-// They default to "dev" / "unknown" for local go run / unbuilt binaries.
+// buildCommit, buildDate, and buildRemote are injected at build time via -ldflags.
+// They default to "dev" / "unknown" / "" for local go run / unbuilt binaries.
 var buildCommit = "dev"
 var buildDate = "unknown"
+var buildRemote = ""
 
 func main() {
 	fmt.Printf("dev-null-server %s (%s)\n", buildCommit, buildDate)
@@ -37,6 +39,7 @@ func main() {
 	}
 	defer cleanupLog() //nolint:errcheck
 	slog.Info("dev-null server", "commit", buildCommit, "built", buildDate)
+	engine.SetBuildInfo(buildDate, buildRemote)
 	initBootTermWidth()
 
 	var password string
