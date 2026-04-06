@@ -1,4 +1,4 @@
-.PHONY: build build-server build-client run-server run-server-lan run-server-local run-client run-client-local test clean
+.PHONY: build build-server build-client build-testbed run-server run-server-lan run-server-local run-client run-client-local run-testbed run-testbed-onlcr test clean
 
 ifeq ($(OS),Windows_NT)
   GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>nul || echo dev)
@@ -44,6 +44,18 @@ run-client-local: build-client
 test:
 	go test -v ./...
 
+# Testbed: minimal wish+bubbletea repro binary (no product code, SSH artifact isolation)
+build-testbed:
+	go build -o dist/testbed.exe ./testbed
+
+# Testbed: SSH mode without ONLCR fix (expect staircase on non-Windows)
+run-testbed: build-testbed
+	./dist/testbed.exe
+
+# Testbed: SSH mode with ONLCR fix applied
+run-testbed-onlcr: build-testbed
+	./dist/testbed.exe --onlcr
+
 # Remove build outputs from dist/ (keeps games/, fonts/, logs/)
 clean:
-	rm -f dist/dev-null-server.exe dist/dev-null-client.exe dist/pinggy-helper.exe
+	rm -f dist/dev-null-server.exe dist/dev-null-client.exe dist/pinggy-helper.exe dist/testbed.exe
