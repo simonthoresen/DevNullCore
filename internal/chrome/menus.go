@@ -1,10 +1,6 @@
 package chrome
 
 import (
-	"fmt"
-	"path/filepath"
-	"strings"
-
 	"dev-null/internal/domain"
 	"dev-null/internal/engine"
 	"dev-null/internal/localcmd"
@@ -29,7 +25,7 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	m.menuCacheScale = canvasScale
 
 	fileItems := []domain.MenuItemDef{
-		{Label: "&Games...", Handler: func(_ string) { m.showGamesDialog() }},
+		{Label: "&Games...", Handler: func(_ string) { m.pushGamesDialog(0) }},
 		{Label: "---"},
 		{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
 		{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
@@ -104,60 +100,21 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	return menus
 }
 
-func (m *Model) showGamesDialog() {
+func (m *Model) pushGamesDialog(cursor int) {
 	m.api.State().RLock()
-	player := m.api.State().Players[m.playerID]
-	phase := m.api.State().GamePhase
-	gameName := m.api.State().GameName
+	currentGame := m.api.State().GameName
 	m.api.State().RUnlock()
 
-	isAdmin := player != nil && player.IsAdmin
-	available := engine.ListGames(filepath.Join(m.api.DataDir(), "games"))
-	saves := m.api.ListSuspends()
-
-	var lines []string
-
-	// Current game status.
-	if phase != domain.PhaseNone && gameName != "" {
-		lines = append(lines, fmt.Sprintf("Current: %s (playing)", gameName))
-		lines = append(lines, "")
-	}
-
-	// Available games.
-	lines = append(lines, "Available games:")
-	if len(available) == 0 {
-		lines = append(lines, "  (none)")
-	} else {
-		for _, name := range available {
-			lines = append(lines, "  "+name)
-		}
-	}
-
-	// Suspended saves.
-	if len(saves) > 0 {
-		lines = append(lines, "")
-		lines = append(lines, "Suspended:")
-		teamCount := m.api.State().TeamCount()
-		for _, s := range saves {
-			teamNote := ""
-			if s.TeamCount != teamCount {
-				teamNote = fmt.Sprintf("  (lobby has %d teams)", teamCount)
-			}
-			lines = append(lines, fmt.Sprintf("  %s/%s  (%d teams, %s)%s",
-				s.GameName, s.SaveName, s.TeamCount,
-				s.SavedAt.Format(domain.TimeFormatShort), teamNote))
-		}
-	}
-
-	if isAdmin {
-		lines = append(lines, "")
-		lines = append(lines, "Use /game load|unload|suspend|resume")
-	}
-
-	m.overlay.PushDialog(domain.DialogRequest{
-		Title:   "Games",
-		Body:    strings.Join(lines, "\n"),
-		Buttons: []string{"Close"},
+	localcmd.PushGameDialog(cursor, localcmd.GameDialogOptions{
+		DataDir:     m.api.DataDir(),
+		Overlay:     &m.overlay,
+		CurrentGame: currentGame,
+		CanLoad:     m.isAdmin(),
+		CanAdd:      m.isAdmin(),
+		OnLoad: func(name string) {
+			m.dispatchInput("/game load " + name)
+		},
+		Reload: m.pushGamesDialog,
 	})
 }
 

@@ -320,6 +320,8 @@ func (m *Model) consoleMenus() []domain.MenuDef {
 		{
 			Label: "&File",
 			Items: []domain.MenuItemDef{
+				{Label: "&Games...", Handler: func(_ string) { m.pushGamesDialog(0) }},
+				{Label: "---"},
 				{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
 				{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
 				{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
@@ -431,6 +433,58 @@ func (m *Model) pushShaderDialog(cursor int) {
 		},
 		OnRemove: m.showShaderRemoveConfirm,
 		Reload:   m.pushShaderDialog,
+	})
+}
+
+func (m *Model) pushGamesDialog(cursor int) {
+	m.api.State().RLock()
+	currentGame := m.api.State().GameName
+	m.api.State().RUnlock()
+
+	localcmd.PushGameDialog(cursor, localcmd.GameDialogOptions{
+		DataDir:     m.api.DataDir(),
+		Overlay:     &m.overlay,
+		CurrentGame: currentGame,
+		CanLoad:     true,
+		CanAdd:      true,
+		CanRemove:   true,
+		OnLoad: func(name string) {
+			m.submitInput("/game load " + name)
+		},
+		OnRemove: m.showGameRemoveConfirm,
+		Reload:   m.pushGamesDialog,
+	})
+}
+
+func (m *Model) showGameRemoveConfirm(name string, cursor int) {
+	gamesDir := filepath.Join(m.api.DataDir(), "games")
+	var displayPath string
+	if _, err := os.Stat(filepath.Join(gamesDir, name)); err == nil {
+		displayPath = name + "/"
+	} else {
+		displayPath = name + ".js"
+	}
+	m.overlay.PushDialog(domain.DialogRequest{
+		Title:   "Delete Game",
+		Body:    fmt.Sprintf("Delete game from the games folder?\n\n  %s\n\nThis cannot be undone.", displayPath),
+		Buttons: []string{"Delete", "Cancel"},
+		Warning: true,
+		OnClose: func(btn string) {
+			if btn == "Delete" {
+				m.api.State().RLock()
+				active := m.api.State().GameName
+				m.api.State().RUnlock()
+				if strings.EqualFold(active, name) {
+					m.submitInput("/game unload")
+				}
+				if _, err := os.Stat(filepath.Join(gamesDir, name)); err == nil {
+					os.RemoveAll(filepath.Join(gamesDir, name))
+				} else {
+					os.Remove(filepath.Join(gamesDir, name+".js"))
+				}
+			}
+			m.pushGamesDialog(cursor)
+		},
 	})
 }
 

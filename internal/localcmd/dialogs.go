@@ -108,6 +108,98 @@ func pushThemeAddDialog(opts ThemeDialogOptions, returnCursor int) {
 	})
 }
 
+// ─── Game dialog ──────────────────────────────────────────────────────────────
+
+// GameDialogOptions configures the Games dialog.
+type GameDialogOptions struct {
+	DataDir     string
+	Overlay     *widget.OverlayState
+	CurrentGame string // name of active game, or ""
+	CanLoad     bool   // show Load button (admin in chrome, always in console)
+	CanAdd      bool   // show Add button (same visibility as Load)
+	CanRemove   bool   // show Remove button (console only)
+	OnLoad      func(name string)              // called when Load is pressed or Add input confirmed
+	OnRemove    func(name string, cursor int)  // nil → no Remove button
+	Reload      func(cursor int)
+}
+
+// PushGameDialog opens the Games dialog on opts.Overlay.
+func PushGameDialog(cursor int, opts GameDialogOptions) {
+	available := engine.ListGames(filepath.Join(opts.DataDir, "games"))
+	if len(available) == 0 {
+		opts.Overlay.PushDialog(domain.DialogRequest{
+			Title:   "Games",
+			Body:    "No games found in games/",
+			Buttons: gameButtons(opts, false),
+			OnClose: func(btn string) {
+				if btn == "Add" {
+					pushGameAddDialog(opts, 0)
+				}
+			},
+		})
+		return
+	}
+	tags := make([]string, len(available))
+	for i, name := range available {
+		if strings.EqualFold(name, opts.CurrentGame) {
+			tags[i] = "(●)"
+		} else {
+			tags[i] = "(○)"
+		}
+	}
+	opts.Overlay.PushDialog(domain.DialogRequest{
+		Title:     "Games",
+		ListItems: available,
+		ListTags:  tags,
+		Buttons:   gameButtons(opts, true),
+		OnListAction: func(btn string, idx int) {
+			switch btn {
+			case "Load":
+				if opts.OnLoad != nil {
+					opts.OnLoad(available[idx])
+				}
+			case "Add":
+				pushGameAddDialog(opts, idx)
+			case "Remove":
+				if opts.OnRemove != nil {
+					opts.OnRemove(available[idx], idx)
+				}
+			}
+		},
+	})
+	opts.Overlay.SetTopCursor(cursor)
+}
+
+func gameButtons(opts GameDialogOptions, hasItems bool) []string {
+	var btns []string
+	if opts.CanLoad && hasItems {
+		btns = append(btns, "Load")
+	}
+	if opts.CanAdd {
+		btns = append(btns, "Add")
+	}
+	if opts.CanRemove && hasItems {
+		btns = append(btns, "Remove")
+	}
+	return append(btns, "Close")
+}
+
+func pushGameAddDialog(opts GameDialogOptions, returnCursor int) {
+	opts.Overlay.PushDialog(domain.DialogRequest{
+		Title:        "Add Game",
+		Body:         "Enter a game name or URL:",
+		InputPrompt:  "Game",
+		Buttons:      []string{"Load", "Cancel"},
+		OnInputClose: func(btn, value string) {
+			value = strings.TrimSpace(value)
+			if btn == "Load" && value != "" && opts.OnLoad != nil {
+				opts.OnLoad(value)
+			}
+			opts.Reload(returnCursor)
+		},
+	})
+}
+
 // ─── Script dialog (plugins / shaders) ────────────────────────────────────────
 
 // ScriptDialogOptions configures a Plugins or Shaders dialog.
