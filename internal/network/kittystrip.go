@@ -3,6 +3,7 @@ package network
 import (
 	"bytes"
 	"io"
+	"runtime"
 )
 
 // KittyStripWriter wraps an io.Writer and strips Kitty keyboard protocol
@@ -64,7 +65,13 @@ func (w *KittyStripWriter) Write(p []byte) (int, error) {
 	}
 
 	// ONLCR: map bare \n → \r\n, skipping \n already preceded by \r.
-	cleaned = w.applyONLCR(cleaned)
+	// Only needed on non-Windows: Bubble Tea v2 sets mapNl=true on non-Windows
+	// (because ssh.Session has no Fd()), so the renderer emits bare \n expecting
+	// the PTY to supply the \r. On Windows, mapNl is always false — the renderer
+	// tracks fx through \n without resetting, so adding \r would misalign columns.
+	if runtime.GOOS != "windows" {
+		cleaned = w.applyONLCR(cleaned)
+	}
 
 	if len(cleaned) == 0 {
 		return original, nil
