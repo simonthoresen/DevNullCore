@@ -156,11 +156,28 @@ var Game = {
         // optional cleanup
     },
 
-    // Called when the game is unloaded (game-over acknowledged, or /game unload).
-    // Return a state object to persist to disk — passed back via load(savedState) on next run.
-    // Also called during /game suspend; the returned state is saved and restored on resume.
+    // Called on game-over, /game unload, AND after suspend() during /game suspend.
+    // Return PERSISTENT state (high scores, unlocks) — saved to dist/state/<game>.json
+    // and passed back via load(persistentState) on the next fresh load or resume.
     unload: function() {
-        return { score: score, highScore: highScore };
+        return { highScore: highScore };
+    },
+
+    // Called on /game suspend BEFORE unload(). Return SESSION state (current board,
+    // score in progress) to store in the suspend save file.
+    // Return undefined/null if the game has no meaningful mid-session state.
+    suspend: function() {
+        return { score: score, board: board };
+    },
+
+    // Called INSTEAD OF begin() when restoring from a suspend save.
+    // sessionState is the value previously returned by suspend().
+    // If not defined, falls back to begin() — old games without this hook still work.
+    resume: function(sessionState) {
+        if (sessionState) {
+            score = sessionState.score;
+            board = sessionState.board;
+        }
     }
 };
 ```
@@ -416,54 +433,76 @@ The framework blocks loading if the lobby has too few or too many teams.
 
 ## State persistence
 
-Games can persist data between runs. Saved state is stored as JSON in `dist/state/<gamename>.json`.
+Games use two separate hooks to persist different kinds of data:
 
-**Saving**: Pass state as the second argument to `gameOver(results, state)`. Only saved when the game ends naturally — manual `/game unload` does not persist state.
+| Hook | Returns | Stored in | Called when |
+|------|---------|-----------|-------------|
+| `unload()` | **Persistent state** (high scores, unlocks) | `dist/state/<gameName>.json` | Game-over, `/game unload`, AND after `suspend()` during `/game suspend` |
+| `suspend()` | **Session state** (board, current score) | suspend save file | `/game suspend` only |
 
-**Loading**: Receive previous state as the argument to `init(savedState)` (null on first run).
+**Persistent state** survives across all sessions and is received via `load(persistentState)` on every fresh load and resume. Return it from `unload()`.
 
-## Suspend/resume
+**Session state** is a mid-game snapshot stored in the suspend save file. It is received via `resume(sessionState)` when restoring from that save. Return it from `suspend()`.
 
-Games can support suspend/resume for long-running sessions (e.g. RPGs). This is separate from `gameOver` state — suspend saves are per-session, while `gameOver` state is global (high scores, etc.). Multiple suspended sessions of the same game can coexist.
-
-**Opt in**: Set `canSuspend: true` on the `Game` object.
-
-```javascript
+```js
 var Game = {
-    canSuspend: true,
+    state: { score: 0, highScore: 0 },
 
+    // load: called with persistent state on EVERY load (fresh and resume).
+    load: function(saved) {
+        if (saved) Game.state.highScore = saved.highScore || 0;
+    },
+
+    begin: function() {
+        Game.state.score = 0; // fresh start — not called on resume
+    },
+
+    // unload: returns PERSISTENT state. Called on game-over, /game unload,
+    // AND after suspend() during /game suspend.
+    unload: function() {
+        if (Game.state.score > Game.state.highScore)
+            Game.state.highScore = Game.state.score;
+        return { highScore: Game.state.highScore };
+    },
+
+    // suspend: returns SESSION state (mid-game snapshot).
+    // Called before unload() during /game suspend.
     suspend: function() {
-        // Return session state to persist (similar to gameOver's 2nd arg).
-        return { board: board, turn: turn, scores: scores };
+        return { score: Game.state.score, board: Game.state.board };
     },
 
-    resume: function(sessionState) {
-        // sessionState is null for warm resume (runtime still in memory),
-        // or the saved state object for cold resume (server was restarted).
-        if (sessionState) {
-            board = sessionState.board;
-            turn = sessionState.turn;
-            scores = sessionState.scores;
+    // resume: called instead of begin() when restoring from a suspend save.
+    // Falls back to begin() if this hook is not defined.
+    resume: function(saved) {
+        if (saved) {
+            Game.state.score = saved.score;
+            Game.state.board = saved.board;
         }
-        // Re-start timers, etc.
     },
-
-    // ... other hooks ...
 };
 ```
 
-| Hook | When called | Return value |
-|------|------------|--------------|
-| `suspend()` | Admin runs `/game suspend` | Session state object (persisted to JSON) |
-| `resume(sessionState)` | Game is resumed | — |
+## Suspend/resume
+
+Any playing game can be suspended — no opt-in flag is required.
 
 **Commands**:
 - `/game suspend [saveName]` — suspends the active game. Auto-generates a timestamp name if omitted.
 - `/game resume <gameName/saveName>` — resumes a saved session. Tab-completes against existing saves.
+- **File → Saves...** — lists all saves; Load (chrome admin) or Remove (console).
 
 **Save location**: `dist/state/saves/<gameName>/<saveName>.json`
 
-**Warm vs cold resume**: If the server hasn't restarted, the JS runtime is still alive and `resume(null)` is called. If the server was restarted, the game is loaded fresh (`init` + `start` are called first), then `resume(sessionState)` is called with the saved state.
+**Lifecycle on suspend**:
+1. `suspend()` — session snapshot stored in the save file (board state, current score, etc.)
+2. `unload()` — persistent state saved immediately to `dist/state/<gameName>.json` (high scores are not lost even if the save is later deleted)
+
+**Lifecycle on resume**:
+1. `load(persistentState)` — persistent state (high scores) loaded first, same as a fresh load
+2. `resume(sessionState)` — session state restored; called **instead of** `begin()`
+   - If `resume` is not defined, falls back to `begin()` (game starts fresh but keeps persistent state)
+
+**Backward compatibility**: Games without `suspend()` return nil session state — on resume, `resume(null)` falls back to `begin()`, starting fresh while preserving persistent state. Games that don't define `resume()` also fall back to `begin()`.
 
 ## Layout and sizing
 

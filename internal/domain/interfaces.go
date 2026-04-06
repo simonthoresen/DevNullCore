@@ -106,9 +106,18 @@ type Game interface {
 	Update(dt float64)
 	// End is called when the game signals game-over, before PhaseEnding.
 	End()
-	// Unload tears down the game runtime and returns the session state to persist
-	// (nil if the game has no state to save).
+	// Unload tears down the game runtime and returns persistent state to save
+	// across sessions (high scores, unlocks, etc.). Return nil for no state.
+	// Called on game-over, /game unload, AND after Suspend() during /game suspend.
 	Unload() any
+	// Suspend returns the mid-session snapshot to store in a suspend save.
+	// Called before Unload() during /game suspend; does NOT interrupt the VM.
+	// Return nil if the game has no session state worth saving.
+	Suspend() any
+	// Resume is called instead of Begin() when restoring from a suspend save.
+	// sessionState is the value previously returned by Suspend().
+	// Falls back to Begin() if the game does not implement this hook.
+	Resume(sessionState any)
 
 	// --- Events ---
 

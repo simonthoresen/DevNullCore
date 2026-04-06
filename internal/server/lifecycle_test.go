@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -14,17 +15,39 @@ import (
 	"dev-null/internal/state"
 )
 
-// minimalGameJS is a tiny game script that exercises the full lifecycle.
+// minimalGameJS is a tiny game script that exercises the full lifecycle,
+// including the suspend/resume hooks added to separate session from persistent state.
 const minimalGameJS = `
 var Game = {
     gameName: "test-game",
-    state: { score: 0 },
+    state: { score: 0, highScore: 0 },
+
+    // load: called with persistent state on every fresh load AND before resume.
     load: function(saved) {
-        if (saved && saved.score) Game.state.score = saved.score;
+        if (saved && saved.highScore) Game.state.highScore = saved.highScore;
     },
-    begin: function() {},
+
+    begin: function() { Game.state.score = 0; },
     update: function(dt) {},
-    unload: function() { return Game.state; },
+
+    // unload: returns PERSISTENT state (high scores etc.) — called on game-over,
+    // /game unload, AND after suspend() during /game suspend.
+    unload: function() {
+        if (Game.state.score > Game.state.highScore)
+            Game.state.highScore = Game.state.score;
+        return { highScore: Game.state.highScore };
+    },
+
+    // suspend: returns SESSION state (mid-game snapshot) — stored in the save file.
+    suspend: function() {
+        return { score: Game.state.score };
+    },
+
+    // resume: restores session state; called instead of begin() on /game resume.
+    resume: function(saved) {
+        if (saved && saved.score !== undefined) Game.state.score = saved.score;
+    },
+
     onInput: function(pid, key) {
         if (key === "space") {
             Game.state.score++;
@@ -181,7 +204,15 @@ func TestSuspendResume(t *testing.T) {
 		t.Fatalf("expected PhasePlaying")
 	}
 
-	// Suspend.
+	// Earn some score before suspending.
+	s.state.RLock()
+	game := s.state.ActiveGame
+	s.state.RUnlock()
+	game.OnInput("p1", "space") // score → 1
+	game.OnInput("p1", "space") // score → 2
+
+	// Suspend — suspend() captures session state (score=2),
+	// unload() captures persistent state (highScore=0, since gameOver not called).
 	if err := s.suspendGame("save1"); err != nil {
 		t.Fatalf("suspendGame: %v", err)
 	}
@@ -189,7 +220,7 @@ func TestSuspendResume(t *testing.T) {
 		t.Fatalf("expected PhaseNone after suspend")
 	}
 
-	// Verify save file exists.
+	// Verify suspend save file exists with session state.
 	saves := s.ListSuspends()
 	if len(saves) != 1 {
 		t.Fatalf("expected 1 save, got %d", len(saves))
@@ -197,13 +228,38 @@ func TestSuspendResume(t *testing.T) {
 	if saves[0].SaveName != "save1" {
 		t.Fatalf("expected 'save1', got %q", saves[0].SaveName)
 	}
+	suspendSave, err := state.LoadSuspend(s.dataDir, "test-game", "save1")
+	if err != nil {
+		t.Fatalf("LoadSuspend: %v", err)
+	}
+	sessionMap, ok := suspendSave.GameState.(map[string]any)
+	if !ok {
+		t.Fatalf("expected session state map, got %T", suspendSave.GameState)
+	}
+	if fmt.Sprintf("%v", sessionMap["score"]) != "2" {
+		t.Fatalf("expected session score=2, got %v", sessionMap["score"])
+	}
 
-	// Resume from save (always a fresh load since suspend tears down the runtime).
+	// Resume — load() gets persistent state, resume() gets session state (score=2).
 	if err := s.resumeGame("test-game", "save1"); err != nil {
 		t.Fatalf("resumeGame: %v", err)
 	}
 	if s.state.GetGamePhase() != domain.PhasePlaying {
 		t.Fatalf("expected PhasePlaying after resume")
+	}
+
+	// Verify score was restored from session state.
+	s.state.RLock()
+	game = s.state.ActiveGame
+	s.state.RUnlock()
+	rt := game.(*engine.Runtime)
+	stateVal := rt.State()
+	stateMap, ok := stateVal.(map[string]any)
+	if !ok {
+		t.Fatalf("expected game state map, got %T", stateVal)
+	}
+	if fmt.Sprintf("%v", stateMap["score"]) != "2" {
+		t.Fatalf("expected resumed score=2, got %v", stateMap["score"])
 	}
 }
 

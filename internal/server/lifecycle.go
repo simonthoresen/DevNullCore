@@ -338,15 +338,25 @@ func (a *Server) suspendGame(saveName string) error {
 		a.registry.Unregister(cmd.Name)
 	}
 
-	// Unload the runtime to get the session state.
-	sessionState := game.Unload()
+	// Collect mid-session snapshot (does NOT interrupt the VM).
+	sessionState := game.Suspend()
+
+	// Collect persistent state and interrupt the VM.
+	persistentState := game.Unload()
 
 	// Close the script chat channel.
 	if srt, ok := game.(engine.ScriptRuntime); ok {
 		srt.CloseChatCh()
 	}
 
-	// Persist the save.
+	// Save persistent state (high scores, etc.) alongside the suspend save.
+	if persistentState != nil {
+		if err := state.SaveGameState(a.dataDir, gameName, persistentState); err != nil {
+			a.serverLog(fmt.Sprintf("warning: could not save game state on suspend: %v", err))
+		}
+	}
+
+	// Persist the suspend save (session snapshot + teams).
 	save := &state.SuspendSave{
 		GameName:     gameName,
 		SaveName:     saveName,
@@ -442,10 +452,15 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 
 	// Call Load with the suspend save's session state (which carries both global
 	// high scores and the suspended session state).
-	rt.Load(save.GameState)
+	// Load persistent state (high scores, etc.) — same as a fresh game load.
+	persistentState, err := state.LoadGameState(a.dataDir, gameName)
+	if err != nil {
+		a.serverLog(fmt.Sprintf("warning: could not load game state on resume: %v", err))
+	}
+	rt.Load(persistentState)
 
-	// Call Begin to start the game loop immediately (no starting screen on resume).
-	rt.Begin()
+	// Resume with session snapshot instead of Begin (falls back to Begin if hook absent).
+	rt.Resume(save.GameState)
 
 	// Register game commands.
 	for _, cmd := range rt.Commands() {

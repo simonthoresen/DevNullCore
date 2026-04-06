@@ -101,6 +101,8 @@ type Runtime struct {
 	beginFn       goja.Callable
 	endFn         goja.Callable
 	unloadFn      goja.Callable
+	suspendFn     goja.Callable // optional: returns session snapshot for suspend saves
+	resumeFn      goja.Callable // optional: restores session snapshot; falls back to beginFn
 
 	// gameOver() callback state — set by JS, detected by tick loop
 	gameOverPending bool
@@ -232,6 +234,8 @@ func (r *Runtime) extractGameObject() error {
 	r.beginFn = extractCallable(gameObj, "begin")
 	r.endFn = extractCallable(gameObj, "end")
 	r.unloadFn = extractCallable(gameObj, "unload")
+	r.suspendFn = extractCallable(gameObj, "suspend")
+	r.resumeFn = extractCallable(gameObj, "resume")
 
 	// Read gameName property (string, not callable)
 	if v := gameObj.Get("gameName"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
@@ -405,8 +409,9 @@ func (r *Runtime) Commands() []domain.Command {
 	return result
 }
 
-// Unload calls the optional JS unload() hook to collect the session state to
-// persist, then interrupts the VM. Returns the exported state value, or nil.
+// Unload calls the optional JS unload() hook to collect persistent state
+// (high scores, unlocks, etc.), then interrupts the VM. Returns the exported
+// state value, or nil.
 func (r *Runtime) Unload() any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -427,6 +432,49 @@ func (r *Runtime) Unload() any {
 
 	r.vm.Interrupt("game unloaded")
 	return result
+}
+
+// Suspend calls the optional JS suspend() hook to collect the mid-session
+// snapshot for a suspend save. Does NOT interrupt the VM — Unload() is called
+// immediately after by the server to collect persistent state.
+// Returns the exported snapshot, or nil if the hook is not defined.
+func (r *Runtime) Suspend() any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.suspendFn == nil {
+		return nil
+	}
+	var result any
+	func() {
+		defer r.recoverJS("Suspend")
+		defer traceCall(r.vm, "Suspend")()
+		cancel := Watchdog(r.vm, "Suspend")
+		defer cancel()
+		val, err := r.suspendFn(goja.Undefined())
+		if err == nil && val != nil && !goja.IsUndefined(val) && !goja.IsNull(val) {
+			result = val.Export()
+		}
+	}()
+	return result
+}
+
+// Resume calls the optional JS resume(sessionState) hook with the session
+// snapshot from a suspend save. If the hook is not defined, falls back to
+// calling Begin() so existing games without a resume hook still work.
+func (r *Runtime) Resume(sessionState any) {
+	if r.resumeFn != nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		defer r.recoverJS("Resume")
+		defer traceCall(r.vm, "Resume")()
+		cancel := Watchdog(r.vm, "Resume")
+		defer cancel()
+		_, _ = r.resumeFn(goja.Undefined(), r.vm.ToValue(sessionState))
+		return
+	}
+	// No resume hook — fall back to begin().
+	r.Begin()
 }
 
 func (r *Runtime) Menus() []domain.MenuDef {
