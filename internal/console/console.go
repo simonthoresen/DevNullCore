@@ -402,11 +402,15 @@ func (m *Model) pushConsoleThemeDialog(cursor int) {
 			tags[i] = "(○)"
 		}
 	}
+	btns := []string{"Add", "Close"}
+	if m.themeName != "" {
+		btns = []string{"Add", "Remove", "Close"}
+	}
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:     "Themes",
 		ListItems: available,
 		ListTags:  tags,
-		Buttons:   []string{"Add", "Remove", "Close"},
+		Buttons:   btns,
 		OnListEnter: func(idx int) {
 			name := available[idx]
 			path := filepath.Join(m.api.DataDir(), "themes", name+".json")
@@ -426,7 +430,7 @@ func (m *Model) pushConsoleThemeDialog(cursor int) {
 			case "Add":
 				m.showConsoleThemeAddDialog(idx)
 			case "Remove":
-				m.showConsoleThemeRemoveConfirm(available[idx], idx)
+				m.showConsoleThemeRemoveConfirm(m.themeName, idx)
 			}
 		},
 	})
@@ -502,12 +506,15 @@ func (m *Model) pushConsolePluginDialog(cursor int) {
 			tags[i] = "[ ]"
 		}
 	}
+	pluginBtns := []string{"Add", "Close"}
+	if len(m.pluginNames) > 0 {
+		pluginBtns = []string{"Add", "Remove", "Close"}
+	}
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:                 "Plugins",
-		ListItems:             items,
-		ListTags:              tags,
-		Buttons:               []string{"Add", "Remove", "Close"},
-		RequireListNavigation: []string{"Remove"},
+		Title:     "Plugins",
+		ListItems: items,
+		ListTags:  tags,
+		Buttons:   pluginBtns,
 		OnListEnter: func(idx int) {
 			name := items[idx]
 			if loadedSet[name] {
@@ -524,7 +531,7 @@ func (m *Model) pushConsolePluginDialog(cursor int) {
 			case "Add":
 				m.showConsolePluginAddDialog(idx)
 			case "Remove":
-				m.showConsolePluginRemoveConfirm(items[idx], idx)
+				m.showConsolePluginRemoveConfirm(append([]string(nil), m.pluginNames...), idx)
 			}
 		},
 	})
@@ -546,20 +553,37 @@ func (m *Model) showConsolePluginAddDialog(returnCursor int) {
 	})
 }
 
-func (m *Model) showConsolePluginRemoveConfirm(name string, returnCursor int) {
-	// Determine extension: check for .js first, then .lua.
-	ext := ".js"
-	if _, err := os.Stat(filepath.Join(m.api.DataDir(), "plugins", name+".lua")); err == nil {
-		ext = ".lua"
+// scriptExt returns the file extension (".js" or ".lua") for a script in dir.
+func scriptExt(dir, name string) string {
+	if _, err := os.Stat(filepath.Join(dir, name+".lua")); err == nil {
+		return ".lua"
 	}
+	return ".js"
+}
+
+func (m *Model) showConsolePluginRemoveConfirm(names []string, returnCursor int) {
+	var lines []string
+	for _, name := range names {
+		ext := scriptExt(filepath.Join(m.api.DataDir(), "plugins"), name)
+		lines = append(lines, "  "+name+ext)
+	}
+	noun := "plugin"
+	if len(names) > 1 {
+		noun = fmt.Sprintf("%d plugins", len(names))
+	}
+	body := fmt.Sprintf("Delete active %s from the plugins folder?\n%s\nThis cannot be undone.", noun, strings.Join(lines, "\n"))
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:   "Delete Plugin File",
-		Body:    fmt.Sprintf("Delete '%s%s' from the plugins folder?\nThis cannot be undone.", name, ext),
+		Title:   "Delete Plugin Files",
+		Body:    body,
 		Buttons: []string{"Delete", "Cancel"},
 		Warning: true,
 		OnClose: func(btn string) {
 			if btn == "Delete" {
-				os.Remove(filepath.Join(m.api.DataDir(), "plugins", name+ext))
+				for _, name := range names {
+					m.handlePluginCommand("/plugin unload " + name)
+					ext := scriptExt(filepath.Join(m.api.DataDir(), "plugins"), name)
+					os.Remove(filepath.Join(m.api.DataDir(), "plugins", name+ext))
+				}
 			}
 			m.pushConsolePluginDialog(returnCursor)
 		},
@@ -605,12 +629,15 @@ func (m *Model) pushConsoleShaderDialog(cursor int) {
 			tags[i] = "[ ]"
 		}
 	}
+	shaderBtns := []string{"Add", "Close"}
+	if len(m.shaderNames) > 0 {
+		shaderBtns = []string{"Add", "Remove", "Close"}
+	}
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:                 "Shaders",
-		ListItems:             items,
-		ListTags:              tags,
-		Buttons:               []string{"Add", "Remove", "Close"},
-		RequireListNavigation: []string{"Remove"},
+		Title:     "Shaders",
+		ListItems: items,
+		ListTags:  tags,
+		Buttons:   shaderBtns,
 		OnListEnter: func(idx int) {
 			name := items[idx]
 			if loadedSet[name] {
@@ -627,7 +654,7 @@ func (m *Model) pushConsoleShaderDialog(cursor int) {
 			case "Add":
 				m.showConsoleShaderAddDialog(idx)
 			case "Remove":
-				m.showConsoleShaderRemoveConfirm(items[idx], idx)
+				m.showConsoleShaderRemoveConfirm(append([]string(nil), m.shaderNames...), idx)
 			}
 		},
 	})
@@ -649,26 +676,29 @@ func (m *Model) showConsoleShaderAddDialog(returnCursor int) {
 	})
 }
 
-func (m *Model) showConsoleShaderRemoveConfirm(name string, returnCursor int) {
-	ext := ".js"
-	if _, err := os.Stat(filepath.Join(m.api.DataDir(), "shaders", name+".lua")); err == nil {
-		ext = ".lua"
+func (m *Model) showConsoleShaderRemoveConfirm(names []string, returnCursor int) {
+	var lines []string
+	for _, name := range names {
+		ext := scriptExt(filepath.Join(m.api.DataDir(), "shaders"), name)
+		lines = append(lines, "  "+name+ext)
 	}
+	noun := "shader"
+	if len(names) > 1 {
+		noun = fmt.Sprintf("%d shaders", len(names))
+	}
+	body := fmt.Sprintf("Delete active %s from the shaders folder?\n%s\nThis cannot be undone.", noun, strings.Join(lines, "\n"))
 	m.overlay.PushDialog(domain.DialogRequest{
-		Title:   "Delete Shader File",
-		Body:    fmt.Sprintf("Delete '%s%s' from the shaders folder?\nThis cannot be undone.", name, ext),
+		Title:   "Delete Shader Files",
+		Body:    body,
 		Buttons: []string{"Delete", "Cancel"},
 		Warning: true,
 		OnClose: func(btn string) {
 			if btn == "Delete" {
-				// Unload if active before deleting.
-				for _, n := range m.shaderNames {
-					if strings.EqualFold(n, name) {
-						m.handleShaderCommand("/shader unload " + name)
-						break
-					}
+				for _, name := range names {
+					m.handleShaderCommand("/shader unload " + name)
+					ext := scriptExt(filepath.Join(m.api.DataDir(), "shaders"), name)
+					os.Remove(filepath.Join(m.api.DataDir(), "shaders", name+ext))
 				}
-				os.Remove(filepath.Join(m.api.DataDir(), "shaders", name+ext))
 			}
 			m.pushConsoleShaderDialog(returnCursor)
 		},
