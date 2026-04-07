@@ -30,18 +30,12 @@ jobs:
         shell: bash
         run: |
           cd dist
-          7z a -tzip ../dev-null.zip \
-            dev-null-server.exe \
-            dev-null-client.exe \
-            pinggy-helper.exe \
-            start-server.ps1 \
-            start-client.ps1 \
-            .bundle-manifest.json \
-            fonts/ \
-            games/ \
-            plugins/ \
-            shaders/ \
-            themes/
+          7z a -tzip ../dev-null.zip . \
+            -xr!logs \
+            -xr!state \
+            -xr!*_ed25519 \
+            -xr!*_ed25519.pub \
+            -xr!.bundle-version
 
       - name: Get short SHA
         id: sha
