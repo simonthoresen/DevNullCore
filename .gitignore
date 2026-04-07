@@ -28,6 +28,8 @@ dist/*_ed25519
 dist/*_ed25519.pub
 dist/logs/*
 !dist/logs/.gitkeep
+dist/.bundle-manifest.json
+dist/.bundle-version
 
 
 # SSH keys (host keys and any private keys)

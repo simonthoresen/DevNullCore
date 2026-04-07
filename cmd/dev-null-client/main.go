@@ -26,6 +26,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 
 	"dev-null/internal/client"
+	"dev-null/internal/datadir"
 	"dev-null/internal/engine"
 	"dev-null/internal/server"
 )
@@ -44,12 +45,20 @@ func main() {
 	terminal := flag.Bool("terminal", false, "terminal mode: render to terminal instead of graphical window")
 	localMode := flag.Bool("local", false, "start a headless SSH server and connect the graphical client to it")
 	address := flag.String("address", ":23234", "SSH listen address (local mode)")
-	dataDir := flag.String("data-dir", ".", "data directory containing games/ (local mode)")
+	dataDir := flag.String("data-dir", datadir.DefaultDataDir(), "data directory containing games/ (local mode)")
 	gameName := flag.String("game", "", "game to preload (local mode)")
 	resumeName := flag.String("resume", "", "game/save to resume, e.g. orbits/autosave (local mode)")
 	tickInterval := flag.Duration("tick-interval", 100*time.Millisecond, "server tick interval (local mode)")
 	termFlag := flag.String("term", "", "force terminal color profile for local-mode sessions: truecolor, 256color, ansi, ascii")
 	flag.Parse()
+
+	// Bootstrap bundled assets for local mode.
+	if *localMode && *dataDir == datadir.DefaultDataDir() {
+		if err := datadir.Bootstrap(datadir.InstallDir(), *dataDir, buildCommit); err != nil {
+			fmt.Fprintf(os.Stderr, "bootstrap error: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	if *localMode {
 		runLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag)

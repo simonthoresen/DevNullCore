@@ -54,6 +54,22 @@ go run ./cmd/dev-null-client --local --data-dir dist --player alice --game orbit
 - `DEV_NULL_LOG_LEVEL` — log level: debug/info/warn/error (default: info)
 - `DEV_NULL_PINGGY_STATUS_FILE` — path to Pinggy status file (enables tunnel bridge UI)
 
+## Data Directory Layout
+
+Built binaries use two directories:
+
+| Directory | Default | Purpose |
+|-----------|---------|---------|
+| **Install dir** | Exe directory | Binaries, bundled assets, `.bundle-manifest.json` (read-only, managed by installer) |
+| **Data dir** | `%APPDATA%/DevNull` | Working copies of assets, user-added content, saves, host keys (read-write) |
+
+On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets from install dir to data dir using a manifest-based merge:
+- New bundled files are copied; updated bundled files are overwritten; user-added files are left alone.
+- `.bundle-version` (written last) tracks the current build commit; if it matches, bootstrap is a no-op.
+- Legacy data in the install dir (`state/`, host keys) is migrated once on first upgrade.
+
+`--data-dir` overrides the data dir (skips bootstrap). `go run` (dev mode, `buildCommit=="dev"`) falls back to `"."` with no bootstrap, preserving the existing `--data-dir dist` development workflow.
+
 ## Architecture
 
 **dev-null** is a "Multitenant Singleton" server over SSH.
@@ -104,15 +120,18 @@ go run ./cmd/dev-null-client --local --data-dir dist --player alice --game orbit
 | `internal/engine/figlet.go` | Figlet ASCII art rendering |
 | `internal/engine/gamelist.go` | Game discovery, path resolution, team range probing |
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
+| `internal/datadir/datadir.go` | Data directory resolution, bootstrap (install dir → %APPDATA%/DevNull) |
 | `cmd/dev-null-server/` | Server entry point: boot sequence, console setup, signal handling |
 | `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine sprite rendering for charmap games |
+| `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
 | `internal/client/` | Client internals: SSH transport, ANSI parser, charmap atlas, Ebitengine renderer |
 | `dist/charmaps/` | Charmap assets: per-game subdirectories with charmap.json + atlas PNG |
 | `dist/start-server.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then dev-null-server.exe |
 | `dist/start-client.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts dev-null-client.exe |
 | `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
-| `.github/workflows/release.yml` | CI: builds binaries and publishes rolling `latest` release on every push to main |
+| `winget/` | Winget manifest templates for Windows Package Manager submission |
+| `.github/workflows/release.yml` | CI: builds binaries, publishes rolling `latest` on main push, versioned releases on `v*` tags |
 
 ## UI Rule — No Bespoke Rendering
 

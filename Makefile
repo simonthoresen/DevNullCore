@@ -1,4 +1,4 @@
-.PHONY: build build-server build-client build-testbed run-server run-server-lan run-server-local run-client run-client-local run-testbed run-testbed-onlcr test clean
+.PHONY: build build-server build-client build-testbed run-server run-server-lan run-server-local run-client run-client-local run-testbed run-testbed-onlcr test clean generate-manifest
 
 ifeq ($(OS),Windows_NT)
   GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>nul || echo dev)
@@ -55,6 +55,10 @@ run-testbed: build-testbed
 # Testbed: SSH mode with ONLCR fix applied
 run-testbed-onlcr: build-testbed
 	./dist/testbed.exe --onlcr
+
+# Generate bundle manifest for dist/ assets
+generate-manifest:
+	go run ./cmd/gen-manifest dist/ > dist/.bundle-manifest.json
 
 # Remove build outputs from dist/ (keeps games/, fonts/, logs/)
 clean:

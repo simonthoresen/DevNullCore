@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: SimonThoresen.DevNull
+PackageVersion: 0.1.0  # UPDATE on each release
+PackageLocale: en-US
+Publisher: Simon Thoresen
+PublisherUrl: https://github.com/simonthoresen
+PackageName: DevNull
+PackageUrl: https://github.com/simonthoresen/dev-null
+License: MIT
+ShortDescription: Terminal-based multiplayer game server over SSH
+Description: >-
+  A framework for hosting terminal-based multiplayer games over SSH.
+  Only the server operator needs to install anything — players connect
+  with a plain ssh command, no client install required. Games are written
+  in JavaScript and loaded at runtime.
+Tags:
+  - ssh
+  - games
+  - terminal
+  - multiplayer
+  - tui
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
