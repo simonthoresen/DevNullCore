@@ -136,11 +136,17 @@ func DrawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer, fontFace tex
 					r, g, b, _ := p.Fg.RGBA()
 					fg = color.RGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255}
 				}
-				cellClip := screen.SubImage(image.Rect(px, py, px+CellW, py+CellH)).(*ebiten.Image)
+				// Block-element characters (█▀▄▌▐▖▗▘▙▚▛▜▝▞▟) don't overflow
+				// their cell, so skip the SubImage clip that causes visible
+				// seam lines when the TTF glyph doesn't fill the cell exactly.
+				dst := screen
+				if p.Char < 0x2580 || p.Char > 0x259F {
+					dst = screen.SubImage(image.Rect(px, py, px+CellW, py+CellH)).(*ebiten.Image)
+				}
 				dop := &text.DrawOptions{}
 				dop.GeoM.Translate(float64(px), float64(py))
 				dop.ColorScale.ScaleWithColor(fg)
-				text.Draw(cellClip, string(p.Char), fontFace, dop)
+				text.Draw(dst, string(p.Char), fontFace, dop)
 			}
 		}
 	}

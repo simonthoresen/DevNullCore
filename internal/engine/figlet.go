@@ -51,40 +51,23 @@ var aboutLogoLines = [3]string{
 }
 
 // AboutLogo returns the About dialog body.
-// The right column carries a 63-char string (3 rows × 21 chars) composed of:
-//
-//	yyyy-MM-dd + · fill + remote URL
-//
-// The fill uses the same middle-dot (·) as the text-input empty-slot style so
-// the string reads as deliberately weird but has no wasted space.
+// The right column carries the remote URL split across 3 rows × 21 chars.
 func AboutLogo() string {
 	const (
-		dotFill     = '·'
-		bracketInner = 21  // chars inside each "[ ... ]"
-		totalInner  = bracketInner * 3 // 63
-		sepWidth    = 60
+		bracketInner = 21 // chars inside each "[ ... ]"
+		totalInner   = bracketInner * 3 // 63
+		sepWidth     = 60
 	)
 
-	date := infoBuildDate
-	if date == "" {
-		date = "????" + "-" + "??" + "-" + "??"
-	}
 	remote := infoBuildRemote
-
-	// Build the 63-rune info string: date + dots + remote (truncate if needed).
-	// Lengths and slicing are rune-based because dotFill is multi-byte UTF-8.
-	dateRunes := []rune(date)
+	// Pad or truncate to exactly totalInner runes.
 	remoteRunes := []rune(remote)
-	static := len(dateRunes) + len(remoteRunes)
-	var infoRunes []rune
-	switch {
-	case static >= totalInner:
-		infoRunes = append(dateRunes, remoteRunes...)
-		infoRunes = infoRunes[:totalInner]
-	default:
-		dots := totalInner - len(dateRunes) - len(remoteRunes)
-		fill := []rune(strings.Repeat(string(dotFill), dots))
-		infoRunes = append(dateRunes, append(fill, remoteRunes...)...)
+	if len(remoteRunes) >= totalInner {
+		remoteRunes = remoteRunes[:totalInner]
+	} else {
+		for len(remoteRunes) < totalInner {
+			remoteRunes = append(remoteRunes, ' ')
+		}
 	}
 
 	sep := strings.Repeat("░", sepWidth)
@@ -92,7 +75,7 @@ func AboutLogo() string {
 	lines = append(lines, sep, "")
 	for i, logo := range aboutLogoLines {
 		start := i * bracketInner
-		slice := string(infoRunes[start : start+bracketInner])
+		slice := string(remoteRunes[start : start+bracketInner])
 		lines = append(lines, logo+"[ "+slice+" ]")
 	}
 	lines = append(lines, "")

@@ -20,6 +20,7 @@ type EbitenBackend struct {
 
 	model    tea.Model
 	fontFace text.Face
+	dpiScale float64 // device scale factor for HiDPI rendering
 
 	// Inbound message queue — fed by Send() and tea.Cmd goroutines.
 	msgCh chan tea.Msg
@@ -42,9 +43,14 @@ func NewEbitenBackend(opts ...Option) *EbitenBackend {
 	for _, fn := range opts {
 		fn(&o)
 	}
+	scale := ebiten.Monitor().DeviceScaleFactor()
+	if scale < 1 {
+		scale = 1
+	}
 	return &EbitenBackend{
 		opts:        o,
-		fontFace:    GUIFontFace(16),
+		fontFace:    GUIFontFace(16 * scale),
+		dpiScale:    scale,
 		msgCh:       make(chan tea.Msg, 256),
 		dirty:       true, // force initial render
 		cursorStart: time.Now(),
@@ -61,9 +67,10 @@ func (e *EbitenBackend) Run(model tea.Model) error {
 	cmd := model.Init()
 	e.processCmd(cmd)
 
-	// Send initial window size.
-	cols := e.opts.windowWidth / CellW
-	rows := e.opts.windowHeight / CellH
+	// Send initial window size. Window dimensions are in logical pixels;
+	// CellW/CellH are in physical pixels (font scaled by DPI), so scale up.
+	cols := int(float64(e.opts.windowWidth)*e.dpiScale) / CellW
+	rows := int(float64(e.opts.windowHeight)*e.dpiScale) / CellH
 	e.lastCols = cols
 	e.lastRows = rows
 	e.Send(tea.WindowSizeMsg{Width: cols, Height: rows})
@@ -86,10 +93,11 @@ func (e *EbitenBackend) Send(msg tea.Msg) {
 
 // Update implements ebiten.Game.
 func (e *EbitenBackend) Update() error {
-	// Handle window resize.
+	// Handle window resize. WindowSize returns logical pixels;
+	// scale to physical to match CellW/CellH (font scaled by DPI).
 	w, h := ebiten.WindowSize()
-	cols := w / CellW
-	rows := h / CellH
+	cols := int(float64(w)*e.dpiScale) / CellW
+	rows := int(float64(h)*e.dpiScale) / CellH
 	if cols < 1 {
 		cols = 1
 	}
@@ -177,9 +185,15 @@ func (e *EbitenBackend) Draw(screen *ebiten.Image) {
 	}
 }
 
-// Layout implements ebiten.Game.
+// LayoutF implements ebiten.LayoutFer for HiDPI-aware rendering.
+// It returns the game screen size in physical pixels so text and UI are crisp.
+func (e *EbitenBackend) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
+	return outsideWidth * e.dpiScale, outsideHeight * e.dpiScale
+}
+
+// Layout implements ebiten.Game (required by interface, but LayoutF takes precedence).
 func (e *EbitenBackend) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return outsideWidth, outsideHeight
+	return int(float64(outsideWidth) * e.dpiScale), int(float64(outsideHeight) * e.dpiScale)
 }
 
 // processCmd runs a tea.Cmd in a goroutine, routing the result back via msgCh.
