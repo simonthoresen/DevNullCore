@@ -167,6 +167,14 @@ func CanvasFrameSize(pixelW, pixelH int) int {
 	return raw * 15 / 100
 }
 
+// EncodeOSC52 returns a standard OSC 52 escape sequence that sets the system
+// clipboard. Supported by Windows Terminal, iTerm2, kitty, and most modern
+// terminal emulators. Terminals that don't support it silently ignore it.
+func EncodeOSC52(text string) string {
+	encoded := base64.StdEncoding.EncodeToString([]byte(text))
+	return "\x1b]52;c;" + encoded + "\x07"
+}
+
 // CanvasBandwidthMbps estimates the bandwidth in Mbps for canvas rendering
 // at the given cell viewport size, scale factor, and tick rate.
 func CanvasBandwidthMbps(viewportCols, viewportRows, scale, ticksPerSecond int) float64 {

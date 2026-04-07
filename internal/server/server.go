@@ -439,6 +439,9 @@ func (a *Server) registerBuiltins() {
 			} else {
 				ctx.Reply(cmd)
 			}
+			if ctx.Clipboard != nil {
+				ctx.Clipboard(cmd)
+			}
 		},
 	})
 

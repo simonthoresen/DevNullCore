@@ -170,6 +170,11 @@ func (m *Model) View() tea.View {
 		}
 	}
 
+	// Emit OSC 52 clipboard sequence if a command requested it.
+	if m.pendingClipboard != "" {
+		oscPrefix += render.EncodeOSC52(m.pendingClipboard)
+		m.pendingClipboard = ""
+	}
 	view.SetContent(oscPrefix + buf.ToString(m.ColorProfile))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion

@@ -12,6 +12,13 @@ type BufferViewer interface {
 	ViewBuffer() *render.ImageBuffer
 }
 
+// ClipboardViewer is implemented by models that can produce clipboard text
+// for the GUI backend to copy via os/exec (since there's no terminal to
+// handle OSC 52 in GUI mode).
+type ClipboardViewer interface {
+	PopClipboard() string
+}
+
 // Backend abstracts the display target for a Bubble Tea model.
 // A model can be run in a terminal (TUI) or an Ebitengine window (GUI).
 type Backend interface {

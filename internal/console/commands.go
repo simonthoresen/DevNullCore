@@ -39,6 +39,9 @@ func (m *Model) consoleCtx() domain.CommandContext {
 		ServerLog: func(s string) {
 			m.appendLog(s)
 		},
+		Clipboard: func(s string) {
+			m.pendingClipboard = s
+		},
 	}
 }
 

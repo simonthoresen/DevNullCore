@@ -27,6 +27,7 @@ type CommandContext struct {
 	Reply     func(string) // send message to caller only (private)
 	Broadcast func(string) // send system message to all chat
 	ServerLog func(string) // append to server log panel only (never sent to players)
+	Clipboard func(string) // copy text to system clipboard (nil = no clipboard support)
 }
 
 // MenuItemDef describes one item in a game-registered drop-down menu.

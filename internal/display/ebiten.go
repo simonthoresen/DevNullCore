@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text/v2"
+
+	"dev-null/internal/clipboard"
 )
 
 // EbitenBackend runs a Bubble Tea model inside an Ebitengine window.
@@ -148,6 +150,13 @@ func (e *EbitenBackend) Draw(screen *ebiten.Image) {
 	if bv, ok := e.model.(BufferViewer); ok {
 		if buf := bv.ViewBuffer(); buf != nil {
 			DrawImageBuffer(screen, buf, e.fontFace)
+		}
+	}
+
+	// Handle clipboard copy for GUI mode (no terminal to handle OSC 52).
+	if cv, ok := e.model.(ClipboardViewer); ok {
+		if text := cv.PopClipboard(); text != "" {
+			go clipboard.Copy(text) //nolint:errcheck
 		}
 	}
 

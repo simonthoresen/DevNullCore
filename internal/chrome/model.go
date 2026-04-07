@@ -168,6 +168,10 @@ type Model struct {
 	// Reusable render buffer — cleared and resized each frame instead of allocated.
 	renderBuf *render.ImageBuffer
 
+	// pendingClipboard is set by commands that want to copy text to the clipboard.
+	// Consumed by View() (OSC 52) or PopClipboard() (GUI backend).
+	pendingClipboard string
+
 	// ColorProfile is the terminal's color depth, used when serialising the
 	// render buffer. Defaults to TrueColor; set by the server from the SSH env.
 	ColorProfile colorprofile.Profile
@@ -349,6 +353,13 @@ func (m *Model) Init() tea.Cmd {
 // Used by the GUI backend to skip ANSI serialization.
 func (m *Model) ViewBuffer() *render.ImageBuffer {
 	return m.renderBuf
+}
+
+// PopClipboard returns and clears any pending clipboard text.
+func (m *Model) PopClipboard() string {
+	s := m.pendingClipboard
+	m.pendingClipboard = ""
+	return s
 }
 
 

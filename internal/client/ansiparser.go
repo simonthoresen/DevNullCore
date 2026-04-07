@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"dev-null/internal/clipboard"
 	"dev-null/internal/domain"
 	"dev-null/internal/render"
 )
@@ -369,6 +370,14 @@ func (g *TerminalGrid) parseOSC(data []byte, start int) int {
 
 // handleOSC processes a dev-null OSC payload.
 func (g *TerminalGrid) handleOSC(payload string) {
+	// Standard OSC 52 clipboard: "52;c;<base64>"
+	if strings.HasPrefix(payload, "52;c;") {
+		if decoded, err := base64.StdEncoding.DecodeString(payload[5:]); err == nil {
+			clipboard.Copy(string(decoded)) //nolint:errcheck
+		}
+		return
+	}
+
 	if !strings.HasPrefix(payload, "ns;") {
 		return // not a dev-null OSC
 	}

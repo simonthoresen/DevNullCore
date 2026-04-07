@@ -90,6 +90,10 @@ type Model struct {
 	// Reusable render buffer — cleared and resized each frame instead of allocated.
 	renderBuf *render.ImageBuffer
 
+	// pendingClipboard is set by commands that want to copy text to the clipboard.
+	// Consumed by View() (OSC 52 for TUI) or PopClipboard() (for GUI backend).
+	pendingClipboard string
+
 	// profile is the color depth for the console's own terminal.
 	// Set from the operator's terminal environment, overridden by --term.
 	profile colorprofile.Profile
@@ -195,6 +199,14 @@ func (m *Model) Init() tea.Cmd {
 // Used by the GUI backend to skip ANSI serialization.
 func (m *Model) ViewBuffer() *render.ImageBuffer {
 	return m.renderBuf
+}
+
+// PopClipboard returns and clears any pending clipboard text.
+// Used by the GUI backend to copy text via os/exec.
+func (m *Model) PopClipboard() string {
+	s := m.pendingClipboard
+	m.pendingClipboard = ""
+	return s
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -678,7 +690,14 @@ func (m *Model) View() tea.View {
 	m.api.State().RUnlock()
 	engine.ApplyShaders(m.shaders, buf, shaderElapsed)
 
-	view.SetContent(buf.ToString(m.profile))
+	content := buf.ToString(m.profile)
+	// Emit OSC 52 clipboard sequence if a command requested it.
+	// The terminal emulator handles the clipboard copy; GUI mode uses PopClipboard() instead.
+	if m.pendingClipboard != "" {
+		content = render.EncodeOSC52(m.pendingClipboard) + content
+		m.pendingClipboard = ""
+	}
+	view.SetContent(content)
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeCellMotion
 

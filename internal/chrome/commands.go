@@ -162,6 +162,9 @@ func (m *Model) dispatchInput(text string) {
 			ServerLog: func(s string) {
 				m.api.ServerLog(s)
 			},
+			Clipboard: func(s string) {
+				m.pendingClipboard = s
+			},
 		}
 		m.api.DispatchCommand(text, ctx)
 		return
