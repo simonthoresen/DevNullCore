@@ -80,6 +80,12 @@ type Game struct {
 	audioAssets  map[string][]byte        // raw decoded asset bytes
 	audioPlayers map[string]*audio.Player // currently playing audio players
 
+	// MIDI synthesizer for SoundFont-based audio.
+	midiSynth *MidiSynth
+
+	// Data directory path (for locating SoundFont files, etc.).
+	dataDir string
+
 	// Read buffer for SSH data.
 	readBuf []byte
 	mu      sync.Mutex
@@ -91,7 +97,7 @@ func DefaultFontFace() text.Face {
 }
 
 // NewGame creates a new client game instance.
-func NewGame(conn *SSHConn, fontFace text.Face, width, height int, playerID string) *Game {
+func NewGame(conn *SSHConn, fontFace text.Face, width, height int, playerID, dataDir string) *Game {
 	cols := width / cellW
 	rows := height / cellH
 	if cols < 1 {
@@ -111,6 +117,8 @@ func NewGame(conn *SSHConn, fontFace text.Face, width, height int, playerID stri
 		localRenderer: NewLocalRenderer(),
 		clientScreen:  NewClientScreen(t),
 		playerID:      playerID,
+		dataDir:       dataDir,
+		midiSynth:     NewMidiSynth(filepath.Join(dataDir, "soundfonts", "chiptune.sf2")),
 		readBuf:       make([]byte, 64*1024),
 	}
 
@@ -167,6 +175,7 @@ func (g *Game) readLoop() {
 				g.assetReceived = 0
 				g.audioAssets = make(map[string][]byte)
 				g.stopSound("")
+				g.midiSynth.AllNotesOff()
 				g.grid.AssetManifestTotal = 0
 			}
 			// Incoming binary assets.
@@ -187,6 +196,21 @@ func (g *Game) readLoop() {
 				}
 			}
 			g.grid.SoundCmds = nil
+			// MIDI events.
+			for _, ev := range g.grid.MidiEvents {
+				g.midiSynth.DispatchEvent(ev)
+			}
+			g.grid.MidiEvents = nil
+			// SoundFont switch.
+			if g.grid.SynthName != "" {
+				sf2Path := filepath.Join(g.dataDir, "soundfonts", g.grid.SynthName+".sf2")
+				if err := g.midiSynth.LoadSoundFont(sf2Path); err == nil {
+					g.midiSynth.mu.Lock()
+					g.midiSynth.fontName = g.grid.SynthName
+					g.midiSynth.mu.Unlock()
+				}
+				g.grid.SynthName = ""
+			}
 			g.mu.Unlock()
 		}
 		if err != nil {

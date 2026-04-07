@@ -129,6 +129,9 @@ type Model struct {
 	assetsSent       bool     // true after game assets (audio/images) have been sent
 	lastStateJSON    string   // JSON of last sent Game.state (for delta detection)
 	pendingSoundOSC  []string // sound/stop-sound OSC strings to inject into next View()
+	pendingMidiOSC   []string // MIDI event OSC strings to inject into next View()
+	synthName        string   // active SoundFont name (e.g. "chiptune", "gm"); empty = default
+	synthSent        bool     // true after synth selection OSC has been sent
 
 	overlay widget.OverlayState
 

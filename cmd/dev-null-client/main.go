@@ -89,7 +89,7 @@ func main() {
 	fmt.Println("Connected. Starting renderer...")
 
 	fontFace := client.DefaultFontFace()
-	game := client.NewGame(conn, fontFace, 1200, 800, *player)
+	game := client.NewGame(conn, fontFace, 1200, 800, *player, datadir.DefaultDataDir())
 
 	ebiten.SetWindowSize(1200, 800)
 	ebiten.SetWindowTitle("dev-null")
@@ -168,7 +168,7 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 
 	// Run the graphical client.
 	fontFace := client.DefaultFontFace()
-	game := client.NewGame(conn, fontFace, 1200, 800, playerName)
+	game := client.NewGame(conn, fontFace, 1200, 800, playerName, dataDir)
 
 	ebiten.SetWindowSize(1200, 800)
 	ebiten.SetWindowTitle("dev-null (local)")

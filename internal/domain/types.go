@@ -30,6 +30,30 @@ type Message struct {
 	SoundFile string // filename to play on graphical clients (e.g. "music.ogg"); empty = no sound
 	SoundLoop bool   // true = loop the sound
 	SoundStop bool   // true = this is a stop-sound command (SoundFile="" means stop all)
+
+	// MIDI fields — optional. Graphical clients synthesize these via SoundFont; others ignore.
+	// Messages with empty Text and MIDI events are not stored in chat history.
+	MidiEvents []MidiEvent // MIDI events to send to graphical clients
+}
+
+// MidiEventType identifies the kind of MIDI event.
+type MidiEventType int
+
+const (
+	MidiNoteOn        MidiEventType = iota // Note on (with optional auto-off duration)
+	MidiProgramChange                      // Instrument/program change
+	MidiControlChange                      // Control change (volume, pan, etc.)
+)
+
+// MidiEvent is a MIDI event sent from a game to graphical clients for synthesis.
+type MidiEvent struct {
+	Type       MidiEventType `json:"t"`            // event type
+	Channel    int           `json:"c"`            // MIDI channel (0-15)
+	Note       int           `json:"n,omitempty"`  // note number (0-127)
+	Velocity   int           `json:"v,omitempty"`  // velocity (0-127) or CC value
+	DurationMs int           `json:"d,omitempty"`  // auto-NoteOff delay in ms (0 = manual)
+	Program    int           `json:"p,omitempty"`  // program number (0-127)
+	Controller int           `json:"ct,omitempty"` // controller number (0-127)
 }
 
 // GameAsset is a binary asset file bundled with a folder-based game.

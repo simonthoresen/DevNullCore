@@ -281,6 +281,13 @@ These are available in games.
 | `gameOver(results)` | Same as above, with ranked results displayed on the ending screen. `results` is an array of `{ name, result }` in ranked order. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). |
 | `now()` | Returns the server time as epoch milliseconds (same as `Date.now()` but uses the framework's central clock, which is mockable in tests). Available in both games and plugins. |
 | `include(name)` | Evaluates another `.js` file from the same directory as the game file. Used for multi-file games in `games/<name>/` folders. The `.js` extension is added automatically if omitted. Each file is only included once (idempotent). Path traversal (`..`) is rejected. |
+| `playSound(filename, opts)` | Plays an audio file on graphical clients. File must be a game asset (.ogg, .mp3, .wav). Options: `{ loop: true }` for looping, `{ alt: "text" }` for chat fallback text on non-graphical clients. |
+| `stopSound(filename)` | Stops playback of the named audio file. Call with no arguments or empty string to stop all sounds. |
+| `midiNote(channel, note, velocity, durationMs)` | Plays a MIDI note on all graphical clients. Channel 0-15, note 0-127, velocity 0-127. Duration in ms (0 = NoteOn only, no auto-off). Requires a SoundFont on the client (`/synth` command). |
+| `midiNotePlayer(playerID, ch, note, vel, dur)` | Same as `midiNote` but only for one player. |
+| `midiProgram(channel, program)` | Changes the instrument on a MIDI channel for all players. Program 0-127 (General MIDI). |
+| `midiProgramPlayer(playerID, ch, program)` | Same as `midiProgram` but only for one player. |
+| `midiCC(channel, controller, value)` | Sends a MIDI Control Change. Common controllers: 7=volume, 10=pan, 64=sustain. |
 
 ### `registerCommand(spec)`
 

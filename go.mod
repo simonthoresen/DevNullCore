@@ -18,6 +18,7 @@ require (
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
 	github.com/huin/goupnp v1.3.0
 	github.com/mbndr/figlet4go v0.0.0-20190224160619-d6cef5b186ea
+	github.com/sinshu/go-meltysynth v0.0.0-20230205031334-05d311382fc4
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.49.0
 	golang.org/x/sys v0.42.0

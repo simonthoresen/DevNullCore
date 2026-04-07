@@ -143,6 +143,21 @@ func EncodeStopSoundOSC(filename string) string {
 	return "\x1b]ns;stop-sound;" + filename + "\x07"
 }
 
+// EncodeMidiOSC returns an OSC sequence containing MIDI events (base64-encoded JSON).
+// The events parameter must be JSON-marshalable (typically []domain.MidiEvent).
+func EncodeMidiOSC(events any) string {
+	data, err := json.Marshal(events)
+	if err != nil {
+		return ""
+	}
+	return "\x1b]ns;midi;" + base64.StdEncoding.EncodeToString(data) + "\x07"
+}
+
+// EncodeSynthOSC returns an OSC sequence telling the client which SoundFont to use.
+func EncodeSynthOSC(name string) string {
+	return "\x1b]ns;synth;" + name + "\x07"
+}
+
 // CanvasFrameSize estimates the bandwidth in bytes for a single canvas frame
 // at the given pixel dimensions. Uses empirical PNG compression ratio.
 func CanvasFrameSize(pixelW, pixelH int) int {

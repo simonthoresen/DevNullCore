@@ -96,6 +96,89 @@ func (r *Runtime) registerGlobals() {
 		return goja.Undefined()
 	})
 
+	// MIDI synthesis — events flow through chatCh to graphical clients.
+	r.vm.Set("midiNote", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		ch := int(call.Argument(0).ToInteger())
+		note := int(call.Argument(1).ToInteger())
+		vel := int(call.Argument(2).ToInteger())
+		dur := int(call.Argument(3).ToInteger())
+		ev := newNoteOnEvent(ch, note, vel, dur)
+		select {
+		case r.chatCh <- domain.Message{MidiEvents: []domain.MidiEvent{ev}}:
+		default:
+			slog.Warn("JS midiNote channel full, dropping")
+		}
+		return goja.Undefined()
+	})
+
+	r.vm.Set("midiNotePlayer", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		playerID := call.Argument(0).String()
+		ch := int(call.Argument(1).ToInteger())
+		note := int(call.Argument(2).ToInteger())
+		vel := int(call.Argument(3).ToInteger())
+		dur := int(call.Argument(4).ToInteger())
+		ev := newNoteOnEvent(ch, note, vel, dur)
+		select {
+		case r.chatCh <- domain.Message{MidiEvents: []domain.MidiEvent{ev}, IsPrivate: true, ToID: playerID}:
+		default:
+			slog.Warn("JS midiNotePlayer channel full, dropping")
+		}
+		return goja.Undefined()
+	})
+
+	r.vm.Set("midiProgram", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		ch := int(call.Argument(0).ToInteger())
+		prog := int(call.Argument(1).ToInteger())
+		ev := newProgramChangeEvent(ch, prog)
+		select {
+		case r.chatCh <- domain.Message{MidiEvents: []domain.MidiEvent{ev}}:
+		default:
+			slog.Warn("JS midiProgram channel full, dropping")
+		}
+		return goja.Undefined()
+	})
+
+	r.vm.Set("midiProgramPlayer", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		playerID := call.Argument(0).String()
+		ch := int(call.Argument(1).ToInteger())
+		prog := int(call.Argument(2).ToInteger())
+		ev := newProgramChangeEvent(ch, prog)
+		select {
+		case r.chatCh <- domain.Message{MidiEvents: []domain.MidiEvent{ev}, IsPrivate: true, ToID: playerID}:
+		default:
+			slog.Warn("JS midiProgramPlayer channel full, dropping")
+		}
+		return goja.Undefined()
+	})
+
+	r.vm.Set("midiCC", func(call goja.FunctionCall) goja.Value {
+		if r.chatCh == nil {
+			return goja.Undefined()
+		}
+		ch := int(call.Argument(0).ToInteger())
+		ctrl := int(call.Argument(1).ToInteger())
+		val := int(call.Argument(2).ToInteger())
+		ev := newControlChangeEvent(ch, ctrl, val)
+		select {
+		case r.chatCh <- domain.Message{MidiEvents: []domain.MidiEvent{ev}}:
+		default:
+			slog.Warn("JS midiCC channel full, dropping")
+		}
+		return goja.Undefined()
+	})
+
 	r.vm.Set("teams", func() []map[string]any {
 		// Return a deep copy of the cached snapshot to prevent JS mutation.
 		result := make([]map[string]any, len(r.cachedTeams))

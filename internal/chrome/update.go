@@ -68,6 +68,10 @@ func (m *Model) handleTick(_ domain.TickMsg) (tea.Model, tea.Cmd) {
 				m.handlePluginCommand(cmd)
 			} else if strings.HasPrefix(cmd, "/theme") {
 				m.handleThemeCommand(cmd)
+			} else if strings.HasPrefix(cmd, "/shader") {
+				m.handleShaderCommand(cmd)
+			} else if strings.HasPrefix(cmd, "/synth") {
+				m.handleSynthCommand(cmd)
 			} else if strings.HasPrefix(cmd, "/") {
 				m.dispatchPluginReply(cmd)
 			}
@@ -85,16 +89,19 @@ func (m *Model) handleChat(msg domain.ChatMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Extract sound OSC for graphical clients before any early-return.
+	// Extract sound and MIDI OSC for graphical clients before any early-return.
 	if m.IsEnhancedClient && !m.IsTerminalClient {
 		if chatMsg.SoundStop {
 			m.pendingSoundOSC = append(m.pendingSoundOSC, render.EncodeStopSoundOSC(chatMsg.SoundFile))
 		} else if chatMsg.SoundFile != "" {
 			m.pendingSoundOSC = append(m.pendingSoundOSC, render.EncodeSoundOSC(chatMsg.SoundFile, chatMsg.SoundLoop))
 		}
+		if len(chatMsg.MidiEvents) > 0 {
+			m.pendingMidiOSC = append(m.pendingMidiOSC, render.EncodeMidiOSC(chatMsg.MidiEvents))
+		}
 	}
 
-	// Messages with no text (sound-only events) have nothing to display.
+	// Messages with no text (sound/MIDI-only events) have nothing to display.
 	if chatMsg.Text == "" {
 		return m, nil
 	}
@@ -142,6 +149,8 @@ func (m *Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.gameSrcSent = false
 	m.assetsSent = false
 	m.pendingSoundOSC = nil
+	m.pendingMidiOSC = nil
+	m.synthSent = false
 	m.lastStateJSON = ""
 	m.localModeSent = false
 	m.localRendering = m.IsEnhancedClient // default on for enhanced clients

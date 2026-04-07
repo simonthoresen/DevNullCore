@@ -1,6 +1,10 @@
 package chrome
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
+
 	"dev-null/internal/domain"
 	"dev-null/internal/engine"
 	"dev-null/internal/localcmd"
@@ -31,6 +35,7 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
 		{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
 		{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
+		{Label: "S&ynths...", Handler: func(_ string) { m.pushSynthDialog(0) }},
 		{Label: "---"},
 		{Label: "E&xit", Handler: func(playerID string) {
 			m.overlay.PushDialog(domain.DialogRequest{
@@ -190,4 +195,42 @@ func (m *Model) pushShaderDialog(cursor int) {
 		},
 		Reload: m.pushShaderDialog,
 	})
+}
+
+func (m *Model) pushSynthDialog(cursor int) {
+	sf2Dir := filepath.Join(m.api.DataDir(), "soundfonts")
+	entries, _ := os.ReadDir(sf2Dir)
+	var names []string
+	var tags []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sf2") {
+			name := strings.TrimSuffix(e.Name(), ".sf2")
+			names = append(names, name)
+			if name == m.synthName {
+				tags = append(tags, "(●)")
+			} else {
+				tags = append(tags, "(○)")
+			}
+		}
+	}
+	if len(names) == 0 {
+		m.overlay.PushDialog(domain.DialogRequest{
+			Title:   "SoundFonts",
+			Body:    "No SoundFonts found in soundfonts/",
+			Buttons: []string{"Close"},
+		})
+		return
+	}
+	m.overlay.PushDialog(domain.DialogRequest{
+		Title:     "SoundFonts",
+		ListItems: names,
+		ListTags:  tags,
+		Buttons:   []string{"Close"},
+		OnListEnter: func(idx int) {
+			m.handleSynthCommand("/synth " + names[idx])
+			m.overlay.PopDialog()
+			m.pushSynthDialog(idx)
+		},
+	})
+	m.overlay.SetTopCursor(cursor)
 }

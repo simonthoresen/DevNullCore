@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
+	"encoding/json"
 	"image/color"
 	"io"
 	"strconv"
 	"strings"
 
+	"dev-null/internal/domain"
 	"dev-null/internal/render"
 )
 
@@ -68,6 +70,11 @@ type TerminalGrid struct {
 
 	// Sound commands from ns;sound and ns;stop-sound OSC.
 	SoundCmds []SoundCmd
+
+	// MIDI events from ns;midi OSC (decoded JSON).
+	MidiEvents []domain.MidiEvent
+	// SoundFont name from ns;synth OSC (e.g. "chiptune", "gm").
+	SynthName string
 
 	// Current SGR state for parsing.
 	curFg   color.RGBA
@@ -429,6 +436,15 @@ func (g *TerminalGrid) handleOSC(payload string) {
 			}
 		case "stop-sound":
 			g.SoundCmds = append(g.SoundCmds, SoundCmd{Filename: data, Stop: true})
+		case "midi":
+			if decoded, err := decodeBase64Str(data); err == nil {
+				var events []domain.MidiEvent
+				if json.Unmarshal(decoded, &events) == nil {
+					g.MidiEvents = append(g.MidiEvents, events...)
+				}
+			}
+		case "synth":
+			g.SynthName = data
 		}
 	}
 }

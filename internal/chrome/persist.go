@@ -7,7 +7,7 @@ import (
 )
 
 // persistClientConfig rewrites ~/.dev-null/client.txt so that all
-// /theme, /plugin, and /shader lines are replaced by a leading block
+// /theme, /plugin, /shader, and /synth lines are replaced by a leading block
 // that restores the current selections. All other lines are preserved.
 func (m *Model) persistClientConfig() {
 	home, err := os.UserHomeDir()
@@ -15,13 +15,13 @@ func (m *Model) persistClientConfig() {
 		return
 	}
 	path := filepath.Join(home, ".dev-null", "client.txt")
-	persistConfigFile(path, m.themeName, m.pluginNames, m.shaderNames)
+	persistConfigFile(path, m.themeName, m.synthName, m.pluginNames, m.shaderNames)
 }
 
 // persistConfigFile rewrites the config file at path: strips every line whose
-// first non-space token is /theme, /plugin, or /shader, then prepends a fresh
-// block of those commands reflecting the current state.
-func persistConfigFile(path, themeName string, pluginNames, shaderNames []string) {
+// first non-space token is /theme, /plugin, /shader, or /synth, then prepends
+// a fresh block of those commands reflecting the current state.
+func persistConfigFile(path, themeName, synthName string, pluginNames, shaderNames []string) {
 	// Read existing content (ignore error — file may not exist yet).
 	var kept []string
 	if data, err := os.ReadFile(path); err == nil {
@@ -29,7 +29,8 @@ func persistConfigFile(path, themeName string, pluginNames, shaderNames []string
 			tok := strings.TrimSpace(line)
 			if strings.HasPrefix(tok, "/theme") ||
 				strings.HasPrefix(tok, "/plugin") ||
-				strings.HasPrefix(tok, "/shader") {
+				strings.HasPrefix(tok, "/shader") ||
+				strings.HasPrefix(tok, "/synth") {
 				continue
 			}
 			kept = append(kept, line)
@@ -48,6 +49,9 @@ func persistConfigFile(path, themeName string, pluginNames, shaderNames []string
 	var managed []string
 	if themeName != "" {
 		managed = append(managed, "/theme "+themeName)
+	}
+	if synthName != "" {
+		managed = append(managed, "/synth "+synthName)
 	}
 	for _, name := range pluginNames {
 		managed = append(managed, "/plugin load "+name)

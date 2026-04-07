@@ -1,6 +1,8 @@
 package chrome
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 
 	"dev-null/internal/domain"
@@ -24,6 +26,10 @@ func (m *Model) dispatchInput(text string) {
 	}
 	if strings.HasPrefix(text, "/shader") {
 		m.handleShaderCommand(text)
+		return
+	}
+	if strings.HasPrefix(text, "/synth") {
+		m.handleSynthCommand(text)
 		return
 	}
 	if strings.HasPrefix(text, "/") {
@@ -125,6 +131,45 @@ func (m *Model) dispatchPluginReply(text string) {
 		playerName = p.Name
 	}
 	m.api.BroadcastChat(domain.Message{Author: playerName, Text: text, IsFromPlugin: true})
+}
+
+func (m *Model) handleSynthCommand(input string) {
+	parts := strings.Fields(input)
+	sf2Dir := filepath.Join(m.api.DataDir(), "soundfonts")
+
+	if len(parts) <= 1 {
+		// List available SoundFonts.
+		entries, _ := os.ReadDir(sf2Dir)
+		var names []string
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".sf2") {
+				name := strings.TrimSuffix(e.Name(), ".sf2")
+				tag := ""
+				if name == m.synthName {
+					tag = " [active]"
+				}
+				names = append(names, name+tag)
+			}
+		}
+		if len(names) == 0 {
+			m.pluginReply("No SoundFonts found in soundfonts/")
+		} else {
+			m.pluginReply("SoundFonts: " + strings.Join(names, ", "))
+		}
+		return
+	}
+
+	name := parts[1]
+	sf2Path := filepath.Join(sf2Dir, name+".sf2")
+	if _, err := os.Stat(sf2Path); err != nil {
+		m.pluginReply("SoundFont not found: " + name)
+		return
+	}
+
+	m.synthName = name
+	m.synthSent = false // trigger OSC re-send next frame
+	m.persistClientConfig()
+	m.pluginReply("SoundFont: " + name)
 }
 
 func (m *Model) handleShaderCommand(input string) {

@@ -132,6 +132,16 @@ func (m *Model) View() tea.View {
 			oscPrefix += osc
 		}
 		m.pendingSoundOSC = nil
+		// Drain pending MIDI OSC events (from JS midiNote/midiProgram/midiCC via chatCh).
+		for _, osc := range m.pendingMidiOSC {
+			oscPrefix += osc
+		}
+		m.pendingMidiOSC = nil
+		// Send synth selection OSC once on game load or when changed.
+		if !m.synthSent && m.synthName != "" {
+			oscPrefix += render.EncodeSynthOSC(m.synthName)
+			m.synthSent = true
+		}
 		if m.viewportW > 0 && m.viewportH > 0 {
 			oscPrefix += render.EncodeViewportOSC(m.viewportX, m.viewportY, m.viewportW, m.viewportH)
 

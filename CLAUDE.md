@@ -117,6 +117,7 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/engine/bindings.go` | JS global functions: log, chat, teams, gameOver, etc. |
 | `internal/engine/shader.go` | Per-player JS shader post-processing |
 | `internal/engine/plugin.go` | Per-player JS plugin system |
+| `internal/engine/midi.go` | MIDI event types and helper constructors for JS bindings |
 | `internal/engine/figlet.go` | Figlet ASCII art rendering |
 | `internal/engine/gamelist.go` | Game discovery, path resolution, team range probing |
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
@@ -126,7 +127,9 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
 | `internal/client/` | Client internals: SSH transport, ANSI parser, charmap atlas, Ebitengine renderer |
+| `internal/client/audio.go` | MIDI synthesizer: go-meltysynth SoundFont rendering, NoteOff scheduling |
 | `dist/charmaps/` | Charmap assets: per-game subdirectories with charmap.json + atlas PNG |
+| `dist/soundfonts/` | SoundFont (.sf2) files for MIDI synthesis: chiptune.sf2, gm.sf2 |
 | `dist/start-server.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then dev-null-server.exe |
 | `dist/start-client.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts dev-null-client.exe |
 | `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
@@ -190,6 +193,7 @@ The `consoleSlogHandler` has a runtime guard (`isRenderPath()`) that inspects th
 - `github.com/charmbracelet/x/term` — terminal size detection
 - `github.com/huin/goupnp` — UPnP IGD
 - `github.com/dop251/goja` — JavaScript runtime for games
+- `github.com/sinshu/go-meltysynth` — SoundFont MIDI synthesizer (pure Go)
 
 ## Detailed References
 
