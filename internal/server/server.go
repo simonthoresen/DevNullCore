@@ -118,6 +118,12 @@ func (a *Server) SetShutdownFunc(fn func()) {
 	a.shutdownFn = fn
 }
 
+// SetLocalPlayerName marks a player name for auto-admin on connect.
+// Must be called before StartWithReady.
+func (a *Server) SetLocalPlayerName(name string) {
+	a.localPlayerName = name
+}
+
 func (a *Server) LogCh() <-chan string {
 	return a.logCh
 }

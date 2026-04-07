@@ -164,6 +164,7 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 	}
 
 	// GUI + SSH: start server, connect via SSH, run Ebitengine renderer.
+	app.SetLocalPlayerName(playerName)
 	sshPort := port
 	if idx := strings.LastIndex(address, ":"); idx >= 0 {
 		if p := address[idx+1:]; p != "" {

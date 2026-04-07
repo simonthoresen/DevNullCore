@@ -132,8 +132,33 @@ func (a *Server) serverLog(line string) {
 
 // InstallConsoleSlogHandler wraps the current default slog handler to also
 // route records to the server's slogCh. Call after server creation.
+//
+// Subtle: Go's slog.SetDefault also redirects log.Default() output back
+// through the new slog handler. If the wrapped handler is Go's built-in
+// defaultHandler (which writes via log.Default().Output()), this creates a
+// cycle that deadlocks on the log package's internal mutex. To avoid this,
+// we detect the defaultHandler case and replace it with a TextHandler that
+// writes directly to os.Stderr, breaking the cycle.
 func (a *Server) InstallConsoleSlogHandler() {
 	existing := slog.Default().Handler()
+
+	// Go's defaultHandler is unexported, so detect it by checking whether
+	// the handler produces the standard-library log format (timestamp prefix).
+	// A simpler approach: if the handler is NOT a known concrete type that
+	// writes directly to an io.Writer (TextHandler, JSONHandler), replace it
+	// with a TextHandler wrapping os.Stderr. In practice, runlog.ConfigureFromEnv
+	// installs a TextHandler, so only the no-runlog case (client --local) hits this.
+	switch existing.(type) {
+	case *slog.TextHandler, *slog.JSONHandler:
+		// Already a direct-writer handler — safe to wrap.
+	default:
+		// Likely the built-in defaultHandler. Replace with a direct stderr writer
+		// to avoid the slog → defaultHandler → log.Default() → slog cycle.
+		existing = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		})
+	}
+
 	handler := console.NewSlogHandler(a.slogCh, existing)
 	slog.SetDefault(slog.New(handler))
 }
