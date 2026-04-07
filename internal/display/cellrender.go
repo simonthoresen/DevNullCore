@@ -77,11 +77,17 @@ func loadTTF(path string, size float64) text.Face {
 // updateCellSize measures the font's metrics and sets CellW/CellH accordingly.
 func updateCellSize(face text.Face) {
 	m := face.Metrics()
-	// Use "M" width as cell width for monospace fonts.
-	// Add 1px padding to prevent box-drawing character overlap.
-	w := text.Advance("M", face)
-	CellW = int(math.Ceil(w)) + 1
-	CellH = int(math.Ceil(m.HAscent + m.HDescent)) + 1
+
+	// Measure advance width of several characters including box-drawing
+	// glyphs that tend to be wider than Latin letters.
+	maxW := 0.0
+	for _, ch := range "M║═█╔╗╚╝─│W@" {
+		if w := text.Advance(string(ch), face); w > maxW {
+			maxW = w
+		}
+	}
+	CellW = int(math.Ceil(maxW))
+	CellH = int(math.Ceil(m.HAscent + m.HDescent + m.HLineGap))
 	if CellW < 1 {
 		CellW = 1
 	}
