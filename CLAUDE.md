@@ -32,7 +32,7 @@ ssh -p 23234 localhost   # connect via plain SSH (host plays this way too)
 # Graphical client — SSH + sprite rendering for charmap games.
 go run ./cmd/dev-null-client
 go run ./cmd/dev-null-client --host example.com --port 23234 --player alice
-go run ./cmd/dev-null-client --terminal   # TUI mode: render in terminal instead of window
+go run ./cmd/dev-null-client --no-gui   # TUI mode: render in terminal instead of window
 
 # Local mode (server) — headless SSH server + terminal client in one process.
 # Exercises the full SSH pipeline; you see what `ssh -p 23234 localhost` would show.

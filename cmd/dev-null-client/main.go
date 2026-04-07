@@ -4,7 +4,7 @@
 // sprite rendering: games that declare a charmap have their PUA codepoints
 // rendered as sprites from a sprite sheet instead of terminal glyphs.
 //
-// Use --terminal for terminal mode: local game rendering output as ANSI to
+// Use --no-gui for terminal mode: local game rendering output as ANSI to
 // the current terminal, no graphical window. This gives a retro terminal vibe
 // while still running game logic client-side for low latency.
 package main
@@ -42,7 +42,7 @@ func main() {
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
 	player := flag.String("player", defaultPlayer(), "player name")
-	terminal := flag.Bool("terminal", false, "terminal mode: render to terminal instead of graphical window")
+	noGUI := flag.Bool("no-gui", false, "run in terminal mode (TUI) instead of opening a graphical window")
 	localMode := flag.Bool("local", false, "start a headless SSH server and connect the graphical client to it")
 	address := flag.String("address", ":23234", "SSH listen address (local mode)")
 	dataDir := flag.String("data-dir", datadir.DefaultDataDir(), "data directory containing games/ (local mode)")
@@ -68,16 +68,16 @@ func main() {
 	fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
 
 	ptyW, ptyH := 0, 0
-	if *terminal {
+	if *noGUI {
 		ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
 	}
-	conn, err := client.Dial(*host, *port, *player, *terminal, *termFlag, ptyW, ptyH)
+	conn, err := client.Dial(*host, *port, *player, *noGUI, *termFlag, ptyW, ptyH)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
 	defer conn.Close()
 
-	if *terminal {
+	if *noGUI {
 		profile := detectClientProfile(*termFlag)
 		if err := client.RunTerminal(conn, *player, profile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
