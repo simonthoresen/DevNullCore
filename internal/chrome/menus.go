@@ -37,7 +37,7 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
 		{Label: "S&ynths...", Handler: func(_ string) { m.pushSynthDialog(0) }},
 		{Label: "---"},
-		{Label: "E&xit", Handler: func(playerID string) {
+		{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(playerID string) {
 			m.overlay.PushDialog(domain.DialogRequest{
 				Title:   "Exit",
 				Body:    "Disconnect from the server?",
@@ -45,7 +45,12 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 				Warning: true,
 				OnClose: func(btn string) {
 					if btn == "Yes" {
-						go m.api.KickPlayer(playerID)
+						// Kick SSH session (no-op in direct/local mode) and
+						// send quit to the player's program/backend.
+						go func() {
+							m.api.KickPlayer(playerID)          //nolint:errcheck
+							m.api.SendToPlayer(playerID, domain.QuitRequestMsg{})
+						}()
 					}
 				},
 			})

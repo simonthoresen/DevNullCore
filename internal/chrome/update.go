@@ -31,6 +31,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleGameUnloaded()
 	case domain.GamePhaseMsg:
 		return m.handleGamePhase(msg)
+	case domain.QuitRequestMsg:
+		return m, tea.Quit
 	case widget.ShowDialogMsg:
 		m.overlay.PushDialog(msg.Dialog)
 		return m, nil

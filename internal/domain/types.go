@@ -238,3 +238,4 @@ type GamePhaseMsg struct{ Phase GamePhase } // broadcast when game phase changes
 type TeamUpdatedMsg struct{}                // broadcast when team assignments change
 type GameSuspendedMsg struct{ Name string } // broadcast when a game is suspended
 type GameResumedMsg struct{ Name string }   // broadcast when a suspended game is resumed
+type QuitRequestMsg struct{}                // sent to a player's program to request exit
