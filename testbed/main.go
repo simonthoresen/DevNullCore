@@ -23,6 +23,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/wish/v2"
 	wishbubbletea "charm.land/wish/v2/bubbletea"
+	"github.com/charmbracelet/colorprofile"
 	gossh "github.com/charmbracelet/ssh"
 	xterm "github.com/charmbracelet/x/term"
 	cryptossh "golang.org/x/crypto/ssh"
@@ -76,6 +77,9 @@ func runSSH() {
 			// Override the output set by MakeOptions with our ONLCR wrapper.
 			opts = append(opts, tea.WithOutput(NewONLCRWriter(sess)))
 		}
+		// Force TrueColor so bubbletea doesn't strip ANSI sequences.
+		// Without this it defaults to ASCII/ANSI profile and drops all colors.
+		opts = append(opts, tea.WithColorProfile(colorprofile.TrueColor))
 		return model{}, append(opts, tea.WithFPS(60))
 	})
 

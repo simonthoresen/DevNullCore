@@ -11,6 +11,13 @@ import (
 
 var flagFrames = flag.Int("frames", 0, "quit after N frames (0 = run until q/ctrl+c)")
 
+// ANSI 256-color foreground codes for the 15 rows.
+var rowColors = [15]int{
+	196, 202, 208, 214, 220, // reds → oranges → yellow
+	118, 46, 47, 48, 49,     // greens
+	51, 45, 21, 57, 201,     // cyans → blues → magentas
+}
+
 type model struct{ frame int }
 
 func (m model) Init() tea.Cmd {
@@ -33,16 +40,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders 15 numbered rows of fixed-width content.
-// Each row must start at column 0. If ONLCR is missing (bare \n, no \r),
-// the cursor moves down without returning to col 0, and each subsequent row
-// is shifted right — a staircase pattern that is immediately obvious.
+// View renders 15 rows, each with:
+//   - leading spaces (0..14) to stress cursor-column tracking
+//   - ANSI 256-color foreground to stress color state across delta updates
+//   - fixed content so delta renderer only repaints the changed frame counter
 func (m model) View() tea.View {
 	var b strings.Builder
+
+	// Bold + colored header — changes every frame so delta renders it each tick.
+	fmt.Fprintf(&b, "\x1b[1mSSH delta render test — frame %04d\x1b[0m\n\n", m.frame)
+
 	for i := 0; i < 15; i++ {
-		fmt.Fprintf(&b, "Row %02d: [%s]\n", i, strings.Repeat(string(rune('A'+i%26)), 40))
+		indent := strings.Repeat(" ", i)
+		color := rowColors[i]
+		letter := string(rune('A' + i%26))
+		content := strings.Repeat(letter, 40-i) // shrinks to compensate for indent
+		// Row is static content; only the header above changes each frame.
+		fmt.Fprintf(&b, "%s\x1b[38;5;%dm[Row %02d] %s\x1b[0m\n", indent, color, i, content)
 	}
-	fmt.Fprintf(&b, "\nFrame: %d  (q=quit)\n", m.frame)
+
+	fmt.Fprintf(&b, "\n(q=quit)\n")
 	return tea.NewView(b.String())
 }
 
