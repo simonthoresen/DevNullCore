@@ -71,6 +71,29 @@ func (a *Server) programHandler(sess ssh.Session) *tea.Program {
 	a.programsMu.Lock()
 	a.programs[playerID] = program
 	a.programsMu.Unlock()
+
+	// Bootstrap the new player with the current game state. The broadcasts from
+	// loadGame/resumeGame fire before this player connected (especially in
+	// --game/--resume preload mode), so we re-send them here. sessionMiddleware
+	// runs before programHandler in the wish middleware chain, so the
+	// sendToPlayer call in registerSession is always a no-op — the program
+	// doesn't exist in a.programs yet when that runs.
+	a.state.RLock()
+	phase := a.state.GamePhase
+	gameName := a.state.GameName
+	a.state.RUnlock()
+	if gameName != "" || phase != domain.PhaseNone {
+		p := program
+		go func() {
+			if gameName != "" {
+				p.Send(domain.GameLoadedMsg{Name: gameName})
+			}
+			if phase != domain.PhaseNone {
+				p.Send(domain.GamePhaseMsg{Phase: phase})
+			}
+		}()
+	}
+
 	return program
 }
 

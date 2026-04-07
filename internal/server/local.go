@@ -177,11 +177,18 @@ func (a *Server) RunDirect(ctx context.Context, playerName, termOverride string)
 	a.programs[playerID] = program
 	a.programsMu.Unlock()
 
-	// Deliver the current game phase so the model initialises correctly.
+	// Deliver the current game state so the model initialises correctly.
+	// Send GameLoadedMsg first so inActiveGame is true before the phase arrives.
 	a.state.RLock()
 	currentPhase := a.state.GamePhase
+	gameName := a.state.GameName
 	a.state.RUnlock()
-	a.sendToPlayer(playerID, domain.GamePhaseMsg{Phase: currentPhase})
+	if gameName != "" {
+		a.sendToPlayer(playerID, domain.GameLoadedMsg{Name: gameName})
+	}
+	if currentPhase != domain.PhaseNone {
+		a.sendToPlayer(playerID, domain.GamePhaseMsg{Phase: currentPhase})
+	}
 
 	defer fmt.Fprint(os.Stdout, "\x1b[?1049l\x1b[?25h")
 

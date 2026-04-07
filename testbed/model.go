@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
+
+var flagFrames = flag.Int("frames", 0, "quit after N frames (0 = run until q/ctrl+c)")
 
 type model struct{ frame int }
 
@@ -18,6 +21,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case time.Time:
 		m.frame++
+		if *flagFrames > 0 && m.frame >= *flagFrames {
+			return m, tea.Quit
+		}
 		return m, tick()
 	case tea.KeyMsg:
 		if msg.String() == "q" || msg.String() == "ctrl+c" {

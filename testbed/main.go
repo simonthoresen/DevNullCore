@@ -118,13 +118,10 @@ func runSSH() {
 	defer sess.Close()
 	defer fmt.Fprint(os.Stdout, "\x1b[?1049l\x1b[?25h")
 
-	// Put local terminal in raw mode.
-	oldState, err := xterm.MakeRaw(os.Stdin.Fd())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "MakeRaw: %v\n", err)
-		os.Exit(1)
+	// Put local terminal in raw mode (best-effort — skipped if stdin is not a TTY).
+	if oldState, err := xterm.MakeRaw(os.Stdin.Fd()); err == nil {
+		defer xterm.Restore(os.Stdin.Fd(), oldState)
 	}
-	defer xterm.Restore(os.Stdin.Fd(), oldState)
 
 	// Configure stdout (Windows: enable VT, disable auto-CRLF).
 	restoreOutput := configureOutput()
