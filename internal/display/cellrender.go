@@ -23,6 +23,15 @@ func DefaultFontFace() text.Face {
 	return text.NewGoXFace(bitmapfont.Face)
 }
 
+// sharedPixel is a 1x1 white image reused for all background fills.
+// Colored via ColorScale to avoid per-cell image allocation.
+var sharedPixel *ebiten.Image
+
+func init() {
+	sharedPixel = ebiten.NewImage(1, 1)
+	sharedPixel.Fill(color.White)
+}
+
 // DrawImageBuffer renders an ImageBuffer to an Ebitengine screen image.
 // Each cell is drawn as a colored background rectangle, then foreground text.
 func DrawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer, fontFace text.Face) {
@@ -32,22 +41,24 @@ func DrawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer, fontFace tex
 			px := cx * CellW
 			py := cy * CellH
 
-			// Background.
+			// Background: draw a scaled 1x1 white pixel with color tint.
 			if p.Bg != nil {
-				r, gg, b, _ := p.Bg.RGBA()
-				bgImg := ebiten.NewImage(CellW, CellH)
-				bgImg.Fill(color.RGBA{R: uint8(r >> 8), G: uint8(gg >> 8), B: uint8(b >> 8), A: 255})
+				r, g, b, _ := p.Bg.RGBA()
 				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Scale(CellW, CellH)
 				op.GeoM.Translate(float64(px), float64(py))
-				screen.DrawImage(bgImg, op)
+				op.ColorScale.ScaleWithColor(color.RGBA{
+					R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255,
+				})
+				screen.DrawImage(sharedPixel, op)
 			}
 
 			// Foreground text.
 			if p.Char != ' ' && p.Char != 0 {
 				fg := color.RGBA{R: 204, G: 204, B: 204, A: 255}
 				if p.Fg != nil {
-					r, gg, b, _ := p.Fg.RGBA()
-					fg = color.RGBA{R: uint8(r >> 8), G: uint8(gg >> 8), B: uint8(b >> 8), A: 255}
+					r, g, b, _ := p.Fg.RGBA()
+					fg = color.RGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255}
 				}
 				dop := &text.DrawOptions{}
 				dop.GeoM.Translate(float64(px), float64(py))

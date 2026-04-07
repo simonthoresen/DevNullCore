@@ -3,7 +3,6 @@ package display
 import (
 	"image/color"
 	"sync"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -22,17 +21,16 @@ type EbitenBackend struct {
 	// Inbound message queue — fed by Send() and tea.Cmd goroutines.
 	msgCh chan tea.Msg
 
-	// Protects model and buf access between Update() and Draw().
-	mu  sync.Mutex
-	buf interface{} // *render.ImageBuffer via BufferViewer, or nil
+	// Protects model access between Update() and Draw().
+	mu    sync.Mutex
+	dirty bool // true when model state changed since last Draw
 
 	// Track window size for resize detection.
 	lastCols int
 	lastRows int
 
-	// Cursor blink state.
-	cursorVisible bool
-	cursorTicker  time.Time
+	// Reusable 1x1 pixel image for background fills (avoids per-cell allocation).
+	bgPixel *ebiten.Image
 }
 
 // NewEbitenBackend creates a backend that renders to an Ebitengine window.
@@ -41,12 +39,13 @@ func NewEbitenBackend(opts ...Option) *EbitenBackend {
 	for _, fn := range opts {
 		fn(&o)
 	}
+	px := ebiten.NewImage(1, 1)
 	return &EbitenBackend{
-		opts:          o,
-		fontFace:      DefaultFontFace(),
-		msgCh:         make(chan tea.Msg, 256),
-		cursorVisible: true,
-		cursorTicker:  time.Now(),
+		opts:     o,
+		fontFace: DefaultFontFace(),
+		msgCh:    make(chan tea.Msg, 256),
+		bgPixel:  px,
+		dirty:    true, // force initial render
 	}
 }
 
@@ -109,11 +108,11 @@ func (e *EbitenBackend) Update() error {
 		e.Send(msg)
 	}
 
-	// Drain message queue and feed to model.
+	// Drain message queue and feed to model (limit per frame to avoid stalls).
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	for {
+	for range 64 {
 		select {
 		case msg := <-e.msgCh:
 			if _, ok := msg.(tea.QuitMsg); ok {
@@ -122,10 +121,12 @@ func (e *EbitenBackend) Update() error {
 			var cmd tea.Cmd
 			e.model, cmd = e.model.Update(msg)
 			e.processCmd(cmd)
+			e.dirty = true
 		default:
 			return nil
 		}
 	}
+	return nil
 }
 
 // Draw implements ebiten.Game.
@@ -135,23 +136,15 @@ func (e *EbitenBackend) Draw(screen *ebiten.Image) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Prefer direct buffer access (no ANSI round-trip).
+	// Call View() to update the render buffer — the model fills it as a side effect.
+	e.model.View()
+	e.dirty = false
+
+	// Read the buffer directly (no ANSI round-trip).
 	if bv, ok := e.model.(BufferViewer); ok {
 		if buf := bv.ViewBuffer(); buf != nil {
 			DrawImageBuffer(screen, buf, e.fontFace)
-			return
 		}
-	}
-
-	// Fallback: call View() and render the string content.
-	// For models that don't implement BufferViewer, we'd need to parse ANSI.
-	// For now, this path just renders the model's string output as plain text.
-	view := e.model.View()
-	if view.Content != "" {
-		dop := &text.DrawOptions{}
-		dop.GeoM.Translate(0, 0)
-		dop.ColorScale.ScaleWithColor(color.RGBA{R: 204, G: 204, B: 204, A: 255})
-		text.Draw(screen, view.Content, e.fontFace, dop)
 	}
 }
 

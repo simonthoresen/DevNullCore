@@ -6,46 +6,43 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// KeyMapping maps an Ebitengine key to a Bubble Tea key string.
-type KeyMapping struct {
-	EKey ebiten.Key
-	Tea  string
+// specialKeyMapping maps an Ebitengine key to a Bubble Tea key Code constant.
+type specialKeyMapping struct {
+	eKey    ebiten.Key
+	teaCode rune
 }
 
-// SpecialKeys is the table of non-character keys that map to terminal escape
-// sequences or Bubble Tea key names.
-var SpecialKeys = []KeyMapping{
-	{ebiten.KeyEnter, "enter"},
-	{ebiten.KeyBackspace, "backspace"},
-	{ebiten.KeyTab, "tab"},
-	{ebiten.KeyEscape, "escape"},
-	{ebiten.KeyUp, "up"},
-	{ebiten.KeyDown, "down"},
-	{ebiten.KeyRight, "right"},
-	{ebiten.KeyLeft, "left"},
-	{ebiten.KeyHome, "home"},
-	{ebiten.KeyEnd, "end"},
-	{ebiten.KeyPageUp, "pgup"},
-	{ebiten.KeyPageDown, "pgdown"},
-	{ebiten.KeyDelete, "delete"},
-	{ebiten.KeyF1, "f1"},
-	{ebiten.KeyF2, "f2"},
-	{ebiten.KeyF3, "f3"},
-	{ebiten.KeyF4, "f4"},
-	{ebiten.KeyF5, "f5"},
-	{ebiten.KeyF6, "f6"},
-	{ebiten.KeyF7, "f7"},
-	{ebiten.KeyF8, "f8"},
-	{ebiten.KeyF9, "f9"},
-	{ebiten.KeyF10, "f10"},
-	{ebiten.KeyF11, "f11"},
-	{ebiten.KeyF12, "f12"},
+// specialKeys maps Ebitengine special keys to their tea.Key* constants.
+var specialKeys = []specialKeyMapping{
+	{ebiten.KeyEnter, tea.KeyEnter},
+	{ebiten.KeyBackspace, tea.KeyBackspace},
+	{ebiten.KeyTab, tea.KeyTab},
+	{ebiten.KeyEscape, tea.KeyEscape},
+	{ebiten.KeyUp, tea.KeyUp},
+	{ebiten.KeyDown, tea.KeyDown},
+	{ebiten.KeyRight, tea.KeyRight},
+	{ebiten.KeyLeft, tea.KeyLeft},
+	{ebiten.KeyHome, tea.KeyHome},
+	{ebiten.KeyEnd, tea.KeyEnd},
+	{ebiten.KeyPageUp, tea.KeyPgUp},
+	{ebiten.KeyPageDown, tea.KeyPgDown},
+	{ebiten.KeyDelete, tea.KeyDelete},
+	{ebiten.KeyF1, tea.KeyF1},
+	{ebiten.KeyF2, tea.KeyF2},
+	{ebiten.KeyF3, tea.KeyF3},
+	{ebiten.KeyF4, tea.KeyF4},
+	{ebiten.KeyF5, tea.KeyF5},
+	{ebiten.KeyF6, tea.KeyF6},
+	{ebiten.KeyF7, tea.KeyF7},
+	{ebiten.KeyF8, tea.KeyF8},
+	{ebiten.KeyF9, tea.KeyF9},
+	{ebiten.KeyF10, tea.KeyF10},
+	{ebiten.KeyF11, tea.KeyF11},
+	{ebiten.KeyF12, tea.KeyF12},
 }
 
 // PollKeyMessages polls Ebitengine for newly pressed keys and returns them
-// as Bubble Tea messages. Character input (typed text) is returned as
-// tea.KeyPressMsg with the rune set. Special keys are returned with their
-// Bubble Tea key name.
+// as Bubble Tea messages.
 func PollKeyMessages() []tea.Msg {
 	var msgs []tea.Msg
 
@@ -57,21 +54,18 @@ func PollKeyMessages() []tea.Msg {
 	// Character input (typed text) — Ebitengine filters to printable runes.
 	runes := ebiten.AppendInputChars(nil)
 	for _, r := range runes {
-		// If Ctrl is held and we get a rune, Ebitengine may or may not filter it.
-		// Most Ctrl+letter combos don't produce runes, but if they do, we handle them.
 		msgs = append(msgs, tea.KeyPressMsg{
 			Code: rune(r),
 			Text: string(r),
-			Mod:  buildMod(false, alt, shift), // ctrl already consumed by the rune
+			Mod:  buildMod(false, alt, false), // shift already applied to the rune
 		})
 	}
 
 	// Special keys — only fire on just-pressed (not held).
-	for _, km := range SpecialKeys {
-		if inpututil.IsKeyJustPressed(km.EKey) {
+	for _, km := range specialKeys {
+		if inpututil.IsKeyJustPressed(km.eKey) {
 			msgs = append(msgs, tea.KeyPressMsg{
-				Code: runeForKey(km.Tea),
-				Text: km.Tea,
+				Code: km.teaCode,
 				Mod:  buildMod(ctrl, alt, shift),
 			})
 		}
@@ -82,10 +76,8 @@ func PollKeyMessages() []tea.Msg {
 		for key := ebiten.KeyA; key <= ebiten.KeyZ; key++ {
 			if inpututil.IsKeyJustPressed(key) {
 				letter := rune('a' + (key - ebiten.KeyA))
-				name := "ctrl+" + string(letter)
 				msgs = append(msgs, tea.KeyPressMsg{
 					Code: letter,
-					Text: name,
 					Mod:  tea.ModCtrl,
 				})
 			}
@@ -151,21 +143,4 @@ func buildMod(ctrl, alt, shift bool) tea.KeyMod {
 		mod |= tea.ModShift
 	}
 	return mod
-}
-
-func runeForKey(name string) rune {
-	switch name {
-	case "enter":
-		return '\r'
-	case "backspace":
-		return 0x7f
-	case "tab":
-		return '\t'
-	case "escape":
-		return 0x1b
-	case "delete":
-		return 0x7f
-	default:
-		return 0
-	}
 }
