@@ -109,7 +109,7 @@ func runSSH() {
 	}
 
 	// Dial back to our own server.
-	conn, sess, stdout, err := dialSSH(*flagPort, w, h)
+	conn, sess, stdout, stdin, err := dialSSH(*flagPort, w, h)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "SSH dial: %v\n", err)
 		os.Exit(1)
@@ -128,7 +128,6 @@ func runSSH() {
 	defer restoreOutput()
 
 	// Forward resize events.
-	stdin, _ := sess.StdinPipe()
 	stopResize := watchResize(func(w, h int) {
 		sess.WindowChange(h, w) //nolint:errcheck
 	})
@@ -151,8 +150,10 @@ func runSSH() {
 }
 
 // dialSSH connects to our local SSH server and requests a PTY.
-// Returns the client, session, a reader for session stdout, and any error.
-func dialSSH(port, w, h int) (*cryptossh.Client, *cryptossh.Session, io.Reader, error) {
+// Returns the client, session, stdout reader, stdin writer, and any error.
+// Pipes must be acquired before Shell() — calling StdinPipe/StdoutPipe after
+// Shell() returns nil, causing a nil-interface panic in io.Copy.
+func dialSSH(port, w, h int) (*cryptossh.Client, *cryptossh.Session, io.Reader, io.WriteCloser, error) {
 	cfg := &cryptossh.ClientConfig{
 		User:            "player",
 		Auth:            []cryptossh.AuthMethod{cryptossh.Password("")},
@@ -161,20 +162,20 @@ func dialSSH(port, w, h int) (*cryptossh.Client, *cryptossh.Session, io.Reader, 
 
 	tcpConn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("tcp dial: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("tcp dial: %w", err)
 	}
 
 	c, chans, reqs, err := cryptossh.NewClientConn(tcpConn, "", cfg)
 	if err != nil {
 		tcpConn.Close()
-		return nil, nil, nil, fmt.Errorf("SSH handshake: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("SSH handshake: %w", err)
 	}
 	client := cryptossh.NewClient(c, chans, reqs)
 
 	sess, err := client.NewSession()
 	if err != nil {
 		client.Close()
-		return nil, nil, nil, fmt.Errorf("new session: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("new session: %w", err)
 	}
 
 	// Request PTY with actual terminal dimensions.
@@ -187,24 +188,30 @@ func dialSSH(port, w, h int) (*cryptossh.Client, *cryptossh.Session, io.Reader, 
 	if err := sess.RequestPty("xterm-256color", h, w, modes); err != nil {
 		sess.Close()
 		client.Close()
-		return nil, nil, nil, fmt.Errorf("RequestPty: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("RequestPty: %w", err)
 	}
 
-	// Get stdout pipe before starting the shell.
+	// Pipes must be acquired before Shell() — after Shell() they return nil.
 	stdout, err := sess.StdoutPipe()
 	if err != nil {
 		sess.Close()
 		client.Close()
-		return nil, nil, nil, fmt.Errorf("StdoutPipe: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("StdoutPipe: %w", err)
+	}
+	stdin, err := sess.StdinPipe()
+	if err != nil {
+		sess.Close()
+		client.Close()
+		return nil, nil, nil, nil, fmt.Errorf("StdinPipe: %w", err)
 	}
 
 	if err := sess.Shell(); err != nil {
 		sess.Close()
 		client.Close()
-		return nil, nil, nil, fmt.Errorf("Shell: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("Shell: %w", err)
 	}
 
-	return client, sess, stdout, nil
+	return client, sess, stdout, stdin, nil
 }
 
 // hostKeyFile creates a temporary file path for the SSH host key.
