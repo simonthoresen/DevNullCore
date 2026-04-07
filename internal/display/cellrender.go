@@ -78,9 +78,10 @@ func loadTTF(path string, size float64) text.Face {
 func updateCellSize(face text.Face) {
 	m := face.Metrics()
 	// Use "M" width as cell width for monospace fonts.
+	// Add 1px padding to prevent box-drawing character overlap.
 	w := text.Advance("M", face)
-	CellW = int(math.Ceil(w))
-	CellH = int(math.Ceil(m.HAscent + m.HDescent))
+	CellW = int(math.Ceil(w)) + 1
+	CellH = int(math.Ceil(m.HAscent + m.HDescent)) + 1
 	if CellW < 1 {
 		CellW = 1
 	}

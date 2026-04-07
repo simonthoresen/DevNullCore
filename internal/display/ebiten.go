@@ -3,6 +3,7 @@ package display
 import (
 	"image/color"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -28,6 +29,9 @@ type EbitenBackend struct {
 	// Track window size for resize detection.
 	lastCols int
 	lastRows int
+
+	// Cursor blink state.
+	cursorStart time.Time
 }
 
 // NewEbitenBackend creates a backend that renders to an Ebitengine window.
@@ -37,10 +41,11 @@ func NewEbitenBackend(opts ...Option) *EbitenBackend {
 		fn(&o)
 	}
 	return &EbitenBackend{
-		opts:     o,
-		fontFace: GUIFontFace(16),
-		msgCh:    make(chan tea.Msg, 256),
-		dirty:    true, // force initial render
+		opts:        o,
+		fontFace:    GUIFontFace(16),
+		msgCh:       make(chan tea.Msg, 256),
+		dirty:       true, // force initial render
+		cursorStart: time.Now(),
 	}
 }
 
@@ -113,6 +118,10 @@ func (e *EbitenBackend) Update() error {
 			if _, ok := msg.(tea.QuitMsg); ok {
 				return ebiten.Termination
 			}
+			// Reset cursor blink on any key press.
+			if _, ok := msg.(tea.KeyPressMsg); ok {
+				e.cursorStart = time.Now()
+			}
 			var cmd tea.Cmd
 			e.model, cmd = e.model.Update(msg)
 			e.processCmd(cmd)
@@ -131,14 +140,30 @@ func (e *EbitenBackend) Draw(screen *ebiten.Image) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	// Call View() to update the render buffer — the model fills it as a side effect.
-	e.model.View()
+	// Call View() to update the render buffer and get cursor info.
+	view := e.model.View()
 	e.dirty = false
 
 	// Read the buffer directly (no ANSI round-trip).
 	if bv, ok := e.model.(BufferViewer); ok {
 		if buf := bv.ViewBuffer(); buf != nil {
 			DrawImageBuffer(screen, buf, e.fontFace)
+		}
+	}
+
+	// Draw blinking cursor from the View's cursor position.
+	if view.Cursor != nil {
+		elapsed := time.Since(e.cursorStart)
+		// 530ms on, 530ms off (standard terminal blink rate).
+		blinkOn := (elapsed.Milliseconds()/530)%2 == 0
+		if blinkOn {
+			cx := view.Cursor.Position.X
+			cy := view.Cursor.Position.Y
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(float64(CellW), float64(CellH))
+			op.GeoM.Translate(float64(cx*CellW), float64(cy*CellH))
+			op.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 180})
+			screen.DrawImage(sharedPixel, op)
 		}
 	}
 }

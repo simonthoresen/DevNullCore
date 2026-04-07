@@ -41,8 +41,14 @@ var specialKeys = []specialKeyMapping{
 	{ebiten.KeyF12, tea.KeyF12},
 }
 
+// Key repeat constants (in ticks at 60 TPS).
+const (
+	repeatDelay  = 30 // frames before repeat starts (~500ms)
+	repeatRate   = 3  // frames between repeats (~50ms)
+)
+
 // PollKeyMessages polls Ebitengine for newly pressed keys and returns them
-// as Bubble Tea messages.
+// as Bubble Tea messages. Handles key repeat for special keys.
 func PollKeyMessages() []tea.Msg {
 	var msgs []tea.Msg
 
@@ -52,6 +58,7 @@ func PollKeyMessages() []tea.Msg {
 	shift := ebiten.IsKeyPressed(ebiten.KeyShift)
 
 	// Character input (typed text) — Ebitengine filters to printable runes.
+	// Note: Ebitengine handles key repeat for character input automatically.
 	runes := ebiten.AppendInputChars(nil)
 	for _, r := range runes {
 		msgs = append(msgs, tea.KeyPressMsg{
@@ -61,9 +68,10 @@ func PollKeyMessages() []tea.Msg {
 		})
 	}
 
-	// Special keys — only fire on just-pressed (not held).
+	// Special keys with key repeat support.
 	for _, km := range specialKeys {
-		if inpututil.IsKeyJustPressed(km.eKey) {
+		dur := inpututil.KeyPressDuration(km.eKey)
+		if dur == 1 || (dur >= repeatDelay && (dur-repeatDelay)%repeatRate == 0) {
 			msgs = append(msgs, tea.KeyPressMsg{
 				Code: km.teaCode,
 				Mod:  buildMod(ctrl, alt, shift),
@@ -71,8 +79,22 @@ func PollKeyMessages() []tea.Msg {
 		}
 	}
 
+	// Alt+letter for menu shortcuts (e.g. Alt+F for File menu).
+	// These don't produce runes via AppendInputChars when Alt is held.
+	if alt && len(runes) == 0 {
+		for key := ebiten.KeyA; key <= ebiten.KeyZ; key++ {
+			if inpututil.IsKeyJustPressed(key) {
+				letter := rune('a' + (key - ebiten.KeyA))
+				msgs = append(msgs, tea.KeyPressMsg{
+					Code: letter,
+					Mod:  tea.ModAlt,
+				})
+			}
+		}
+	}
+
 	// Ctrl+letter combos that don't produce runes.
-	if ctrl && len(runes) == 0 {
+	if ctrl && !alt && len(runes) == 0 {
 		for key := ebiten.KeyA; key <= ebiten.KeyZ; key++ {
 			if inpututil.IsKeyJustPressed(key) {
 				letter := rune('a' + (key - ebiten.KeyA))
