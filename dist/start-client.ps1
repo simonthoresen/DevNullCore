@@ -9,8 +9,10 @@ $Host_    = "localhost"
 $Port     = "23234"
 $Player   = ""
 $Local    = $false
-$NoGUI = $false
+$NoGUI    = $false
 $Term     = ""
+$Game     = ""
+$Resume   = ""
 
 $positionals = @()
 for ($i = 0; $i -lt $CliArgs.Count; $i++) {
@@ -30,6 +32,10 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
         '^--?player=(.+)$'   { $Player = $Matches[1]; continue }
         '^--?term$'          { $i++; if ($i -lt $CliArgs.Count) { $Term = $CliArgs[$i] }; continue }
         '^--?term=(.+)$'     { $Term = $Matches[1]; continue }
+        '^--?game$'          { $i++; if ($i -lt $CliArgs.Count) { $Game = $CliArgs[$i] }; continue }
+        '^--?game=(.+)$'     { $Game = $Matches[1]; continue }
+        '^--?resume$'        { $i++; if ($i -lt $CliArgs.Count) { $Resume = $CliArgs[$i] }; continue }
+        '^--?resume=(.+)$'   { $Resume = $Matches[1]; continue }
         default              { $positionals += $arg }
     }
 }
@@ -177,15 +183,96 @@ function Update-FromRelease {
 
 Update-FromRelease
 
+# ── local mode: start headless server ────────────────────────────────────────
+
+$script:serverProc = $null
+
+function Stop-LocalServer {
+    if ($script:serverProc -and -not $script:serverProc.HasExited) {
+        Write-RunLogLine "stopping local server (PID $($script:serverProc.Id))"
+        Stop-ProcessTree -RootPid $script:serverProc.Id
+    }
+}
+
+function Stop-ProcessTree {
+    param([int]$RootPid)
+    Write-RunLogLine "stopping process tree rooted at PID $RootPid"
+    $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue
+    if (-not $all) { Stop-Process -Id $RootPid -Force -ErrorAction SilentlyContinue; return }
+    $childrenByParent = @{}
+    foreach ($proc in $all) {
+        if (-not $childrenByParent.ContainsKey($proc.ParentProcessId)) {
+            $childrenByParent[$proc.ParentProcessId] = @()
+        }
+        $childrenByParent[$proc.ParentProcessId] += $proc
+    }
+    $queue  = [System.Collections.Generic.Queue[int]]::new()
+    $toStop = [System.Collections.Generic.List[int]]::new()
+    $queue.Enqueue($RootPid)
+    while ($queue.Count -gt 0) {
+        $parentPid = $queue.Dequeue()
+        foreach ($child in ($childrenByParent[$parentPid] | Select-Object -Unique)) {
+            $queue.Enqueue([int]$child.ProcessId)
+            $toStop.Add([int]$child.ProcessId) | Out-Null
+        }
+    }
+    for ($i = $toStop.Count - 1; $i -ge 0; $i--) {
+        Stop-Process -Id $toStop[$i] -Force -ErrorAction SilentlyContinue
+    }
+    Stop-Process -Id $RootPid -Force -ErrorAction SilentlyContinue
+}
+
+if ($Local) {
+    # Generate a random password for auto-admin.
+    $localPassword = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
+
+    $serverArgs = @("--headless", "--port", $Port, "--password", $localPassword, "--data-dir", $root)
+    if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
+
+    Write-BootStepStart "Starting local server"
+    $script:serverProc = Start-Process `
+        -FilePath (Join-Path $root "dev-null-server.exe") `
+        -ArgumentList $serverArgs `
+        -WorkingDirectory $root `
+        -RedirectStandardOutput (Join-Path $logsDir "local-server-stdout.log") `
+        -RedirectStandardError  (Join-Path $logsDir "local-server-stderr.log") `
+        -NoNewWindow -PassThru
+
+    # Wait for SSH port to be listening.
+    $deadline = (Get-Date).AddSeconds(15)
+    $ready = $false
+    while ((Get-Date) -lt $deadline) {
+        if ($script:serverProc.HasExited) { break }
+        $listener = Get-NetTCPConnection -LocalPort ([int]$Port) -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($listener) { $ready = $true; break }
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not $ready) {
+        Write-BootStepEnd "FAIL"
+        Stop-LocalServer
+        Write-Error "Local server failed to start on port $Port within 15 seconds."
+        exit 1
+    }
+    Write-BootStepEnd "DONE"
+    Write-RunLogLine "local server ready on port $Port (PID $($script:serverProc.Id))"
+}
+
 # ── build client args ────────────────────────────────────────────────────────
 
 $clientArgs = @()
-if ($Local)    { $clientArgs += "--local"; $clientArgs += "--data-dir"; $clientArgs += $root }
 if ($NoGUI)    { $clientArgs += "--no-gui" }
-if ($Host_ -and -not $Local) { $clientArgs += "--host"; $clientArgs += $Host_ }
-if ($Port)     { $clientArgs += "--port";   $clientArgs += $Port }
+if ($Local) {
+    $clientArgs += "--host"; $clientArgs += "localhost"
+    $clientArgs += "--port"; $clientArgs += $Port
+    $clientArgs += "--password"; $clientArgs += $localPassword
+} else {
+    if ($Host_) { $clientArgs += "--host"; $clientArgs += $Host_ }
+    if ($Port)  { $clientArgs += "--port"; $clientArgs += $Port }
+}
 if ($Player)   { $clientArgs += "--player"; $clientArgs += $Player }
 if ($Term)     { $clientArgs += "--term";   $clientArgs += $Term }
+if ($Game)     { $clientArgs += "--game";   $clientArgs += $Game }
+if ($Resume)   { $clientArgs += "--resume"; $clientArgs += $Resume }
 $clientArgs += $positionals
 
 # ── launch client ────────────────────────────────────────────────────────────
@@ -198,6 +285,7 @@ try {
 } finally {
     Pop-Location
     Write-RunLogLine "client process finished"
+    if ($Local) { Stop-LocalServer }
     if ($null -eq $previousLogLevel)  { Remove-Item Env:DEV_NULL_LOG_LEVEL  -ErrorAction SilentlyContinue }
     else { $env:DEV_NULL_LOG_LEVEL = $previousLogLevel }
     if ($null -eq $previousTermWidth) { Remove-Item Env:DEV_NULL_TERM_WIDTH -ErrorAction SilentlyContinue }

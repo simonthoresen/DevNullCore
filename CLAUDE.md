@@ -29,17 +29,19 @@ go test ./...
 
 ssh -p 23234 localhost   # connect via plain SSH (host plays this way too)
 
-# Client — connects to a server (or starts one locally with --local).
+# Client — connects to a server.
 go run ./cmd/dev-null-client
 go run ./cmd/dev-null-client --host example.com --port 23234 --player alice
 go run ./cmd/dev-null-client --no-gui   # TUI mode: render in terminal instead of window
+go run ./cmd/dev-null-client --game orbits          # send /game-load on connect
+go run ./cmd/dev-null-client --resume orbits/autosave  # send /game-resume on connect
 
-# Local mode — starts a headless server + connects the client in one process.
-go run ./cmd/dev-null-client --local --data-dir dist
-go run ./cmd/dev-null-client --local --data-dir dist --player alice
-go run ./cmd/dev-null-client --local --data-dir dist --game orbits
-go run ./cmd/dev-null-client --local --data-dir dist --resume orbits/autosave
-go run ./cmd/dev-null-client --local --no-gui --data-dir dist    # local + TUI
+# Local mode — the script starts a headless server + connects the client.
+# (--local is a script flag, not a binary flag)
+.\start-client.ps1 --local
+.\start-client.ps1 --local --game orbits
+.\start-client.ps1 --local --resume orbits/autosave
+.\start-client.ps1 --local --no-gui --game orbits
 
 ```
 
@@ -81,7 +83,6 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/server/server.go` | SSH server setup, session lifecycle, tick broadcast |
 | `internal/server/lifecycle.go` | Game load/unload, phase transitions, teams cache |
 | `internal/server/commands.go` | Slash command registry and dispatch |
-| `internal/server/local.go` | `--local` mode: headless SSH server + terminal SSH pipe to stdin/stdout |
 | `internal/server/pinggy.go` | Pinggy tunnel status polling bridge |
 | `internal/display/display.go` | Display backend interface: `Backend`, `BufferViewer`, options |
 | `internal/display/terminal.go` | `TerminalBackend`: wraps `tea.Program` for TUI mode |
