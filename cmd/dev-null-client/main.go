@@ -21,7 +21,6 @@ import (
 
 	"github.com/charmbracelet/colorprofile"
 	xterm "github.com/charmbracelet/x/term"
-	"github.com/hajimehoshi/ebiten/v2"
 
 	"dev-null/internal/client"
 	"dev-null/internal/datadir"
@@ -72,37 +71,38 @@ func main() {
 		return
 	}
 
-	// --- All SSH paths: local and non-local, GUI and TUI ---
-	// Establish the SSH connection, then run the appropriate renderer.
-	// For --local, start a headless server first (in a background goroutine).
+	// --- All SSH paths (local and remote, GUI and TUI) ---
+	// Sequential: 1) start server (if local), 2) connect SSH, 3) run renderer.
 
 	var (
-		conn    *client.SSHConn
-		cleanup func()
+		conn          *client.SSHConn
+		serverCleanup = func() {}
 	)
 
-	// TUI paths: SSH dial can happen on the main goroutine (no Ebitengine).
-	if *noGUI {
-		if *localMode {
-			var err error
-			conn, cleanup, err = dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, true, *password)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
-				os.Exit(1)
-			}
-		} else {
-			fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
-			ptyW, ptyH, _ := xterm.GetSize(os.Stdin.Fd())
-			var err error
-			conn, err = client.Dial(*host, *port, *player, true, *termFlag, *password, ptyW, ptyH, nil)
-			if err != nil {
-				log.Fatalf("Failed to connect: %v", err)
-			}
-			cleanup = func() {}
+	if *localMode {
+		var err error
+		conn, serverCleanup, err = dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, *noGUI, *password)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
 		}
-		defer conn.Close()
-		defer cleanup()
+	} else {
+		fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+		ptyW, ptyH := 0, 0
+		if *noGUI {
+			ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
+		}
+		var err error
+		conn, err = client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH, nil)
+		if err != nil {
+			log.Fatalf("Failed to connect: %v", err)
+		}
+	}
+	defer conn.Close()
+	defer serverCleanup()
 
+	// TUI: render in terminal.
+	if *noGUI {
 		profile := detectClientProfile(*termFlag)
 		if err := client.RunTerminal(conn, *player, profile); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -111,118 +111,25 @@ func main() {
 		return
 	}
 
-	// --- GUI path ---
-	// Ebitengine locks the main goroutine to OS thread 0. ALL work (SSH dial,
-	// game creation, etc.) must happen off this thread — only RunGame may run
-	// on it. Otherwise the SSH library's goroutines inherit thread 0 and block
-	// the Win32 message loop, preventing Draw() from ever being called.
-
-	fmt.Println("Connecting...")
-
-	// Run the window with a lazy renderer. The connect goroutine is started
-	// from within HandleInput (first call) — AFTER the window exists.
-	// On Windows, starting network goroutines before RunGame's event loop
-	// can prevent the window from appearing.
+	// GUI: render in Ebitengine window.
+	fmt.Println("Connected. Starting renderer...")
 	title := "dev-null"
 	if *localMode {
 		title = "dev-null (local)"
 	}
-	connectFn := func() <-chan gameResult {
-		ch := make(chan gameResult, 1)
-		go func() {
-			if *localMode {
-				c, cl, err := dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, false, *password)
-				if err != nil {
-					ch <- gameResult{err: err}
-					return
-				}
-				dd := *dataDir
-				g := client.NewClientRenderer(c, 1200, 800, *player, dd)
-				ch <- gameResult{game: g, cleanup: func() { c.Close(); cl() }}
-			} else {
-				fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
-				c, err := client.Dial(*host, *port, *player, false, *termFlag, *password, 0, 0, nil)
-				if err != nil {
-					ch <- gameResult{err: err}
-					return
-				}
-				g := client.NewClientRenderer(c, 1200, 800, *player, datadir.DefaultDataDir())
-				ch <- gameResult{game: g, cleanup: func() { c.Close() }}
-			}
-		}()
-		return ch
+	dd := *dataDir
+	if !*localMode {
+		dd = datadir.DefaultDataDir()
 	}
-
-	wrapper := &lazyRenderer{connectFn: connectFn}
-	if err := display.RunWindow(wrapper, title, 1200, 800); err != nil {
+	renderer := client.NewClientRenderer(conn, 1200, 800, *player, dd)
+	if err := display.RunWindow(renderer, title, 1200, 800); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
-	if wrapper.cleanup != nil {
-		wrapper.cleanup()
-	}
 }
 
-// dialLocal starts a headless server in a background goroutine and dials it.
-// Returns the SSH connection and a cleanup function that shuts down the server.
-type gameResult struct {
-	game    *client.ClientRenderer
-	cleanup func()
-	err     error
-}
-
-// lazyRenderer wraps a ClientRenderer that connects in the background.
-// The connection goroutine is started on the first HandleInput call,
-// ensuring the Ebitengine window exists before any network I/O begins.
-type lazyRenderer struct {
-	connectFn func() <-chan gameResult // called once to start connecting
-	gameCh    <-chan gameResult        // set after connectFn is called
-	real      *client.ClientRenderer
-	cleanup   func()
-}
-
-func (l *lazyRenderer) HandleInput(w *display.Window) {
-	// Start the connection goroutine on first call (window is now up).
-	if l.gameCh == nil && l.connectFn != nil {
-		l.gameCh = l.connectFn()
-		l.connectFn = nil
-	}
-	if l.real != nil {
-		l.real.HandleInput(w)
-	}
-}
-
-func (l *lazyRenderer) Draw(w *display.Window, screen *ebiten.Image) {
-	if l.real != nil {
-		l.real.Draw(w, screen)
-	}
-}
-
-func (l *lazyRenderer) Resize(cols, rows int) {
-	if l.real != nil {
-		l.real.Resize(cols, rows)
-	}
-}
-
-func (l *lazyRenderer) ShouldClose() bool {
-	if l.real == nil {
-		// Check if connection arrived.
-		select {
-		case res := <-l.gameCh:
-			if res.err != nil {
-				fmt.Fprintf(os.Stderr, "Connection failed: %v\n", res.err)
-				return true
-			}
-			l.real = res.game
-			l.cleanup = res.cleanup
-			fmt.Fprintln(os.Stderr, "Connected. Starting renderer...")
-		default:
-		}
-		return false
-	}
-	return l.real.ShouldClose()
-}
-
+// dialLocal starts a headless server and connects to it via SSH.
+// Returns the connection and a cleanup function that shuts down the server.
 func dialLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) (*client.SSHConn, func(), error) {
 	sshPort := port
 	if idx := strings.LastIndex(address, ":"); idx >= 0 {
@@ -239,7 +146,7 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 		initCmds = append(initCmds, "/game-load "+gameName)
 	}
 
-	// Start headless server entirely in a background goroutine.
+	// Start headless server.
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 
 	ready := make(chan struct{})
@@ -255,6 +162,7 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 		serverErr <- app.StartWithReady(serverCtx, ready)
 	}()
 
+	// Wait for server to be listening.
 	select {
 	case <-ready:
 	case err := <-serverErr:
@@ -262,7 +170,7 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 		return nil, nil, fmt.Errorf("server failed to start: %w", err)
 	}
 
-	// Connect as a normal client.
+	// Connect.
 	ptyW, ptyH := 0, 0
 	if noGUI {
 		ptyW, ptyH, _ = xterm.GetSize(os.Stdout.Fd())
