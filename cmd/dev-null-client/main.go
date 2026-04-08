@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"syscall"
 	"path/filepath"
 	"strings"
 	"time"
@@ -174,7 +175,9 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 		args = append(args, "--password", password)
 	}
 	cmd := exec.Command(serverBin, args...)
-	// Headless server writes nothing to console — logs go to DEV_NULL_LOG_FILE if set.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW — no console inheritance
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start server: %w (looked for %s)", err, serverBin)
 	}
