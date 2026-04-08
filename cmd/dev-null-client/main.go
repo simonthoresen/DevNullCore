@@ -122,6 +122,7 @@ func main() {
 	if !*localMode {
 		dd = datadir.DefaultDataDir()
 	}
+	fmt.Fprintf(os.Stderr, "DEBUG main: creating game\n")
 	game := client.NewGame(conn, fontFace, 1200, 800, *player, dd)
 
 	ebiten.SetWindowSize(1200, 800)
@@ -132,10 +133,14 @@ func main() {
 	}
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-	if err := ebiten.RunGame(game); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	fmt.Fprintf(os.Stderr, "DEBUG main: ebiten.RunGame starting\n")
+	if err := ebiten.RunGameWithOptions(game, &ebiten.RunGameOptions{
+		InitUnfocused: false,
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "RunGame returned error: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Fprintf(os.Stderr, "DEBUG main: ebiten.RunGame returned cleanly\n")
 }
 
 // dialLocal starts a headless server in a background goroutine and dials it.
