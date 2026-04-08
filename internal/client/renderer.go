@@ -75,7 +75,8 @@ type Game struct {
 	chatLines     []string      // chat messages (received from ANSI stream for now)
 
 	// Connection state.
-	connClosed bool // set by readLoop when SSH connection closes
+	started    chan struct{} // closed on first Update(); readLoop waits on this
+	connClosed bool         // set by readLoop when SSH connection closes
 
 	// Asset loading progress.
 	assetTotal    int // expected asset count (from asset-manifest OSC)
@@ -125,15 +126,22 @@ func NewGame(conn *SSHConn, fontFace text.Face, width, height int, playerID, dat
 		dataDir:       dataDir,
 		midiSynth:     NewMidiSynth(filepath.Join(dataDir, "soundfonts", "chiptune.sf2")),
 		readBuf:       make([]byte, 64*1024),
+		started:       make(chan struct{}),
 	}
 
-	// Start reading SSH output in background.
+	// readLoop is started from the first Update() call, not here.
+	// On Windows, starting a blocking SSH read before ebiten.RunGame
+	// enters its event loop can prevent the window from appearing.
 	go g.readLoop()
 
 	return g
 }
 
 func (g *Game) readLoop() {
+	// Wait for the game loop to start before reading SSH data.
+	// On Windows, blocking SSH reads before ebiten.RunGame's event loop
+	// can prevent window creation.
+	<-g.started
 	for {
 		n, err := g.conn.Read(g.readBuf)
 		if n > 0 {
@@ -424,6 +432,13 @@ func (g *Game) getSprite(r rune) *ebiten.Image {
 
 // Update implements ebiten.Game.
 func (g *Game) Update() error {
+	// Signal readLoop that the game loop is running (first call only).
+	select {
+	case <-g.started:
+	default:
+		close(g.started)
+	}
+
 	// Exit the game loop when the SSH connection closes (e.g. server shutdown).
 	g.mu.Lock()
 	closed := g.connClosed
