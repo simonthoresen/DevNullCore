@@ -1,9 +1,8 @@
-SHELL := bash
 .PHONY: build build-server build-client build-testbed run-server run-server-lan run-client run-client-local run-testbed run-testbed-onlcr test clean generate-manifest winres
 
-GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
-BUILD_DATE  := $(shell git log -1 --format=%cI 2>/dev/null || echo unknown)
-GIT_REMOTE  := $(shell git remote get-url origin 2>/dev/null || echo "")
+GIT_COMMIT  := $(shell git rev-parse --short HEAD)
+BUILD_DATE  := $(shell git log -1 --format=%cI)
+GIT_REMOTE  := $(shell git remote get-url origin)
 
 # Build all binaries into dist/ (strip debug info for smaller binaries)
 build: winres build-server build-client
