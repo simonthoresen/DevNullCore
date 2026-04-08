@@ -91,18 +91,33 @@ func main() {
 		}
 	}
 
-	startBootStep("SSH server")
 	app, err := server.New(address, password, dataDir, tickInterval)
 	if err != nil {
-		finishBootStep("FAIL")
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error creating server: %v\n", err)
 		os.Exit(1)
 	}
 	app.SetPort(port)
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	app.SetShutdownFunc(func() { stop() })
+
+	// Headless mode: SSH server only, no console UI, no UPnP, no boot steps.
+	// Used by --local subprocess mode where the client owns the display.
+	if headless {
+		if err := app.Start(ctx); err != nil && !errors.Is(err, ssh.ErrServerClosed) {
+			slog.Error("server error", "err", err)
+		}
+		return
+	}
+
+	// --- Interactive mode: full boot sequence with console UI ---
+	startBootStep("SSH server")
+	finishBootStep("DONE")
+
 	app.InstallConsoleSlogHandler()
 	app.OpenChatLog()
 	defer app.CloseChatLog()
-	finishBootStep("DONE")
 
 	if lanMode {
 		startBootStep("UPnP port mapping")
@@ -124,13 +139,6 @@ func main() {
 			finishBootStep("SKIP")
 		}
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	app.SetShutdownFunc(func() {
-		stop()
-	})
 
 	startBootStep("Pinggy tunnel")
 	pinggyStatusFile := os.Getenv("DEV_NULL_PINGGY_STATUS_FILE")
@@ -158,12 +166,7 @@ func main() {
 		os.Exit(1)
 	}()
 
-	if headless {
-		// Headless mode: no console UI. Just wait for shutdown signal.
-		// Used by --local subprocess mode where the client owns the display.
-		finishBootStep("DONE (headless)")
-		<-ctx.Done()
-	} else {
+	{
 		startBootStep("Starting console")
 		consoleModel := console.NewModel(app, stop, bootProfile)
 		finishBootStep("DONE")
