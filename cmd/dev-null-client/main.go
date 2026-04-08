@@ -15,10 +15,8 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"os/user"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/colorprofile"
@@ -68,9 +66,11 @@ func main() {
 	}
 
 	if *localMode {
-		runLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, *noSSH, *noGUI)
+		runLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, *noSSH, *noGUI, *password)
 		return
 	}
+
+	// --- Non-local: connect to a remote server ---
 
 	fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
 
@@ -78,7 +78,7 @@ func main() {
 	if *noGUI {
 		ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
 	}
-	conn, err := client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH)
+	conn, err := client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH, nil)
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
@@ -108,67 +108,48 @@ func main() {
 	}
 }
 
-// runLocal starts a headless server in-process, then connects to it.
-func runLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noSSH, noGUI bool) {
-	app, err := server.New(address, "", dataDir, tickInterval)
+// runLocal starts a headless server in-process, then connects to it as a
+// normal client. The server is invisible — no console UI, no admin terminal.
+// --game/--resume are sent as init commands over the SSH session.
+func runLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noSSH, noGUI bool, password string) {
+	app, err := server.New(address, password, dataDir, tickInterval)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating server: %v\n", err)
 		os.Exit(1)
 	}
-	app.InstallConsoleSlogHandler()
 
-	// Preload or resume a game before the client connects.
-	if resumeName != "" {
-		parts := strings.SplitN(resumeName, "/", 2)
-		if len(parts) != 2 {
-			fmt.Fprintf(os.Stderr, "--resume requires game/save format, e.g. orbits/autosave\n")
-			os.Exit(1)
-		}
-		if err := app.PreloadResume(parts[0], parts[1]); err != nil {
-			fmt.Fprintf(os.Stderr, "resume %s: %v\n", resumeName, err)
-			os.Exit(1)
-		}
-	} else if gameName != "" {
-		if err := app.PreloadGame(gameName); err != nil {
-			fmt.Fprintf(os.Stderr, "load game %s: %v\n", gameName, err)
-			os.Exit(1)
-		}
-	}
-
-	// Terminal modes (no-SSH, TUI) use signal.NotifyContext for graceful Ctrl+C.
-	// GUI mode does NOT — Ebitengine owns the lifecycle; window close is the exit
-	// signal, matching the non-local client path. signal.NotifyContext on Windows
-	// interferes with Ebitengine's window creation via SetConsoleCtrlHandler.
-	if noSSH || noGUI {
-		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-		defer stop()
-
-		if noSSH {
-			if err := app.RunDirect(ctx, playerName, termFlag, noGUI); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	// --no-ssh: direct transport, no SSH session. Game/resume are preloaded
+	// server-side since there's no SSH env var channel for init commands.
+	if noSSH {
+		if resumeName != "" {
+			parts := strings.SplitN(resumeName, "/", 2)
+			if len(parts) != 2 {
+				fmt.Fprintf(os.Stderr, "--resume requires game/save format, e.g. orbits/autosave\n")
 				os.Exit(1)
 			}
-			return
-		}
-
-		// TUI + SSH: pipe SSH session to the terminal.
-		sshPort := port
-		if idx := strings.LastIndex(address, ":"); idx >= 0 {
-			if p := address[idx+1:]; p != "" {
-				fmt.Sscanf(p, "%d", &sshPort)
+			if err := app.PreloadResume(parts[0], parts[1]); err != nil {
+				fmt.Fprintf(os.Stderr, "resume %s: %v\n", resumeName, err)
+				os.Exit(1)
+			}
+		} else if gameName != "" {
+			if err := app.PreloadGame(gameName); err != nil {
+				fmt.Fprintf(os.Stderr, "load game %s: %v\n", gameName, err)
+				os.Exit(1)
 			}
 		}
-		if err := app.RunLocalSSH(ctx, playerName, sshPort, termFlag); err != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		if err := app.RunDirect(ctx, playerName, termFlag, noGUI); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 
-	// GUI + SSH: start server, connect via SSH, run Ebitengine renderer.
-	// Server uses a plain cancel context — serverCancel shuts it down when
-	// the Ebitengine window closes (or the process is killed).
+	// --- SSH modes: start headless server, connect as normal client ---
+
 	app.SetLocalPlayerName(playerName)
+
 	sshPort := port
 	if idx := strings.LastIndex(address, ":"); idx >= 0 {
 		if p := address[idx+1:]; p != "" {
@@ -176,6 +157,15 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 		}
 	}
 
+	// Convert --game/--resume to init commands sent over the SSH session.
+	var initCmds []string
+	if resumeName != "" {
+		initCmds = append(initCmds, "/game-resume "+resumeName)
+	} else if gameName != "" {
+		initCmds = append(initCmds, "/game-load "+gameName)
+	}
+
+	// Start headless server.
 	serverCtx, serverCancel := context.WithCancel(context.Background())
 	defer serverCancel()
 
@@ -192,13 +182,30 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 		os.Exit(1)
 	}
 
-	conn, err := client.Dial("127.0.0.1", sshPort, playerName, false, termFlag, "", 0, 0)
+	// Connect as a normal client.
+	ptyW, ptyH := 0, 0
+	if noGUI {
+		ptyW, ptyH, _ = xterm.GetSize(os.Stdout.Fd())
+	}
+	conn, err := client.Dial("127.0.0.1", sshPort, playerName, noGUI, termFlag, password, ptyW, ptyH, initCmds)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "local SSH dial: %v\n", err)
 		os.Exit(1)
 	}
 	defer conn.Close()
 
+	if noGUI {
+		// TUI: render in terminal via raw SSH pipe.
+		profile := detectClientProfile(termFlag)
+		if err := client.RunTerminal(conn, playerName, profile); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+		// defer serverCancel() shuts down the server on return.
+	}
+
+	// GUI: render in Ebitengine window.
 	fontFace := client.DefaultFontFace()
 	game := client.NewGame(conn, fontFace, 1200, 800, playerName, dataDir)
 
@@ -210,6 +217,7 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+	// defer serverCancel() shuts down the server on return.
 }
 
 // detectClientProfile returns the color profile for client-side terminal rendering.

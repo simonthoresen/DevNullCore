@@ -1,9 +1,11 @@
 package client
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -28,7 +30,9 @@ type SSHConn struct {
 // ptyW and ptyH set the initial PTY dimensions; pass 0 for each to use the
 // default (120×50). Callers should pass the actual terminal size to avoid a
 // race where the first frame is rendered at the wrong dimensions.
-func Dial(host string, port int, player string, noGUI bool, termOverride, password string, ptyW, ptyH int) (*SSHConn, error) {
+// initCommands, if non-empty, are base64-encoded and sent as DEV_NULL_INIT
+// so the server dispatches them on the player's first tick.
+func Dial(host string, port int, player string, noGUI bool, termOverride, password string, ptyW, ptyH int, initCommands []string) (*SSHConn, error) {
 	addr := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
 	config := &ssh.ClientConfig{
@@ -72,6 +76,10 @@ func Dial(host string, port int, player string, noGUI bool, termOverride, passwo
 	}
 	if password != "" {
 		_ = session.Setenv("DEV_NULL_PASSWORD", password)
+	}
+	if len(initCommands) > 0 {
+		encoded := base64.StdEncoding.EncodeToString([]byte(strings.Join(initCommands, "\n")))
+		_ = session.Setenv("DEV_NULL_INIT", encoded)
 	}
 
 	// Request a PTY.
