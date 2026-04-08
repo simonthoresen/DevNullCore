@@ -9,7 +9,7 @@ $Host_    = "localhost"
 $Port     = "23234"
 $Player   = ""
 $Local    = $false
-$Terminal = $false
+$NoGUI = $false
 $Term     = ""
 
 $positionals = @()
@@ -18,7 +18,7 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
     switch -Regex ($arg) {
         '^--?(no-?update|skip-?update)$' { $NoUpdate = $true; continue }
         '^--?local$'         { $Local = $true; continue }
-        '^--?terminal$'      { $Terminal = $true; continue }
+        '^--?no-?gui$'       { $NoGUI = $true; continue }
         '^--?debug$'         { $LogLevel = "debug"; continue }
         '^--?log-?level$'    { $i++; if ($i -lt $CliArgs.Count) { $LogLevel = $CliArgs[$i] }; continue }
         '^--?log-?level=(.+)$' { $LogLevel = $Matches[1]; continue }
@@ -181,7 +181,7 @@ Update-FromRelease
 
 $clientArgs = @()
 if ($Local)    { $clientArgs += "--local"; $clientArgs += "--data-dir"; $clientArgs += $root }
-if ($Terminal) { $clientArgs += "--terminal" }
+if ($NoGUI)    { $clientArgs += "--no-gui" }
 if ($Host_ -and -not $Local) { $clientArgs += "--host"; $clientArgs += $Host_ }
 if ($Port)     { $clientArgs += "--port";   $clientArgs += $Port }
 if ($Player)   { $clientArgs += "--player"; $clientArgs += $Player }
@@ -192,7 +192,7 @@ $clientArgs += $positionals
 
 Push-Location $root
 try {
-    Write-RunLogLine "starting dev-null client (host=$Host_ port=$Port local=$Local terminal=$Terminal)"
+    Write-RunLogLine "starting dev-null client (host=$Host_ port=$Port local=$Local no-gui=$NoGUI)"
     & (Join-Path $root "dev-null-client.exe") @clientArgs
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
 } finally {

@@ -5,7 +5,6 @@ param(
 
 $Password = ""
 $Force = $false
-$Local = $false
 $Lan = $false
 $NoUpdate = $false
 $LogLevel = ""
@@ -17,8 +16,6 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
     $arg = $CliArgs[$i]
     switch -Regex ($arg) {
         '^--?force$'         { $Force = $true; continue }
-        '^--?local$'         { $Local = $true; continue }
-        '^--?(no-?network|offline|singleplayer|single-player)$' { $Local = $true; continue }
         '^--?lan$'           { $Lan = $true; continue }
         '^--?(no-?update|skip-?update)$' { $NoUpdate = $true; continue }
         '^--?log-?level$'    { $i++; if ($i -lt $CliArgs.Count) { $LogLevel = $CliArgs[$i] }; continue }
@@ -32,7 +29,7 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
     }
 }
 
-if (-not $Local -and $positionals.Count -ge 1 -and $positionals[0]) {
+if ($positionals.Count -ge 1 -and $positionals[0]) {
     $Password = $positionals[0]
 }
 
@@ -300,35 +297,6 @@ function Update-FromRelease {
 }
 
 Update-FromRelease
-
-# ── local / single-player mode ───────────────────────────────────────────────
-# No SSH, no tunnel, no port — just run the TUI directly in this terminal.
-# Extra args (--game, --player) are passed straight through.
-
-if ($Local) {
-    Write-BootStepStart "Setting up network"
-    Write-BootStepEnd "SKIP"
-
-    Push-Location $root
-    try {
-        Write-RunLogLine "starting in local single-player mode"
-        $localArgs = @("--local")
-        if ($Term) { $localArgs += "--term"; $localArgs += $Term }
-        $localArgs += $positionals
-        & (Join-Path $root "dev-null-server.exe") @localArgs
-        if ($LASTEXITCODE) { exit $LASTEXITCODE }
-    } finally {
-        Pop-Location
-        Write-RunLogLine "local session ended"
-        if ($null -eq $previousLogFile)    { Remove-Item Env:DEV_NULL_LOG_FILE    -ErrorAction SilentlyContinue }
-        else { $env:DEV_NULL_LOG_FILE = $previousLogFile }
-        if ($null -eq $previousLogLevel)  { Remove-Item Env:DEV_NULL_LOG_LEVEL  -ErrorAction SilentlyContinue }
-        else { $env:DEV_NULL_LOG_LEVEL = $previousLogLevel }
-        if ($null -eq $previousTermWidth) { Remove-Item Env:DEV_NULL_TERM_WIDTH -ErrorAction SilentlyContinue }
-        else { $env:DEV_NULL_TERM_WIDTH = $previousTermWidth }
-    }
-    return
-}
 
 # ── pre-flight ───────────────────────────────────────────────────────────────
 
