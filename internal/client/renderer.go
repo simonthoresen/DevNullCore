@@ -441,6 +441,9 @@ func (g *Game) Update() error {
 		x, y := ebiten.WindowPosition()
 		fmt.Fprintf(os.Stderr, "DEBUG: first Update() windowSize=%dx%d pos=%d,%d minimized=%v maximized=%v focused=%v floating=%v\n",
 			w, h, x, y, ebiten.IsWindowMinimized(), ebiten.IsWindowMaximized(), ebiten.IsFocused(), ebiten.IsWindowFloating())
+		// Force window to foreground for debugging.
+		ebiten.SetWindowFloating(true)
+		ebiten.SetWindowPosition(100, 100)
 		close(g.started)
 	}
 
