@@ -159,13 +159,12 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 	// Start headless server as a subprocess. Running it in-process prevents
 	// Ebitengine from creating its window on Windows (Bubble Tea's per-session
 	// console handling interferes with the Win32 message loop).
-	args := []string{"--no-gui", "--data-dir", dataDir, "--address", address}
+	args := []string{"--headless", "--data-dir", dataDir, "--address", address}
 	if password != "" {
 		args = append(args, "--password", password)
 	}
 	cmd := exec.Command(serverBin, args...)
-	cmd.Stdout = os.Stderr // show server logs
-	cmd.Stderr = os.Stderr
+	// Headless server writes nothing to console — logs go to DEV_NULL_LOG_FILE if set.
 	if err := cmd.Start(); err != nil {
 		return nil, nil, fmt.Errorf("start server: %w (looked for %s)", err, serverBin)
 	}

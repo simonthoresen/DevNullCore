@@ -55,7 +55,9 @@ func main() {
 	flag.StringVar(&portOverride, "port", "", "SSH listen port (overrides --address port, default 23234)")
 	flag.StringVar(&dataDir, "data-dir", datadir.DefaultDataDir(), "directory containing games/, logs/")
 	flag.BoolVar(&lanMode, "lan", false, "LAN-only server (no UPnP, no public IP, no Pinggy)")
+	var headless bool
 	flag.BoolVar(&noGUI, "no-gui", false, "run in terminal mode (TUI) instead of opening a graphical window")
+	flag.BoolVar(&headless, "headless", false, "run with no console UI (for --local subprocess mode)")
 	flag.DurationVar(&tickInterval, "tick-interval", 100*time.Millisecond, "server tick interval (e.g. 100ms, 50ms)")
 	flag.StringVar(&termFlag, "term", "", "force terminal color profile for all sessions: truecolor, 256color, ansi, ascii")
 	flag.Parse()
@@ -134,9 +136,6 @@ func main() {
 		finishBootStep("DONE")
 	}
 
-	startBootStep("Starting console")
-	consoleModel := console.NewModel(app, stop, bootProfile)
-
 	// Start server in background
 	serverErr := make(chan error, 1)
 	go func() {
@@ -153,32 +152,41 @@ func main() {
 		os.Exit(1)
 	}()
 
-	finishBootStep("DONE")
-
-	if noGUI {
-		// TUI mode: run console in the terminal via Bubble Tea.
-		program := tea.NewProgram(consoleModel, tea.WithFPS(60), tea.WithColorProfile(bootProfile))
-		app.SetConsoleProgram(program)
-		go func() {
-			<-ctx.Done()
-			program.Send(tea.QuitMsg{})
-		}()
-		if _, err := program.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "console error: %v\n", err)
-		}
+	if headless {
+		// Headless mode: no console UI. Just wait for shutdown signal.
+		// Used by --local subprocess mode where the client owns the display.
+		finishBootStep("DONE (headless)")
+		<-ctx.Done()
 	} else {
-		// GUI mode: run console in an Ebitengine window.
-		renderer := display.NewServerRenderer()
-		app.SetConsoleSender(renderer)
-		go func() {
-			<-ctx.Done()
-			renderer.Send(tea.QuitMsg{})
-		}()
-		if err := renderer.Run(consoleModel, "dev-null server", 1200, 800); err != nil {
-			fmt.Fprintf(os.Stderr, "console error: %v\n", err)
+		startBootStep("Starting console")
+		consoleModel := console.NewModel(app, stop, bootProfile)
+		finishBootStep("DONE")
+
+		if noGUI {
+			// TUI mode: run console in the terminal via Bubble Tea.
+			program := tea.NewProgram(consoleModel, tea.WithFPS(60), tea.WithColorProfile(bootProfile))
+			app.SetConsoleProgram(program)
+			go func() {
+				<-ctx.Done()
+				program.Send(tea.QuitMsg{})
+			}()
+			if _, err := program.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "console error: %v\n", err)
+			}
+		} else {
+			// GUI mode: run console in an Ebitengine window.
+			renderer := display.NewServerRenderer()
+			app.SetConsoleSender(renderer)
+			go func() {
+				<-ctx.Done()
+				renderer.Send(tea.QuitMsg{})
+			}()
+			if err := renderer.Run(consoleModel, "dev-null server", 1200, 800); err != nil {
+				fmt.Fprintf(os.Stderr, "console error: %v\n", err)
+			}
+			// Ensure context is cancelled when GUI window closes (covers window X button).
+			stop()
 		}
-		// Ensure context is cancelled when GUI window closes (covers window X button).
-		stop()
 	}
 
 	startBootStep("Initiating shutdown")
