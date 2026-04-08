@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +26,9 @@ import (
 	"dev-null/internal/runlog"
 	"dev-null/internal/server"
 )
+
+//go:embed winres/icon.ico
+var appIcon []byte
 
 // buildCommit, buildDate, and buildRemote are injected at build time via -ldflags.
 // They default to "dev" / "unknown" / "" for local go run / unbuilt binaries.
@@ -190,7 +194,7 @@ func main() {
 				<-ctx.Done()
 				renderer.Send(tea.QuitMsg{})
 			}()
-			if err := renderer.Run(consoleModel, "dev-null server", 1200, 800); err != nil {
+			if err := renderer.Run(consoleModel, "dev-null server", 1200, 800, appIcon); err != nil {
 				fmt.Fprintf(os.Stderr, "console error: %v\n", err)
 			}
 			// Ensure context is cancelled when GUI window closes (covers window X button).

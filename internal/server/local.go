@@ -38,7 +38,7 @@ func (a *Server) PreloadResume(gameName, saveName string) error {
 // normally, but a chrome model is connected directly to os.Stdin/os.Stdout
 // via Bubble Tea. No SSH transport, no KittyStripWriter, no PTY negotiation.
 // Use alongside --local to isolate rendering issues from transport issues.
-func (a *Server) RunDirect(ctx context.Context, playerName, termOverride string, noGUI bool) error {
+func (a *Server) RunDirect(ctx context.Context, playerName, termOverride string, noGUI bool, iconICO []byte) error {
 	// Initialise lastUpdate so the first tick dt isn't enormous.
 	a.lastUpdateMu.Lock()
 	a.lastUpdate = time.Now()
@@ -125,5 +125,5 @@ func (a *Server) RunDirect(ctx context.Context, playerName, termOverride string,
 
 	deliverGameState(renderer)
 
-	return renderer.Run(model, "dev-null", 1200, 800)
+	return renderer.Run(model, "dev-null", 1200, 800, iconICO)
 }

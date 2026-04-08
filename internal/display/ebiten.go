@@ -38,7 +38,7 @@ type Window struct {
 
 // RunWindow creates a Window with the given renderer and runs the Ebitengine
 // game loop (blocking). This is the single entry point for all GUI rendering.
-func RunWindow(renderer Renderer, title string, width, height int) error {
+func RunWindow(renderer Renderer, title string, width, height int, iconICO []byte) error {
 	w := &Window{
 		FontFace: InitGUIFont(),
 		renderer: renderer,
@@ -50,6 +50,9 @@ func RunWindow(renderer Renderer, title string, width, height int) error {
 	ebiten.SetWindowSize(width, height)
 	ebiten.SetWindowTitle(title)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	if len(iconICO) > 0 {
+		_ = SetWindowIconFromICO(iconICO)
+	}
 
 	return ebiten.RunGame(w)
 }
@@ -130,7 +133,7 @@ func NewServerRenderer() *ServerRenderer {
 }
 
 // Run initializes the model and starts the Ebitengine window (blocking).
-func (r *ServerRenderer) Run(model tea.Model, title string, width, height int) error {
+func (r *ServerRenderer) Run(model tea.Model, title string, width, height int, iconICO []byte) error {
 	r.mu.Lock()
 	r.model = model
 	r.mu.Unlock()
@@ -144,7 +147,7 @@ func (r *ServerRenderer) Run(model tea.Model, title string, width, height int) e
 		Height: WindowRows(height),
 	})
 
-	return RunWindow(r, title, width, height)
+	return RunWindow(r, title, width, height, iconICO)
 }
 
 // Send delivers a message to the model asynchronously.

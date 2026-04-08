@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"flag"
 	"fmt"
 	"log"
@@ -31,6 +32,9 @@ import (
 	"dev-null/internal/runlog"
 	"dev-null/internal/server"
 )
+
+//go:embed winres/icon.ico
+var appIcon []byte
 
 // buildCommit, buildDate, and buildRemote are injected at build time via -ldflags.
 var buildCommit = "dev"
@@ -100,7 +104,7 @@ func main() {
 
 	fmt.Println("Connected. Starting renderer...")
 	renderer := client.NewClientRenderer(conn, 1200, 800, *player, datadir.DefaultDataDir())
-	if err := display.RunWindow(renderer, "dev-null", 1200, 800); err != nil {
+	if err := display.RunWindow(renderer, "dev-null", 1200, 800, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -132,7 +136,7 @@ func runLocal(address, dataDir, playerName string, tickInterval time.Duration, g
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := app.RunDirect(ctx, playerName, termFlag, noGUI); err != nil {
+	if err := app.RunDirect(ctx, playerName, termFlag, noGUI, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
