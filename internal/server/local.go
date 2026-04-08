@@ -81,6 +81,9 @@ func (a *Server) RunDirect(ctx context.Context, playerName, termOverride string,
 	model.ColorProfile = cp
 	if !noGUI {
 		model.IsEnhancedClient = true // GUI mode renders via Ebitengine — enable canvas/local
+		if a.state.CanvasScale == 0 {
+			a.state.CanvasScale = 8 // default scale for GUI mode
+		}
 	}
 
 	// Deliver the current game state so the model initialises correctly.
