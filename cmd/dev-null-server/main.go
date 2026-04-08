@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -32,13 +33,8 @@ var buildDate = "unknown"
 var buildRemote = ""
 
 func main() {
-	cleanupLog, err := runlog.ConfigureFromEnv("server")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "could not configure logging: %v\n", err)
-		os.Exit(1)
-	}
-	defer cleanupLog() //nolint:errcheck
-	slog.Info("dev-null server", "commit", buildCommit, "built", buildDate)
+	// Logging is configured after flag parsing (needs --data-dir).
+	// For now, set build info early.
 	engine.SetBuildInfo(buildDate, buildRemote)
 	initBootTermWidth()
 
@@ -72,6 +68,16 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Set up logging to data-dir/logs/server-<timestamp>.log.
+	logsDir := filepath.Join(dataDir, "logs")
+	cleanupLog, err := runlog.ConfigureAuto(logsDir, "server")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not configure logging: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanupLog() //nolint:errcheck
+	slog.Info("dev-null server", "commit", buildCommit, "built", buildDate)
 
 	if portOverride != "" {
 		address = ":" + portOverride

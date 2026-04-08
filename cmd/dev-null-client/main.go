@@ -28,6 +28,7 @@ import (
 	"dev-null/internal/datadir"
 	"dev-null/internal/display"
 	"dev-null/internal/engine"
+	"dev-null/internal/runlog"
 	"dev-null/internal/server"
 )
 
@@ -53,6 +54,15 @@ func main() {
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
 	termFlag := flag.String("term", "", "force terminal color profile: truecolor, 256color, ansi, ascii")
 	flag.Parse()
+
+	// Set up logging to data-dir/logs/client-<timestamp>.log.
+	logsDir := filepath.Join(*dataDir, "logs")
+	cleanupLog, err := runlog.ConfigureAuto(logsDir, "client")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not configure logging: %v\n", err)
+		os.Exit(1)
+	}
+	defer cleanupLog() //nolint:errcheck
 
 	if *noSSH && !*localMode {
 		fmt.Fprintf(os.Stderr, "--no-ssh requires --local\n")

@@ -1,17 +1,37 @@
 package runlog
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
+// ConfigureFromEnv sets up slog from DEV_NULL_LOG_FILE / DEV_NULL_LOG_LEVEL.
+// If DEV_NULL_LOG_FILE is not set, logs are discarded.
 func ConfigureFromEnv(component string) (func() error, error) {
 	logFilePath := strings.TrimSpace(os.Getenv("DEV_NULL_LOG_FILE"))
 	level := parseLevel(strings.TrimSpace(os.Getenv("DEV_NULL_LOG_LEVEL")))
+	return configure(logFilePath, level, component)
+}
 
+// ConfigureAuto sets up slog with an automatic timestamped log file in logsDir.
+// The log file is named <component>-<timestamp>.log.
+// DEV_NULL_LOG_FILE overrides the auto path. DEV_NULL_LOG_LEVEL sets the level.
+func ConfigureAuto(logsDir, component string) (func() error, error) {
+	logFilePath := strings.TrimSpace(os.Getenv("DEV_NULL_LOG_FILE"))
+	if logFilePath == "" {
+		ts := time.Now().Format("20060102-150405")
+		logFilePath = filepath.Join(logsDir, fmt.Sprintf("%s-%s.log", component, ts))
+	}
+	level := parseLevel(strings.TrimSpace(os.Getenv("DEV_NULL_LOG_LEVEL")))
+	return configure(logFilePath, level, component)
+}
+
+func configure(logFilePath string, level slog.Level, component string) (func() error, error) {
 	var (
 		output io.Writer = io.Discard
 		closer io.Closer
@@ -30,6 +50,7 @@ func ConfigureFromEnv(component string) (func() error, error) {
 
 		output = file
 		closer = file
+		slog.Info("logging to file", "path", logFilePath)
 	}
 
 	handler := slog.NewTextHandler(output, &slog.HandlerOptions{
@@ -46,7 +67,6 @@ func ConfigureFromEnv(component string) (func() error, error) {
 		return closer.Close()
 	}, nil
 }
-
 
 func parseLevel(value string) slog.Level {
 	switch strings.ToLower(value) {
