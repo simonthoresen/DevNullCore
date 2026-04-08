@@ -170,18 +170,30 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 		return nil, nil, fmt.Errorf("server failed to start: %w", err)
 	}
 
-	// Connect.
+	// Connect from a goroutine so the SSH client's internal goroutines
+	// (mux, channel handler) are never spawned from OS thread 0.
+	// On Windows, Ebitengine locks the main goroutine to thread 0 for
+	// window creation — SSH goroutines on that thread block the message loop.
+	type dialResult struct {
+		conn *client.SSHConn
+		err  error
+	}
 	ptyW, ptyH := 0, 0
 	if noGUI {
 		ptyW, ptyH, _ = xterm.GetSize(os.Stdout.Fd())
 	}
-	conn, err := client.Dial("127.0.0.1", sshPort, playerName, noGUI, termFlag, password, ptyW, ptyH, initCmds)
-	if err != nil {
+	dialCh := make(chan dialResult, 1)
+	go func() {
+		c, err := client.Dial("127.0.0.1", sshPort, playerName, noGUI, termFlag, password, ptyW, ptyH, initCmds)
+		dialCh <- dialResult{c, err}
+	}()
+	res := <-dialCh
+	if res.err != nil {
 		serverCancel()
-		return nil, nil, fmt.Errorf("local SSH dial: %w", err)
+		return nil, nil, fmt.Errorf("local SSH dial: %w", res.err)
 	}
 
-	return conn, serverCancel, nil
+	return res.conn, serverCancel, nil
 }
 
 // runDirect runs the --no-ssh path: server + chrome connected directly,
