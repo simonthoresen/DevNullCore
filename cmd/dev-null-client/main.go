@@ -117,38 +117,43 @@ func main() {
 	// on it. Otherwise the SSH library's goroutines inherit thread 0 and block
 	// the Win32 message loop, preventing Draw() from ever being called.
 
-	gameCh := make(chan gameResult, 1)
-
-	go func() {
-		if *localMode {
-			c, cl, err := dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, false, *password)
-			if err != nil {
-				gameCh <- gameResult{err: err}
-				return
-			}
-			dd := *dataDir
-			g := client.NewClientRenderer(c, 1200, 800, *player, dd)
-			gameCh <- gameResult{game: g, cleanup: func() { c.Close(); cl() }}
-		} else {
-			fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
-			c, err := client.Dial(*host, *port, *player, false, *termFlag, *password, 0, 0, nil)
-			if err != nil {
-				gameCh <- gameResult{err: err}
-				return
-			}
-			g := client.NewClientRenderer(c, 1200, 800, *player, datadir.DefaultDataDir())
-			gameCh <- gameResult{game: g, cleanup: func() { c.Close() }}
-		}
-	}()
-
 	fmt.Println("Connecting...")
 
-	// Run the window with a lazy renderer that connects in the background.
+	// Run the window with a lazy renderer. The connect goroutine is started
+	// from within HandleInput (first call) — AFTER the window exists.
+	// On Windows, starting network goroutines before RunGame's event loop
+	// can prevent the window from appearing.
 	title := "dev-null"
 	if *localMode {
 		title = "dev-null (local)"
 	}
-	wrapper := &lazyRenderer{gameCh: gameCh}
+	connectFn := func() <-chan gameResult {
+		ch := make(chan gameResult, 1)
+		go func() {
+			if *localMode {
+				c, cl, err := dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, false, *password)
+				if err != nil {
+					ch <- gameResult{err: err}
+					return
+				}
+				dd := *dataDir
+				g := client.NewClientRenderer(c, 1200, 800, *player, dd)
+				ch <- gameResult{game: g, cleanup: func() { c.Close(); cl() }}
+			} else {
+				fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+				c, err := client.Dial(*host, *port, *player, false, *termFlag, *password, 0, 0, nil)
+				if err != nil {
+					ch <- gameResult{err: err}
+					return
+				}
+				g := client.NewClientRenderer(c, 1200, 800, *player, datadir.DefaultDataDir())
+				ch <- gameResult{game: g, cleanup: func() { c.Close() }}
+			}
+		}()
+		return ch
+	}
+
+	wrapper := &lazyRenderer{connectFn: connectFn}
 	if err := display.RunWindow(wrapper, title, 1200, 800); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -167,14 +172,21 @@ type gameResult struct {
 }
 
 // lazyRenderer wraps a ClientRenderer that connects in the background.
-// It shows a blank screen until the connection is ready, then delegates.
+// The connection goroutine is started on the first HandleInput call,
+// ensuring the Ebitengine window exists before any network I/O begins.
 type lazyRenderer struct {
-	gameCh  <-chan gameResult
-	real    *client.ClientRenderer
-	cleanup func()
+	connectFn func() <-chan gameResult // called once to start connecting
+	gameCh    <-chan gameResult        // set after connectFn is called
+	real      *client.ClientRenderer
+	cleanup   func()
 }
 
 func (l *lazyRenderer) HandleInput(w *display.Window) {
+	// Start the connection goroutine on first call (window is now up).
+	if l.gameCh == nil && l.connectFn != nil {
+		l.gameCh = l.connectFn()
+		l.connectFn = nil
+	}
 	if l.real != nil {
 		l.real.HandleInput(w)
 	}
