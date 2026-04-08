@@ -260,6 +260,7 @@ func (a *Server) unregisterSession(playerID string) {
 
 	a.programsMu.Lock()
 	delete(a.programs, playerID)
+	remaining := len(a.programs)
 	a.programsMu.Unlock()
 
 	a.sessionsMu.Lock()
@@ -267,6 +268,12 @@ func (a *Server) unregisterSession(playerID string) {
 	a.sessionsMu.Unlock()
 
 	a.broadcastMsg(domain.PlayerLeftMsg{PlayerID: playerID})
+
+	// In headless --local mode, shut down when the last player leaves.
+	if remaining == 0 && a.localPlayerName != "" && a.shutdownFn != nil {
+		slog.Info("last player left, shutting down headless server")
+		a.shutdownFn()
+	}
 }
 
 func (a *Server) kickPlayer(playerID string) error {

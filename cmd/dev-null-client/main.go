@@ -178,6 +178,7 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 			return
 		}
 		app.SetLocalPlayerName(playerName)
+		app.SetShutdownFunc(serverCancel)
 		serverErr <- app.StartWithReady(serverCtx, ready)
 	}()
 
