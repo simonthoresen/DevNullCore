@@ -15,7 +15,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -128,8 +130,8 @@ func main() {
 	}
 }
 
-// dialLocal starts a headless server and connects to it via SSH.
-// Returns the connection and a cleanup function that shuts down the server.
+// dialLocal starts a headless server as a subprocess and connects to it.
+// Returns the connection and a cleanup function that kills the subprocess.
 func dialLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) (*client.SSHConn, func(), error) {
 	sshPort := port
 	if idx := strings.LastIndex(address, ":"); idx >= 0 {
@@ -146,54 +148,59 @@ func dialLocal(address, dataDir, playerName string, port int, tickInterval time.
 		initCmds = append(initCmds, "/game-load "+gameName)
 	}
 
-	// Start headless server.
-	serverCtx, serverCancel := context.WithCancel(context.Background())
+	// Find the server binary next to the client binary.
+	exe, _ := os.Executable()
+	serverBin := filepath.Join(filepath.Dir(exe), "dev-null-server.exe")
+	if _, err := os.Stat(serverBin); err != nil {
+		// Fallback: try in data dir.
+		serverBin = filepath.Join(dataDir, "dev-null-server.exe")
+	}
 
-	ready := make(chan struct{})
-	serverErr := make(chan error, 1)
-	go func() {
-		app, err := server.New(address, password, dataDir, tickInterval)
-		if err != nil {
-			serverErr <- err
-			return
+	// Start headless server as a subprocess. Running it in-process prevents
+	// Ebitengine from creating its window on Windows (Bubble Tea's per-session
+	// console handling interferes with the Win32 message loop).
+	args := []string{"--no-gui", "--data-dir", dataDir, "--address", address}
+	if password != "" {
+		args = append(args, "--password", password)
+	}
+	cmd := exec.Command(serverBin, args...)
+	cmd.Stdout = os.Stderr // show server logs
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("start server: %w (looked for %s)", err, serverBin)
+	}
+
+	cleanup := func() {
+		cmd.Process.Signal(os.Interrupt)
+		done := make(chan struct{})
+		go func() { cmd.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			cmd.Process.Kill()
 		}
-		app.SetLocalPlayerName(playerName)
-		app.SetShutdownFunc(serverCancel)
-		serverErr <- app.StartWithReady(serverCtx, ready)
-	}()
-
-	// Wait for server to be listening.
-	select {
-	case <-ready:
-	case err := <-serverErr:
-		serverCancel()
-		return nil, nil, fmt.Errorf("server failed to start: %w", err)
 	}
 
-	// Connect from a goroutine so the SSH client's internal goroutines
-	// (mux, channel handler) are never spawned from OS thread 0.
-	// On Windows, Ebitengine locks the main goroutine to thread 0 for
-	// window creation — SSH goroutines on that thread block the message loop.
-	type dialResult struct {
-		conn *client.SSHConn
-		err  error
-	}
+	// Poll until the server is listening.
+	var conn *client.SSHConn
 	ptyW, ptyH := 0, 0
 	if noGUI {
 		ptyW, ptyH, _ = xterm.GetSize(os.Stdout.Fd())
 	}
-	dialCh := make(chan dialResult, 1)
-	go func() {
+	for i := 0; i < 50; i++ {
+		time.Sleep(100 * time.Millisecond)
 		c, err := client.Dial("127.0.0.1", sshPort, playerName, noGUI, termFlag, password, ptyW, ptyH, initCmds)
-		dialCh <- dialResult{c, err}
-	}()
-	res := <-dialCh
-	if res.err != nil {
-		serverCancel()
-		return nil, nil, fmt.Errorf("local SSH dial: %w", res.err)
+		if err == nil {
+			conn = c
+			break
+		}
+	}
+	if conn == nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("could not connect to local server on port %d", sshPort)
 	}
 
-	return res.conn, serverCancel, nil
+	return conn, cleanup, nil
 }
 
 // runDirect runs the --no-ssh path: server + chrome connected directly,
