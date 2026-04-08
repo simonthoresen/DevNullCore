@@ -127,8 +127,7 @@ func main() {
 				return
 			}
 			dd := *dataDir
-			fontFace := client.DefaultFontFace()
-			g := client.NewGame(c, fontFace, 1200, 800, *player, dd)
+			g := client.NewGame(c, 1200, 800, *player, dd)
 			gameCh <- gameResult{game: g, cleanup: func() { c.Close(); cl() }}
 		} else {
 			fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
@@ -137,8 +136,7 @@ func main() {
 				gameCh <- gameResult{err: err}
 				return
 			}
-			fontFace := client.DefaultFontFace()
-			g := client.NewGame(c, fontFace, 1200, 800, *player, datadir.DefaultDataDir())
+			g := client.NewGame(c, 1200, 800, *player, datadir.DefaultDataDir())
 			gameCh <- gameResult{game: g, cleanup: func() { c.Close() }}
 		}
 	}()

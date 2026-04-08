@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text/v2"
 
 	"dev-null/internal/clipboard"
 )
@@ -16,10 +15,9 @@ import (
 // It translates Ebitengine input events to tea.Msg, drives Update/View,
 // and renders the resulting ImageBuffer as pixel cells.
 type EbitenBackend struct {
-	opts options
-
-	model    tea.Model
-	fontFace text.Face
+	Window // shared DPI, layout, font, resize detection
+	opts   options
+	model  tea.Model
 
 	// Inbound message queue — fed by Send() and tea.Cmd goroutines.
 	msgCh chan tea.Msg
@@ -27,10 +25,6 @@ type EbitenBackend struct {
 	// Protects model access between Update() and Draw().
 	mu    sync.Mutex
 	dirty bool // true when model state changed since last Draw
-
-	// Track window size for resize detection.
-	lastCols int
-	lastRows int
 
 	// Cursor blink state.
 	cursorStart time.Time
@@ -43,8 +37,8 @@ func NewEbitenBackend(opts ...Option) *EbitenBackend {
 		fn(&o)
 	}
 	return &EbitenBackend{
+		Window:      NewWindow(),
 		opts:        o,
-		fontFace:    InitGUIFont(),
 		msgCh:       make(chan tea.Msg, 256),
 		dirty:       true, // force initial render
 		cursorStart: time.Now(),
@@ -64,8 +58,8 @@ func (e *EbitenBackend) Run(model tea.Model) error {
 	// Send initial window size.
 	cols := WindowCols(e.opts.windowWidth)
 	rows := WindowRows(e.opts.windowHeight)
-	e.lastCols = cols
-	e.lastRows = rows
+	e.Window.lastCols = cols
+	e.Window.lastRows = rows
 	e.Send(tea.WindowSizeMsg{Width: cols, Height: rows})
 
 	ebiten.SetWindowSize(e.opts.windowWidth, e.opts.windowHeight)
@@ -87,18 +81,7 @@ func (e *EbitenBackend) Send(msg tea.Msg) {
 // Update implements ebiten.Game.
 func (e *EbitenBackend) Update() error {
 	// Handle window resize.
-	w, h := ebiten.WindowSize()
-	cols := WindowCols(w)
-	rows := WindowRows(h)
-	if cols < 1 {
-		cols = 1
-	}
-	if rows < 1 {
-		rows = 1
-	}
-	if cols != e.lastCols || rows != e.lastRows {
-		e.lastCols = cols
-		e.lastRows = rows
+	if cols, rows, changed := e.DetectResize(); changed {
 		e.Send(tea.WindowSizeMsg{Width: cols, Height: rows})
 	}
 
@@ -149,7 +132,7 @@ func (e *EbitenBackend) Draw(screen *ebiten.Image) {
 	// Read the buffer directly (no ANSI round-trip).
 	if bv, ok := e.model.(BufferViewer); ok {
 		if buf := bv.ViewBuffer(); buf != nil {
-			DrawImageBuffer(screen, buf, e.fontFace)
+			DrawImageBuffer(screen, buf, e.FontFace)
 		}
 	}
 
@@ -177,15 +160,7 @@ func (e *EbitenBackend) Draw(screen *ebiten.Image) {
 	}
 }
 
-// LayoutF implements ebiten.LayoutFer for HiDPI-aware rendering.
-func (e *EbitenBackend) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
-	return GameLayout(outsideWidth, outsideHeight)
-}
-
-// Layout implements ebiten.Game (required by interface, but LayoutF takes precedence).
-func (e *EbitenBackend) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return GameLayoutInt(outsideWidth, outsideHeight)
-}
+// Layout and LayoutF are inherited from the embedded Window struct.
 
 // processCmd runs a tea.Cmd in a goroutine, routing the result back via msgCh.
 func (e *EbitenBackend) processCmd(cmd tea.Cmd) {

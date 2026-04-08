@@ -46,11 +46,9 @@ func cellH() int { return display.CellH }
 
 // Game implements ebiten.Game for the dev-null client.
 type Game struct {
-	conn *SSHConn
-	grid *TerminalGrid
-
-	// Font for text cell rendering.
-	fontFace text.Face
+	display.Window // shared DPI, layout, font, resize detection
+	conn           *SSHConn
+	grid           *TerminalGrid
 
 	// Charmap state.
 	charmapDef  *render.CharMapDef
@@ -94,14 +92,8 @@ type Game struct {
 	mu      sync.Mutex
 }
 
-// DefaultFontFace returns the GUI font face scaled for the monitor's DPI.
-// Cell dimensions (display.CellW, display.CellH) are updated to match.
-func DefaultFontFace() text.Face {
-	return display.InitGUIFont()
-}
-
 // NewGame creates a new client game instance.
-func NewGame(conn *SSHConn, fontFace text.Face, width, height int, playerID, dataDir string) *Game {
+func NewGame(conn *SSHConn, width, height int, playerID, dataDir string) *Game {
 	cols := display.WindowCols(width)
 	rows := display.WindowRows(height)
 	if cols < 1 {
@@ -114,9 +106,9 @@ func NewGame(conn *SSHConn, fontFace text.Face, width, height int, playerID, dat
 	t := theme.Default()
 
 	g := &Game{
+		Window:        display.NewWindow(),
 		conn:          conn,
 		grid:          NewTerminalGrid(cols, rows),
-		fontFace:      fontFace,
 		spriteCache:   make(map[rune]*ebiten.Image),
 		localRenderer: NewLocalRenderer(),
 		clientScreen:  NewClientScreen(t),
@@ -408,7 +400,7 @@ func (g *Game) drawLoadingOverlay(screen *ebiten.Image) {
 	dop := &text.DrawOptions{}
 	dop.GeoM.Translate(float64(bx), float64(by+barH+4))
 	dop.ColorScale.ScaleWithColor(color.RGBA{R: 200, G: 200, B: 200, A: 255})
-	text.Draw(screen, label, g.fontFace, dop)
+	text.Draw(screen, label, g.FontFace, dop)
 }
 
 func (g *Game) getSprite(r rune) *ebiten.Image {
@@ -449,17 +441,11 @@ func (g *Game) Update() error {
 	g.midiSynth.ensurePlayer()
 
 	// Handle window resize.
-	w, h := ebiten.WindowSize()
-	cols := display.WindowCols(w)
-	rows := display.WindowRows(h)
-
-	g.mu.Lock()
-	if cols != g.grid.Width || rows != g.grid.Height {
+	if cols, rows, changed := g.DetectResize(); changed {
+		g.mu.Lock()
 		g.grid.Resize(cols, rows)
 		g.mu.Unlock()
 		_ = g.conn.SendWindowChange(cols, rows)
-	} else {
-		g.mu.Unlock()
 	}
 
 	// Handle keyboard input.
@@ -602,7 +588,7 @@ func (g *Game) drawRemote(screen *ebiten.Image) {
 				dop := &text.DrawOptions{}
 				dop.GeoM.Translate(float64(px), float64(py))
 				dop.ColorScale.ScaleWithColor(cell.Fg)
-				text.Draw(screen, string(cell.Char), g.fontFace, dop)
+				text.Draw(screen, string(cell.Char), g.FontFace, dop)
 			}
 		}
 	}
@@ -611,15 +597,7 @@ func (g *Game) drawRemote(screen *ebiten.Image) {
 // Layout implements ebiten.Game.
 // drawImageBuffer renders an ImageBuffer to the Ebitengine screen.
 func (g *Game) drawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer) {
-	display.DrawImageBuffer(screen, buf, g.fontFace)
+	display.DrawImageBuffer(screen, buf, g.FontFace)
 }
 
-// LayoutF implements ebiten.LayoutFer for HiDPI-aware rendering.
-func (g *Game) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
-	return display.GameLayout(outsideWidth, outsideHeight)
-}
-
-// Layout implements ebiten.Game (required by interface, but LayoutF takes precedence).
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return display.GameLayoutInt(outsideWidth, outsideHeight)
-}
+// Layout and LayoutF are inherited from the embedded display.Window struct.
