@@ -142,6 +142,9 @@ func (a *Server) sessionProgramOptions(sess ssh.Session) ([]tea.ProgramOption, c
 		tea.WithEnvironment(envs), // override MakeOptions' env to include COLORTERM
 		tea.WithColorProfile(cp),
 		tea.WithOutput(network.NewKittyStripWriter(sess)),
+		tea.WithoutSignalHandler(), // SSH sessions don't need console signal handling;
+		// on Windows, signal.Notify installs SetConsoleCtrlHandler which
+		// prevents Ebitengine from creating its window in --local mode.
 	)
 	return opts, cp
 }
