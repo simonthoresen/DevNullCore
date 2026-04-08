@@ -38,7 +38,6 @@ var buildDate = "unknown"
 var buildRemote = ""
 
 func main() {
-	fmt.Printf("dev-null-client %s (%s)\n", buildCommit, buildDate)
 	engine.SetBuildInfo(buildDate, buildRemote)
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
