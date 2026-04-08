@@ -65,24 +65,43 @@ func main() {
 		}
 	}
 
-	if *localMode {
-		runLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, *noSSH, *noGUI, *password)
+	// --local --no-ssh: direct transport, no SSH session.
+	if *localMode && *noSSH {
+		runDirect(*address, *dataDir, *player, *tickInterval, *gameName, *resumeName, *termFlag, *noGUI, *password)
 		return
 	}
 
-	// --- Non-local: connect to a remote server ---
+	// --- All SSH paths: local and non-local, GUI and TUI ---
+	// Establish the SSH connection, then run the appropriate renderer.
+	// For --local, start a headless server first (in a background goroutine).
 
-	fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+	var (
+		conn    *client.SSHConn
+		cleanup func()
+	)
 
-	ptyW, ptyH := 0, 0
-	if *noGUI {
-		ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
-	}
-	conn, err := client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH, nil)
-	if err != nil {
-		log.Fatalf("Failed to connect: %v", err)
+	if *localMode {
+		var err error
+		conn, cleanup, err = dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, *noGUI, *password)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+		ptyW, ptyH := 0, 0
+		if *noGUI {
+			ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
+		}
+		var err error
+		conn, err = client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH, nil)
+		if err != nil {
+			log.Fatalf("Failed to connect: %v", err)
+		}
+		cleanup = func() {}
 	}
 	defer conn.Close()
+	defer cleanup()
 
 	if *noGUI {
 		profile := detectClientProfile(*termFlag)
@@ -93,13 +112,24 @@ func main() {
 		return
 	}
 
+	// GUI: run Ebitengine renderer. This call MUST happen directly in main()
+	// on the main goroutine — Ebitengine locks OS thread 0 in init() and
+	// creates the window from the first RunGame call on that thread.
 	fmt.Println("Connected. Starting renderer...")
 
 	fontFace := client.DefaultFontFace()
-	game := client.NewGame(conn, fontFace, 1200, 800, *player, datadir.DefaultDataDir())
+	dd := *dataDir
+	if !*localMode {
+		dd = datadir.DefaultDataDir()
+	}
+	game := client.NewGame(conn, fontFace, 1200, 800, *player, dd)
 
 	ebiten.SetWindowSize(1200, 800)
-	ebiten.SetWindowTitle("dev-null")
+	if *localMode {
+		ebiten.SetWindowTitle("dev-null (local)")
+	} else {
+		ebiten.SetWindowTitle("dev-null")
+	}
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
 	if err := ebiten.RunGame(game); err != nil {
@@ -108,45 +138,9 @@ func main() {
 	}
 }
 
-// runLocal starts a headless server in-process, then connects to it as a
-// normal client. The server is invisible — no console UI, no admin terminal.
-// --game/--resume are sent as init commands over the SSH session.
-func runLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noSSH, noGUI bool, password string) {
-	// --no-ssh: direct transport, no SSH session. Server runs on main goroutine
-	// because RunDirect drives Bubble Tea or Ebitengine itself.
-	if noSSH {
-		app, err := server.New(address, password, dataDir, tickInterval)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error creating server: %v\n", err)
-			os.Exit(1)
-		}
-		if resumeName != "" {
-			parts := strings.SplitN(resumeName, "/", 2)
-			if len(parts) != 2 {
-				fmt.Fprintf(os.Stderr, "--resume requires game/save format, e.g. orbits/autosave\n")
-				os.Exit(1)
-			}
-			if err := app.PreloadResume(parts[0], parts[1]); err != nil {
-				fmt.Fprintf(os.Stderr, "resume %s: %v\n", resumeName, err)
-				os.Exit(1)
-			}
-		} else if gameName != "" {
-			if err := app.PreloadGame(gameName); err != nil {
-				fmt.Fprintf(os.Stderr, "load game %s: %v\n", gameName, err)
-				os.Exit(1)
-			}
-		}
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		if err := app.RunDirect(ctx, playerName, termFlag, noGUI); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
-	// --- SSH modes: start headless server, connect as normal client ---
-
+// dialLocal starts a headless server in a background goroutine and dials it.
+// Returns the SSH connection and a cleanup function that shuts down the server.
+func dialLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) (*client.SSHConn, func(), error) {
 	sshPort := port
 	if idx := strings.LastIndex(address, ":"); idx >= 0 {
 		if p := address[idx+1:]; p != "" {
@@ -162,12 +156,8 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 		initCmds = append(initCmds, "/game-load "+gameName)
 	}
 
-	// Start headless server entirely in its own goroutine. On Windows,
-	// Ebitengine locks the main goroutine to OS thread 0 for window creation.
-	// Any server work (wish/crypto, net.Listen) on that thread can prevent
-	// the window from appearing.
+	// Start headless server entirely in a background goroutine.
 	serverCtx, serverCancel := context.WithCancel(context.Background())
-	defer serverCancel()
 
 	ready := make(chan struct{})
 	serverErr := make(chan error, 1)
@@ -185,8 +175,8 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 	select {
 	case <-ready:
 	case err := <-serverErr:
-		fmt.Fprintf(os.Stderr, "server failed to start: %v\n", err)
-		os.Exit(1)
+		serverCancel()
+		return nil, nil, fmt.Errorf("server failed to start: %w", err)
 	}
 
 	// Connect as a normal client.
@@ -196,35 +186,43 @@ func runLocal(address, dataDir, playerName string, port int, tickInterval time.D
 	}
 	conn, err := client.Dial("127.0.0.1", sshPort, playerName, noGUI, termFlag, password, ptyW, ptyH, initCmds)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "local SSH dial: %v\n", err)
+		serverCancel()
+		return nil, nil, fmt.Errorf("local SSH dial: %w", err)
+	}
+
+	return conn, serverCancel, nil
+}
+
+// runDirect runs the --no-ssh path: server + chrome connected directly,
+// no SSH transport. Useful for isolating rendering issues from transport.
+func runDirect(address, dataDir, playerName string, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) {
+	app, err := server.New(address, password, dataDir, tickInterval)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error creating server: %v\n", err)
 		os.Exit(1)
 	}
-	defer conn.Close()
-
-	if noGUI {
-		// TUI: render in terminal via raw SSH pipe.
-		profile := detectClientProfile(termFlag)
-		if err := client.RunTerminal(conn, playerName, profile); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+	if resumeName != "" {
+		parts := strings.SplitN(resumeName, "/", 2)
+		if len(parts) != 2 {
+			fmt.Fprintf(os.Stderr, "--resume requires game/save format, e.g. orbits/autosave\n")
 			os.Exit(1)
 		}
-		return
-		// defer serverCancel() shuts down the server on return.
+		if err := app.PreloadResume(parts[0], parts[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "resume %s: %v\n", resumeName, err)
+			os.Exit(1)
+		}
+	} else if gameName != "" {
+		if err := app.PreloadGame(gameName); err != nil {
+			fmt.Fprintf(os.Stderr, "load game %s: %v\n", gameName, err)
+			os.Exit(1)
+		}
 	}
-
-	// GUI: render in Ebitengine window.
-	fontFace := client.DefaultFontFace()
-	game := client.NewGame(conn, fontFace, 1200, 800, playerName, dataDir)
-
-	ebiten.SetWindowSize(1200, 800)
-	ebiten.SetWindowTitle("dev-null (local)")
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-
-	if err := ebiten.RunGame(game); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := app.RunDirect(ctx, playerName, termFlag, noGUI); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	// defer serverCancel() shuts down the server on return.
 }
 
 // detectClientProfile returns the color profile for client-side terminal rendering.
