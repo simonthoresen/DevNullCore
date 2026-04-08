@@ -1,4 +1,5 @@
 # Go build outputs
+*.syso
 *.exe
 *.exe~
 *.dll

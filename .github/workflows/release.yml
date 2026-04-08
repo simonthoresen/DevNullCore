@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install go-winres
+        run: go install github.com/tc-hib/go-winres@latest
+
       - name: Build binaries
         run: make build
 

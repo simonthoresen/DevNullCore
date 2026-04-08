@@ -1,11 +1,16 @@
-.PHONY: build build-server build-client build-testbed run-server run-server-lan run-client run-client-local run-testbed run-testbed-onlcr test clean generate-manifest
+.PHONY: build build-server build-client build-testbed run-server run-server-lan run-client run-client-local run-testbed run-testbed-onlcr test clean generate-manifest winres
 
 GIT_COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 BUILD_DATE  := $(shell git log -1 --format=%cI 2>/dev/null || echo unknown)
 GIT_REMOTE  := $(shell git remote get-url origin 2>/dev/null || echo "")
 
 # Build all binaries into dist/ (strip debug info for smaller binaries)
-build: build-server build-client
+build: winres build-server build-client
+
+# Generate Windows resource files (icon + manifest) from winres/icon.ico
+winres:
+	cd cmd/dev-null-server && go-winres simply --icon winres/icon.ico
+	cd cmd/dev-null-client && go-winres simply --icon winres/icon.ico
 
 build-server:
 	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/dev-null-server.exe ./cmd/dev-null-server
