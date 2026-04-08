@@ -4,9 +4,10 @@
 // sprite rendering: games that declare a charmap have their PUA codepoints
 // rendered as sprites from a sprite sheet instead of terminal glyphs.
 //
-// Use --no-gui for terminal mode: local game rendering output as ANSI to
-// the current terminal, no graphical window. This gives a retro terminal vibe
-// while still running game logic client-side for low latency.
+// --local mode runs a server in-process with no SSH transport — the chrome
+// model is connected directly to the display backend.
+//
+// Use --no-gui for terminal mode: renders as ANSI to the current terminal.
 package main
 
 import (
@@ -15,9 +16,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"os/user"
-	"syscall"
 	"path/filepath"
 	"strings"
 	"time"
@@ -45,11 +44,10 @@ func main() {
 	port := flag.Int("port", 23234, "server SSH port")
 	player := flag.String("player", defaultPlayer(), "player name")
 	noGUI := flag.Bool("no-gui", false, "run in terminal mode (TUI) instead of opening a graphical window")
-	localMode := flag.Bool("local", false, "start a headless server and connect to it")
-	noSSH := flag.Bool("no-ssh", false, "skip SSH transport; connect chrome directly (requires --local, for testing)")
+	localMode := flag.Bool("local", false, "run a local server in-process (no SSH, no network)")
 	address := flag.String("address", ":23234", "SSH listen address (local mode)")
-	dataDir := flag.String("data-dir", datadir.DefaultDataDir(), "data directory containing games/ (local mode)")
-	gameName := flag.String("game", "", "game to preload (local mode)")
+	dataDir := flag.String("data-dir", datadir.DefaultDataDir(), "data directory containing games/")
+	gameName := flag.String("game", "", "game to load (local mode)")
 	resumeName := flag.String("resume", "", "game/save to resume, e.g. orbits/autosave (local mode)")
 	tickInterval := flag.Duration("tick-interval", 100*time.Millisecond, "server tick interval (local mode)")
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
@@ -65,11 +63,6 @@ func main() {
 	}
 	defer cleanupLog() //nolint:errcheck
 
-	if *noSSH && !*localMode {
-		fmt.Fprintf(os.Stderr, "--no-ssh requires --local\n")
-		os.Exit(1)
-	}
-
 	// Bootstrap bundled assets for local mode.
 	if *localMode && *dataDir == datadir.DefaultDataDir() {
 		if err := datadir.Bootstrap(datadir.InstallDir(), *dataDir, buildCommit); err != nil {
@@ -78,43 +71,25 @@ func main() {
 		}
 	}
 
-	// --local --no-ssh: direct transport, no SSH session.
-	if *localMode && *noSSH {
-		runDirect(*address, *dataDir, *player, *tickInterval, *gameName, *resumeName, *termFlag, *noGUI, *password)
+	// --local: run server in-process, no SSH. Chrome model connects directly.
+	if *localMode {
+		runLocal(*address, *dataDir, *player, *tickInterval, *gameName, *resumeName, *termFlag, *noGUI, *password)
 		return
 	}
 
-	// --- All SSH paths (local and remote, GUI and TUI) ---
-	// Sequential: 1) start server (if local), 2) connect SSH, 3) run renderer.
+	// --- Remote: connect to a server via SSH ---
 
-	var (
-		conn          *client.SSHConn
-		serverCleanup = func() {}
-	)
-
-	if *localMode {
-		var err error
-		conn, serverCleanup, err = dialLocal(*address, *dataDir, *player, *port, *tickInterval, *gameName, *resumeName, *termFlag, *noGUI, *password)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			os.Exit(1)
-		}
-	} else {
-		fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
-		ptyW, ptyH := 0, 0
-		if *noGUI {
-			ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
-		}
-		var err error
-		conn, err = client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH, nil)
-		if err != nil {
-			log.Fatalf("Failed to connect: %v", err)
-		}
+	fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+	ptyW, ptyH := 0, 0
+	if *noGUI {
+		ptyW, ptyH, _ = xterm.GetSize(os.Stdin.Fd())
+	}
+	conn, err := client.Dial(*host, *port, *player, *noGUI, *termFlag, *password, ptyW, ptyH, nil)
+	if err != nil {
+		log.Fatalf("Failed to connect: %v", err)
 	}
 	defer conn.Close()
-	defer serverCleanup()
 
-	// TUI: render in terminal.
 	if *noGUI {
 		profile := detectClientProfile(*termFlag)
 		if err := client.RunTerminal(conn, *player, profile); err != nil {
@@ -124,100 +99,17 @@ func main() {
 		return
 	}
 
-	// GUI: render in Ebitengine window.
 	fmt.Println("Connected. Starting renderer...")
-	title := "dev-null"
-	if *localMode {
-		title = "dev-null (local)"
-	}
-	dd := *dataDir
-	if !*localMode {
-		dd = datadir.DefaultDataDir()
-	}
-	renderer := client.NewClientRenderer(conn, 1200, 800, *player, dd)
-	if err := display.RunWindow(renderer, title, 1200, 800); err != nil {
+	renderer := client.NewClientRenderer(conn, 1200, 800, *player, datadir.DefaultDataDir())
+	if err := display.RunWindow(renderer, "dev-null", 1200, 800); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// dialLocal starts a headless server as a subprocess and connects to it.
-// Returns the connection and a cleanup function that kills the subprocess.
-func dialLocal(address, dataDir, playerName string, port int, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) (*client.SSHConn, func(), error) {
-	sshPort := port
-	if idx := strings.LastIndex(address, ":"); idx >= 0 {
-		if p := address[idx+1:]; p != "" {
-			fmt.Sscanf(p, "%d", &sshPort)
-		}
-	}
-
-	// Convert --game/--resume to init commands sent over the SSH session.
-	var initCmds []string
-	if resumeName != "" {
-		initCmds = append(initCmds, "/game-resume "+resumeName)
-	} else if gameName != "" {
-		initCmds = append(initCmds, "/game-load "+gameName)
-	}
-
-	// Find the server binary next to the client binary.
-	exe, _ := os.Executable()
-	serverBin := filepath.Join(filepath.Dir(exe), "dev-null-server.exe")
-	if _, err := os.Stat(serverBin); err != nil {
-		// Fallback: try in data dir.
-		serverBin = filepath.Join(dataDir, "dev-null-server.exe")
-	}
-
-	// Start headless server as a subprocess. Running it in-process prevents
-	// Ebitengine from creating its window on Windows (Bubble Tea's per-session
-	// console handling interferes with the Win32 message loop).
-	args := []string{"--headless", "--data-dir", dataDir, "--address", address}
-	if password != "" {
-		args = append(args, "--password", password)
-	}
-	cmd := exec.Command(serverBin, args...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: 0x08000000, // CREATE_NO_WINDOW — no console inheritance
-	}
-	if err := cmd.Start(); err != nil {
-		return nil, nil, fmt.Errorf("start server: %w (looked for %s)", err, serverBin)
-	}
-
-	cleanup := func() {
-		cmd.Process.Signal(os.Interrupt)
-		done := make(chan struct{})
-		go func() { cmd.Wait(); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(3 * time.Second):
-			cmd.Process.Kill()
-		}
-	}
-
-	// Poll until the server is listening.
-	var conn *client.SSHConn
-	ptyW, ptyH := 0, 0
-	if noGUI {
-		ptyW, ptyH, _ = xterm.GetSize(os.Stdout.Fd())
-	}
-	for i := 0; i < 50; i++ {
-		time.Sleep(100 * time.Millisecond)
-		c, err := client.Dial("127.0.0.1", sshPort, playerName, noGUI, termFlag, password, ptyW, ptyH, initCmds)
-		if err == nil {
-			conn = c
-			break
-		}
-	}
-	if conn == nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("could not connect to local server on port %d", sshPort)
-	}
-
-	return conn, cleanup, nil
-}
-
-// runDirect runs the --no-ssh path: server + chrome connected directly,
-// no SSH transport. Useful for isolating rendering issues from transport.
-func runDirect(address, dataDir, playerName string, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) {
+// runLocal runs a server in-process with the chrome model connected directly
+// to the display backend. No SSH, no network, no subprocess.
+func runLocal(address, dataDir, playerName string, tickInterval time.Duration, gameName, resumeName, termFlag string, noGUI bool, password string) {
 	app, err := server.New(address, password, dataDir, tickInterval)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating server: %v\n", err)

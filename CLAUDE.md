@@ -41,14 +41,10 @@ go run ./cmd/dev-null-client --local --data-dir dist --game orbits
 go run ./cmd/dev-null-client --local --data-dir dist --resume orbits/autosave
 go run ./cmd/dev-null-client --local --no-gui --data-dir dist    # local + TUI
 
-# No-SSH mode — skips SSH transport; chrome renders directly via Bubble Tea or Ebitengine.
-# Use to isolate rendering artifacts: if gone here, the bug is in SSH/PTY/transport.
-go run ./cmd/dev-null-client --local --no-ssh --data-dir dist --game cube          # GUI
-go run ./cmd/dev-null-client --local --no-ssh --no-gui --data-dir dist --game cube  # TUI
 ```
 
 **Environment variables:**
-- `DEV_NULL_LOG_FILE` — path to log file (default: discard)
+- `DEV_NULL_LOG_FILE` — path to log file (overrides auto-log in data-dir/logs/)
 - `DEV_NULL_LOG_LEVEL` — log level: debug/info/warn/error (default: info)
 - `DEV_NULL_PINGGY_STATUS_FILE` — path to Pinggy status file (enables tunnel bridge UI)
 
