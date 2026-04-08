@@ -9,7 +9,6 @@ import (
 	"image/color"
 	_ "image/png"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -437,13 +436,6 @@ func (g *Game) Update() error {
 	select {
 	case <-g.started:
 	default:
-		w, h := ebiten.WindowSize()
-		x, y := ebiten.WindowPosition()
-		fmt.Fprintf(os.Stderr, "DEBUG: first Update() windowSize=%dx%d pos=%d,%d minimized=%v maximized=%v focused=%v floating=%v\n",
-			w, h, x, y, ebiten.IsWindowMinimized(), ebiten.IsWindowMaximized(), ebiten.IsFocused(), ebiten.IsWindowFloating())
-		// Force window to foreground for debugging.
-		ebiten.SetWindowFloating(true)
-		ebiten.SetWindowPosition(100, 100)
 		close(g.started)
 	}
 
@@ -631,5 +623,10 @@ func (g *Game) drawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer) {
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return outsideWidth, outsideHeight
+}
+
+// LayoutF implements ebiten.LayoutFer for sub-pixel layout accuracy.
+func (g *Game) LayoutF(outsideWidth, outsideHeight float64) (float64, float64) {
 	return outsideWidth, outsideHeight
 }
