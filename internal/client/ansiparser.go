@@ -357,6 +357,18 @@ func (g *TerminalGrid) parseCSI(data []byte, start int) int {
 		if g.CursorX < 0 {
 			g.CursorX = 0
 		}
+	case 'G': // CHA — Cursor Horizontal Absolute
+		col := 1
+		if params != "" {
+			col, _ = strconv.Atoi(params)
+		}
+		g.CursorX = col - 1
+	case 'd': // VPA — Vertical Position Absolute
+		row := 1
+		if params != "" {
+			row, _ = strconv.Atoi(params)
+		}
+		g.CursorY = row - 1
 	case 'X': // ECH — Erase Character: erase N chars at cursor, cursor does NOT advance
 		n := 1
 		if params != "" {
@@ -365,6 +377,27 @@ func (g *TerminalGrid) parseCSI(data []byte, start int) int {
 		for x := g.CursorX; x < g.CursorX+n && x < g.Width; x++ {
 			if cell := g.At(x, g.CursorY); cell != nil {
 				*cell = Cell{Char: ' ', Fg: g.curFg, Bg: g.curBg}
+			}
+		}
+	case 'b': // REP — Repeat preceding character
+		n := 1
+		if params != "" {
+			n, _ = strconv.Atoi(params)
+		}
+		// Repeat the character that was last written at the cursor position.
+		// Look at the cell just before the cursor for the last written char.
+		prevX := g.CursorX - 1
+		if prevX >= 0 {
+			if prev := g.At(prevX, g.CursorY); prev != nil {
+				for j := 0; j < n; j++ {
+					if cell := g.At(g.CursorX, g.CursorY); cell != nil {
+						cell.Char = prev.Char
+						cell.Fg = g.curFg
+						cell.Bg = g.curBg
+						cell.Attr = g.curAttr
+					}
+					g.CursorX++
+				}
 			}
 		}
 	}

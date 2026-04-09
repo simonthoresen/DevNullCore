@@ -1,23 +1,91 @@
 package client
 
 import (
+	"fmt"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // handleInput maps Ebitengine key events to SSH-compatible escape sequences.
 func (r *ClientRenderer) handleInput() {
-	// Handle character input (typed text).
-	runes := ebiten.AppendInputChars(nil)
-	for _, ch := range runes {
-		r.conn.Write([]byte(string(ch)))
+	alt := ebiten.IsKeyPressed(ebiten.KeyAlt)
+	ctrl := ebiten.IsKeyPressed(ebiten.KeyControl)
+
+	// Character input (typed text) — skip when Alt or Ctrl is held.
+	if !alt && !ctrl {
+		runes := ebiten.AppendInputChars(nil)
+		for _, ch := range runes {
+			r.conn.Write([]byte(string(ch)))
+		}
 	}
 
-	// Handle special keys.
+	// Special keys.
 	for _, key := range specialKeys {
 		if inpututil.IsKeyJustPressed(key.ekey) {
 			r.conn.Write([]byte(key.seq))
 		}
+	}
+
+	// Alt+letter for menu shortcuts (e.g. Alt+F → ESC f).
+	if alt && !ctrl {
+		for key := ebiten.KeyA; key <= ebiten.KeyZ; key++ {
+			if inpututil.IsKeyJustPressed(key) {
+				letter := byte('a' + (key - ebiten.KeyA))
+				r.conn.Write([]byte{0x1b, letter})
+			}
+		}
+	}
+
+	// Ctrl+letter combos (Ctrl+A = 0x01, Ctrl+B = 0x02, ..., Ctrl+Z = 0x1A).
+	if ctrl && !alt {
+		for key := ebiten.KeyA; key <= ebiten.KeyZ; key++ {
+			if inpututil.IsKeyJustPressed(key) {
+				r.conn.Write([]byte{byte(1 + (key - ebiten.KeyA))})
+			}
+		}
+	}
+
+	// Mouse events — send as SGR (mode 1006) escape sequences.
+	r.handleMouseInput()
+}
+
+// handleMouseInput sends mouse click and scroll events as SGR escape sequences.
+func (r *ClientRenderer) handleMouseInput() {
+	cx, cy := ebiten.CursorPosition()
+	cellX := cx / cellW()
+	cellY := cy / cellH()
+
+	// Left click.
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dM", 0, cellX+1, cellY+1)))
+	}
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dm", 0, cellX+1, cellY+1)))
+	}
+
+	// Right click.
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dM", 2, cellX+1, cellY+1)))
+	}
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonRight) {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dm", 2, cellX+1, cellY+1)))
+	}
+
+	// Middle click.
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dM", 1, cellX+1, cellY+1)))
+	}
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonMiddle) {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dm", 1, cellX+1, cellY+1)))
+	}
+
+	// Scroll wheel.
+	_, scrollY := ebiten.Wheel()
+	if scrollY > 0 {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dM", 64, cellX+1, cellY+1)))
+	} else if scrollY < 0 {
+		r.conn.Write([]byte(fmt.Sprintf("\x1b[<%d;%d;%dM", 65, cellX+1, cellY+1)))
 	}
 }
 
