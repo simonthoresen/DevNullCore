@@ -185,6 +185,9 @@ func (a *Server) registerSession(sess ssh.Session) *domain.Player {
 	a.sessionsMu.Unlock()
 
 	a.state.AddPlayer(player)
+	// Auto-assign to a new solo team (avoids manual team setup for solo play).
+	// Uses len(Teams) as the index, which MovePlayerToTeam treats as "create new".
+	a.state.MovePlayerToTeam(player.ID, a.state.TeamCount())
 	slog.Info("player joined", "player_id", player.ID, "name", player.Name)
 
 	joinMsg := domain.Message{

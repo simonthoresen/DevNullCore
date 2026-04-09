@@ -45,6 +45,9 @@ func TestConsoleRenders(t *testing.T) {
 						}
 					}
 					st.Unlock()
+					if st.PlayerTeamIndex(playerID) < 0 {
+						st.MovePlayerToTeam(playerID, st.TeamCount())
+					}
 
 					api := newMockConsoleAPI(st, sc.dataDir)
 					got := renderConsole(api, sc.consoleKeys, cv.profile, termW, termH)

@@ -289,6 +289,10 @@ func renderChrome(
 			})
 		}
 		st.Unlock()
+		// Auto-assign to a new solo team (matches server registerSession behavior).
+		if st.PlayerTeamIndex(playerID) < 0 {
+			st.MovePlayerToTeam(playerID, st.TeamCount())
+		}
 	}
 
 	m := chrome.NewModel(api, playerID)
