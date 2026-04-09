@@ -241,11 +241,19 @@ func (s *CentralState) GetGameTeams() []domain.Team {
 // ReplaceGamePlayerID swaps an old player ID for a new one in game teams.
 // Caller must hold the write lock.
 func (s *CentralState) ReplaceGamePlayerID(oldID, newID string) {
+	// Update the game snapshot.
 	for i := range s.GameTeams {
 		for j, id := range s.GameTeams[i].Players {
 			if id == oldID {
 				s.GameTeams[i].Players[j] = newID
-				return
+			}
+		}
+	}
+	// Update lobby teams so the reconnecting player appears in their old team.
+	for i := range s.Teams {
+		for j, id := range s.Teams[i].Players {
+			if id == oldID {
+				s.Teams[i].Players[j] = newID
 			}
 		}
 	}

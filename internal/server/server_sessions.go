@@ -185,10 +185,33 @@ func (a *Server) registerSession(sess ssh.Session) *domain.Player {
 	a.sessionsMu.Unlock()
 
 	a.state.AddPlayer(player)
-	// Auto-assign to a new solo team (avoids manual team setup for solo play).
-	// Uses len(Teams) as the index, which MovePlayerToTeam treats as "create new".
-	a.state.MovePlayerToTeam(player.ID, a.state.TeamCount())
 	slog.Info("player joined", "player_id", player.ID, "name", player.Name)
+
+	// Check if this player was disconnected from a running game.
+	// Do this BEFORE auto-team-creation so reconnecting players rejoin their
+	// existing game team instead of getting a new lobby team.
+	rejoined := false
+	a.state.Lock()
+	if oldID, ok := a.state.GameDisconnected[player.Name]; ok {
+		// Replace the old session ID with the new one in GameTeams and lobby Teams.
+		a.state.ReplaceGamePlayerID(oldID, player.ID)
+		delete(a.state.GameDisconnected, player.Name)
+		game := a.state.ActiveGame
+		a.state.Unlock()
+		rejoined = true
+		a.serverLog(fmt.Sprintf("player %s rejoined game (was %s, now %s)", player.Name, oldID, player.ID))
+		// Refresh the teams cache so JS sees the updated player ID.
+		if jrt, ok := game.(*engine.Runtime); ok {
+			jrt.SetTeamsCache(a.buildTeamsCache())
+		}
+	} else {
+		a.state.Unlock()
+	}
+
+	if !rejoined {
+		// Auto-assign to a new solo team (avoids manual team setup for solo play).
+		a.state.MovePlayerToTeam(player.ID, a.state.TeamCount())
+	}
 
 	joinMsg := domain.Message{
 		Author: "",
@@ -206,22 +229,6 @@ func (a *Server) registerSession(sess ssh.Session) *domain.Player {
 	currentPhase := a.state.GamePhase
 	a.state.RUnlock()
 	a.sendToPlayer(player.ID, domain.GamePhaseMsg{Phase: currentPhase})
-
-	// Check if this player was disconnected from a running game.
-	a.state.Lock()
-	if oldID, ok := a.state.GameDisconnected[player.Name]; ok {
-		a.state.ReplaceGamePlayerID(oldID, player.ID)
-		delete(a.state.GameDisconnected, player.Name)
-		game := a.state.ActiveGame
-		a.state.Unlock()
-		a.serverLog(fmt.Sprintf("player %s rejoined game (was %s, now %s)", player.Name, oldID, player.ID))
-		// Refresh the teams cache so JS sees the updated player ID.
-		if jrt, ok := game.(*engine.Runtime); ok {
-			jrt.SetTeamsCache(a.buildTeamsCache())
-		}
-	} else {
-		a.state.Unlock()
-	}
 
 	return player
 }
