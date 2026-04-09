@@ -142,10 +142,7 @@ func (m *Model) View() tea.View {
 			oscData += render.EncodeSynthOSC(m.synthName)
 			m.synthSent = true
 		}
-		// Suppress viewport/canvas OSC when menus or dialogs are active so the
-		// client doesn't draw the canvas over the overlay chrome.
-		overlayActive := m.overlay.IsActive()
-		if m.viewportW > 0 && m.viewportH > 0 && !overlayActive {
+		if m.viewportW > 0 && m.viewportH > 0 {
 			oscData += render.EncodeViewportOSC(m.viewportX, m.viewportY, m.viewportW, m.viewportH)
 
 			// Send Game.state if it changed since last frame (for local rendering).
@@ -384,7 +381,14 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 		inner := m.playingGameView.RenderFn
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
 			m.viewportX, m.viewportY, m.viewportW, m.viewportH = x, y, w, h
-			inner(gbuf, x, y, w, h)
+			if m.renderMode == domain.RenderModeCanvas && phase == domain.PhasePlaying {
+				// Canvas mode: fill viewport with placeholder cells. The client
+				// treats these as transparent, showing the canvas image through.
+				// Menus/dialogs that overlap replace these with real cells.
+				gbuf.Fill(x, y, w, h, render.CanvasCell, nil, nil, render.AttrNone)
+			} else {
+				inner(gbuf, x, y, w, h)
+			}
 		}
 	}
 

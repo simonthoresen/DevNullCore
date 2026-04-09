@@ -522,22 +522,11 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		canvasImg = r.canvasFrame
 	}
 
-	// Convert TerminalGrid to ImageBuffer and render via shared DrawImageBuffer.
-	buf := r.grid.ToImageBuffer()
-	spriteOpts := &display.DrawOptions{
-		SpriteFunc: func(char rune, cx, cy int) *ebiten.Image {
-			inViewport := vw > 0 && vh > 0 &&
-				cx >= vx && cx < vx+vw &&
-				cy >= vy && cy < vy+vh
-			if inViewport && render.IsPUA(char) {
-				return r.getSprite(char)
-			}
-			return nil
-		},
-	}
-	r.drawImageBuffer(screen, buf, spriteOpts)
-
-	// Draw canvas frame ON TOP of the cell buffer in the viewport area.
+	// Canvas compositing: the server fills the game viewport with CanvasCell
+	// placeholders in canvas mode. We draw the canvas first, then draw cells
+	// on top — but skip CanvasCell placeholders so the canvas shows through.
+	// Menus/dialogs that overlap the viewport replace placeholders with real
+	// cells, so they render on top of the canvas automatically.
 	if canvasImg != nil && vw > 0 && vh > 0 {
 		vpPx := vx * cellW()
 		vpPy := vy * cellH()
@@ -550,6 +539,26 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		fop.GeoM.Translate(float64(vpPx), float64(vpPy))
 		screen.DrawImage(canvasImg, fop)
 	}
+
+	// Convert TerminalGrid to ImageBuffer and render cells on top.
+	// CanvasCell placeholders are treated as transparent (skipped).
+	buf := r.grid.ToImageBuffer()
+	hasCanvas := canvasImg != nil && vw > 0 && vh > 0
+	spriteOpts := &display.DrawOptions{
+		SpriteFunc: func(char rune, cx, cy int) *ebiten.Image {
+			inViewport := vw > 0 && vh > 0 &&
+				cx >= vx && cx < vx+vw &&
+				cy >= vy && cy < vy+vh
+			if inViewport && render.IsPUA(char) {
+				return r.getSprite(char)
+			}
+			return nil
+		},
+		SkipFunc: func(char rune, cx, cy int) bool {
+			return hasCanvas && render.IsCanvasCell(char)
+		},
+	}
+	r.drawImageBuffer(screen, buf, spriteOpts)
 
 	// Draw text cursor if visible.
 	if r.grid.CursorVisible {

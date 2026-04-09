@@ -162,6 +162,11 @@ type DrawOptions struct {
 	// SpriteFunc returns a sprite image for a character, or nil to render as text.
 	// Used by the client to render charmap PUA codepoints as sprites.
 	SpriteFunc func(char rune, cx, cy int) *ebiten.Image
+
+	// SkipFunc, if set, is called for each cell. If it returns true, the cell
+	// is not drawn (treated as transparent). Used by the canvas compositing
+	// path: placeholder cells are skipped so the canvas image shows through.
+	SkipFunc func(char rune, cx, cy int) bool
 }
 
 // DrawImageBuffer renders an ImageBuffer to an Ebitengine screen image.
@@ -172,6 +177,12 @@ func DrawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer, fontFace tex
 	for cy := 0; cy < buf.Height; cy++ {
 		for cx := 0; cx < buf.Width; cx++ {
 			p := &buf.Pixels[cy*buf.Width+cx]
+
+			// Skip transparent cells (canvas placeholders).
+			if opts != nil && opts.SkipFunc != nil && opts.SkipFunc(p.Char, cx, cy) {
+				continue
+			}
+
 			px := cx * CellW
 			py := cy * CellH
 
