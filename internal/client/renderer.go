@@ -521,22 +521,10 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		r.localCanvas = r.localRenderer.RenderCanvas(r.playerID, vw*scale, vh*scale)
 	}
 
-	// Draw canvas frame in the viewport (prefer local, fall back to server-sent).
+	// Determine if we have a canvas frame to overlay.
 	canvasImg := r.localCanvas
 	if canvasImg == nil {
 		canvasImg = r.canvasFrame
-	}
-	if canvasImg != nil && vw > 0 && vh > 0 {
-		vpPx := vx * cellW()
-		vpPy := vy * cellH()
-		vpPw := vw * cellW()
-		vpPh := vh * cellH()
-		fop := &ebiten.DrawImageOptions{}
-		fw := float64(vpPw) / float64(canvasImg.Bounds().Dx())
-		fh := float64(vpPh) / float64(canvasImg.Bounds().Dy())
-		fop.GeoM.Scale(fw, fh)
-		fop.GeoM.Translate(float64(vpPx), float64(vpPy))
-		screen.DrawImage(canvasImg, fop)
 	}
 
 	// Convert TerminalGrid to ImageBuffer and render via shared DrawImageBuffer.
@@ -553,6 +541,20 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		},
 	}
 	r.drawImageBuffer(screen, buf, spriteOpts)
+
+	// Draw canvas frame ON TOP of the cell buffer in the viewport area.
+	if canvasImg != nil && vw > 0 && vh > 0 {
+		vpPx := vx * cellW()
+		vpPy := vy * cellH()
+		vpPw := vw * cellW()
+		vpPh := vh * cellH()
+		fop := &ebiten.DrawImageOptions{}
+		fw := float64(vpPw) / float64(canvasImg.Bounds().Dx())
+		fh := float64(vpPh) / float64(canvasImg.Bounds().Dy())
+		fop.GeoM.Scale(fw, fh)
+		fop.GeoM.Translate(float64(vpPx), float64(vpPy))
+		screen.DrawImage(canvasImg, fop)
+	}
 
 	// Draw text cursor if visible.
 	if r.grid.CursorVisible {
