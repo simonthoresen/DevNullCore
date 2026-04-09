@@ -89,6 +89,10 @@ type ClientRenderer struct {
 	// Data directory path (for locating SoundFont files, etc.).
 	dataDir string
 
+	// Cursor blink state.
+	cursorTick int
+	cursorImg  *ebiten.Image
+
 	// Read buffer for SSH data.
 	readBuf []byte
 	mu      sync.Mutex
@@ -549,6 +553,40 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		},
 	}
 	r.drawImageBuffer(screen, buf, spriteOpts)
+
+	// Draw text cursor if visible.
+	if r.grid.CursorVisible {
+		r.drawCursor(screen)
+	}
+}
+
+// drawCursor renders a blinking block cursor at the grid's cursor position.
+func (r *ClientRenderer) drawCursor(screen *ebiten.Image) {
+	cx := r.grid.CursorX
+	cy := r.grid.CursorY
+	if cx < 0 || cx >= r.grid.Width || cy < 0 || cy >= r.grid.Height {
+		return
+	}
+
+	// Blink: visible for 30 frames, hidden for 30 frames (~500ms on/off at 60 TPS).
+	r.cursorTick++
+	if r.cursorTick >= 60 {
+		r.cursorTick = 0
+	}
+	if r.cursorTick >= 30 {
+		return
+	}
+
+	px := cx * cellW()
+	py := cy * cellH()
+
+	if r.cursorImg == nil {
+		r.cursorImg = ebiten.NewImage(cellW(), cellH())
+		r.cursorImg.Fill(color.RGBA{R: 204, G: 204, B: 204, A: 180})
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(px), float64(py))
+	screen.DrawImage(r.cursorImg, op)
 }
 
 // Layout implements ebiten.Game.

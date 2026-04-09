@@ -82,6 +82,9 @@ type TerminalGrid struct {
 	curBg   color.RGBA
 	curAttr render.PixelAttr
 
+	// Cursor visibility (DECTCEM: CSI ?25h / ?25l).
+	CursorVisible bool
+
 	// Saved cursor position (ESC 7 / ESC 8).
 	savedCursorX int
 	savedCursorY int
@@ -642,6 +645,22 @@ func (g *TerminalGrid) parseCSI(data []byte, start int) int {
 		g.scrollBottom = bottom - 1
 		g.CursorX = 0
 		g.CursorY = 0
+	case 'h': // SM — Set Mode (handle private modes with ? prefix)
+		if strings.HasPrefix(params, "?") {
+			for _, p := range strings.Split(params[1:], ";") {
+				if n, _ := strconv.Atoi(p); n == 25 {
+					g.CursorVisible = true
+				}
+			}
+		}
+	case 'l': // RM — Reset Mode (handle private modes with ? prefix)
+		if strings.HasPrefix(params, "?") {
+			for _, p := range strings.Split(params[1:], ";") {
+				if n, _ := strconv.Atoi(p); n == 25 {
+					g.CursorVisible = false
+				}
+			}
+		}
 	}
 
 	return i
