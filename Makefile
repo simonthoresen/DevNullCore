@@ -18,6 +18,7 @@ build-server:
 
 build-client:
 	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/dev-null-client.exe ./cmd/dev-null-client
+	git rev-parse HEAD > dist/.version
 
 # Server: normal mode (SSH server + console TUI)
 run-server: build-server

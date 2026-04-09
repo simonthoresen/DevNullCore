@@ -130,21 +130,24 @@ function Update-FromRelease {
         $remoteVersion = ""
         if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
 
-        if ($localVersion -eq $remoteVersion -and $localVersion -ne "") {
+        if ($localVersion -ne "") {
+            # .version exists — a local build or prior install owns this directory; skip update.
             Write-BootStepEnd "DONE"
+            if ($localVersion -ne $remoteVersion) {
+                Write-RunLogLine "local version ($localVersion) differs from release ($remoteVersion), skipping update (local build)"
+            }
             return
         }
 
-        if ($localVersion -eq "") {
-            $localExe = Join-Path $root "dev-null-client.exe"
-            if (Test-Path $localExe) {
-                $localTime = (Get-Item $localExe).LastWriteTimeUtc
-                $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
-                if ($localTime -ge $releaseTime) {
-                    Write-BootStepEnd "DONE"
-                    Write-RunLogLine "local binary is newer than release, skipping update"
-                    return
-                }
+        # No .version file: fall back to timestamp comparison.
+        $localExe = Join-Path $root "dev-null-client.exe"
+        if (Test-Path $localExe) {
+            $localTime = (Get-Item $localExe).LastWriteTimeUtc
+            $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
+            if ($localTime -ge $releaseTime) {
+                Write-BootStepEnd "DONE"
+                Write-RunLogLine "local binary is newer than release, skipping update"
+                return
             }
         }
 
