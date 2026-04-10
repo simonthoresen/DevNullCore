@@ -126,7 +126,7 @@ type Model struct {
 	oscModeSent      bool     // true after the initial mode OSC has been sent
 	gameSrcSent      bool     // true after game source files have been sent
 	assetsSent       bool     // true after game assets (audio/images) have been sent
-	lastStateJSON    string   // JSON of last sent Game.state (for delta detection)
+	lastStateHash    uint64   // FNV-64a hash of last sent Game.state JSON (for delta detection)
 	pendingSoundOSC  []string // sound/stop-sound OSC strings to inject into next View()
 	pendingMidiOSC   []string // MIDI event OSC strings to inject into next View()
 	synthName        string   // active SoundFont name (e.g. "chiptune", "gm"); empty = default
@@ -462,6 +462,6 @@ func (m *Model) setRenderMode(mode domain.RenderMode) {
 	if wasLocal != isLocal {
 		m.oscModeSent = false
 		m.gameSrcSent = false
-		m.lastStateJSON = ""
+		m.lastStateHash = 0
 	}
 }

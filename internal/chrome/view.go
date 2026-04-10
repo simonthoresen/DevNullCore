@@ -1,7 +1,9 @@
 package chrome
 
 import (
+	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 
@@ -136,14 +138,21 @@ func (m *Model) View() tea.View {
 			oscData += render.EncodeViewportOSC(m.viewportX, m.viewportY, m.viewportW, m.viewportH)
 
 			// Send Game.state if it changed since last frame (for Canvas HD).
+			// Marshal to JSON first, hash it cheaply, only gzip+encode if changed.
 			if isCanvasHD && phase == domain.PhasePlaying {
-				var gameState any
+				var stateObj any
 				if srt, ok := game.(engine.ScriptRuntime); ok {
-					gameState = srt.State()
+					stateObj = srt.State()
 				}
-				if stateJSON := render.EncodeStateOSC(gameState); stateJSON != "" && stateJSON != m.lastStateJSON {
-					oscData += stateJSON
-					m.lastStateJSON = stateJSON
+				if data, err := json.Marshal(stateObj); err == nil {
+					h := fnv.New64a()
+					h.Write(data)
+					if hash := h.Sum64(); hash != m.lastStateHash {
+						if osc := render.EncodeStateOSC(data); osc != "" {
+							oscData += osc
+							m.lastStateHash = hash
+						}
+					}
 				}
 			}
 		}

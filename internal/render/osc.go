@@ -42,11 +42,8 @@ func EncodeGameSourceOSC(filename, content string) string {
 }
 
 // EncodeStateOSC returns an OSC sequence containing game state (gzipped JSON).
-func EncodeStateOSC(state any) string {
-	data, err := json.Marshal(state)
-	if err != nil {
-		return ""
-	}
+// data must be the raw JSON bytes of the state object.
+func EncodeStateOSC(data []byte) string {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	if _, err := gz.Write(data); err != nil {
