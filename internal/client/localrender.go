@@ -63,8 +63,6 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 	lr.vm.Set("ATTR_ITALIC", int(render.AttrItalic))
 	lr.vm.Set("ATTR_UNDERLINE", int(render.AttrUnderline))
 	lr.vm.Set("ATTR_REVERSE", int(render.AttrReverse))
-	lr.vm.Set("PUA_START", int(render.PUAStart))
-	lr.vm.Set("PUA_END", int(render.PUAEnd))
 
 	// Execute all source files in order.
 	for _, f := range files {

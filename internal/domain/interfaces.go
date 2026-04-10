@@ -156,7 +156,6 @@ type Game interface {
 	CommandBar(playerID string) string // game-controlled command bar (above framework status bar)
 	Commands() []Command
 	Menus() []MenuDef
-	CharMap() *render.CharMapDef // returns nil if the game doesn't use a charmap
 
 	// --- Source delivery ---
 

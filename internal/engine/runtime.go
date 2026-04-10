@@ -111,8 +111,7 @@ type Runtime struct {
 	menus        []domain.MenuDef
 	showDialogFn func(playerID string, d domain.DialogRequest) // injected by server
 
-	charmapDef  *render.CharMapDef // loaded from dist/charmaps/<name>/charmap.json; nil if no charmap
-	isFolderGame bool              // true when the game was loaded from <name>/main.js (not a flat .js file)
+	isFolderGame bool // true when the game was loaded from <name>/main.js (not a flat .js file)
 }
 
 // LoadGame loads and executes a game script (.js), extracts the Game
@@ -255,21 +254,6 @@ func (r *Runtime) extractGameObject() error {
 		}
 	}
 
-	// Read charmap property (string name, e.g. "pacman").
-	// Loads dist/charmaps/<name>/charmap.json if present.
-	if v := gameObj.Get("charmap"); v != nil && !goja.IsUndefined(v) && !goja.IsNull(v) {
-		name := v.String()
-		if name != "" && r.dataDir != "" {
-			jsonPath := filepath.Join(r.dataDir, "charmaps", name, "charmap.json")
-			def, err := render.LoadCharMapDef(jsonPath)
-			if err != nil {
-				slog.Warn("failed to load charmap", "name", name, "error", err)
-			} else {
-				r.charmapDef = def
-				slog.Info("loaded charmap", "name", name, "entries", len(def.Entries))
-			}
-		}
-	}
 
 	return nil
 }
@@ -499,10 +483,6 @@ func (r *Runtime) GameName() string {
 
 func (r *Runtime) TeamRange() domain.TeamRange {
 	return r.teamRangeProp
-}
-
-func (r *Runtime) CharMap() *render.CharMapDef {
-	return r.charmapDef
 }
 
 func (r *Runtime) HasCanvasMode() bool {

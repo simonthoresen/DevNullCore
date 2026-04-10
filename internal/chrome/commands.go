@@ -117,14 +117,8 @@ func (m *Model) dispatchInput(text string) {
 			m.handleSynthLoad(arg)
 			return
 		// Render mode commands.
-		case "/render-text":
-			m.setRenderMode(domain.RenderModeText)
-			return
 		case "/render-quadrant":
 			m.setRenderMode(domain.RenderModeQuadrant)
-			return
-		case "/render-canvas":
-			m.setRenderMode(domain.RenderModeCanvas)
 			return
 		case "/render-canvas-hd":
 			m.setRenderMode(domain.RenderModeCanvasHD)

@@ -201,9 +201,6 @@ const (
 	// RenderModeQuadrant converts canvas output to Unicode quadrant block characters
 	// (2x2 pixels per terminal cell). Requires the game to define renderCanvas.
 	RenderModeQuadrant
-	// RenderModeCanvas sends server-rendered PNG frames via OSC to the enhanced client.
-	// Requires the game to define renderCanvas, an enhanced client, and canvasScale > 0.
-	RenderModeCanvas
 	// RenderModeCanvasHD renders canvas locally on the client from game JS + state.
 	// Only state JSON is sent over the wire (lightweight). Requires enhanced client,
 	// game with renderCanvas, and canvasScale > 0.
@@ -217,8 +214,6 @@ func (m RenderMode) Label() string {
 		return "Text"
 	case RenderModeQuadrant:
 		return "Quadrant"
-	case RenderModeCanvas:
-		return "Canvas"
 	case RenderModeCanvasHD:
 		return "Canvas &HD"
 	default:

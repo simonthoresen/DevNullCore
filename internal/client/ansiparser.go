@@ -50,9 +50,6 @@ type TerminalGrid struct {
 	CursorY       int
 
 	// Enhanced client protocol data parsed from OSC sequences.
-	CharmapJSON []byte // raw JSON from ns;charmap OSC
-	AtlasData   []byte // gzipped PNG from ns;atlas OSC
-	FrameData   []byte // gzipped PNG canvas frame from ns;frame OSC
 	ViewportX   int
 	ViewportY   int
 	ViewportW   int
@@ -775,18 +772,6 @@ func (g *TerminalGrid) handleOSC(payload string) {
 		kind := rest[:idx]
 		data := rest[idx+1:]
 		switch kind {
-		case "charmap":
-			if decoded, err := decodeBase64Str(data); err == nil {
-				g.CharmapJSON = decoded
-			}
-		case "atlas":
-			if decoded, err := decodeBase64Str(data); err == nil {
-				g.AtlasData = decoded
-			}
-		case "frame":
-			if decoded, err := decodeBase64Str(data); err == nil {
-				g.FrameData = decoded
-			}
 		case "gamesrc":
 			// Format: ns;gamesrc;<filename>;<base64 gzipped JS>
 			if sepIdx := strings.Index(data, ";"); sepIdx >= 0 {

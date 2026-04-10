@@ -137,7 +137,6 @@ func (m *Model) handleChat(msg domain.ChatMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.inActiveGame = true
-	m.charmapSent = false
 	m.gameSrcSent = false
 	m.assetsSent = false
 	m.pendingSoundOSC = nil

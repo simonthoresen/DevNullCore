@@ -160,7 +160,6 @@ func (g *mockGame) StatusBar(string) string                                     
 func (g *mockGame) CommandBar(string) string                                      { return "" }
 func (g *mockGame) Commands() []domain.Command                                    { return nil }
 func (g *mockGame) Menus() []domain.MenuDef                                       { return nil }
-func (g *mockGame) CharMap() *render.CharMapDef                                   { return nil }
 func (g *mockGame) RenderCanvas(string, int, int) []byte                          { return nil }
 func (g *mockGame) RenderCanvasImage(string, int, int) *image.RGBA                { return nil }
 func (g *mockGame) HasCanvasMode() bool                                           { return false }

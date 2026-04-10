@@ -3,11 +3,8 @@ package client
 import (
 	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
-	"image"
 	"image/color"
-	_ "image/png"
 	"io"
 	"path/filepath"
 	"strings"
@@ -46,19 +43,11 @@ func cellH() int { return display.CellH }
 
 // ClientRenderer implements display.Renderer for the SSH client.
 // It reads from an SSH connection, renders the ANSI stream or local game
-// state, and handles charmap sprites, canvas overlays, and audio.
+// state, and handles canvas overlays and audio.
 type ClientRenderer struct {
 	conn     *SSHConn
 	grid     *TerminalGrid
 	fontFace text.Face // set from Window.FontFace on first Draw
-
-	// Charmap state.
-	charmapDef  *render.CharMapDef
-	atlasImage  *ebiten.Image
-	spriteCache map[rune]*ebiten.Image // PUA codepoint → cropped sprite
-
-	// Canvas frame — rendered image from server-side renderCanvas.
-	canvasFrame *ebiten.Image // latest decoded canvas frame, or nil
 
 	// Local rendering — runs game JS on the client with server-provided state.
 	localRenderer *LocalRenderer
@@ -109,7 +98,6 @@ func NewClientRenderer(conn *SSHConn, width, height int, playerID, dataDir strin
 	r := &ClientRenderer{
 		conn:          conn,
 		grid:          NewTerminalGrid(cols, rows),
-		spriteCache:   make(map[rune]*ebiten.Image),
 		localRenderer: NewLocalRenderer(),
 		clientScreen:  NewClientScreen(t),
 		playerID:      playerID,
@@ -137,19 +125,6 @@ func (r *ClientRenderer) readLoop() {
 			r.mu.Lock()
 			r.grid.Feed(data)
 
-			// Check for new charmap data.
-			if r.grid.CharmapJSON != nil {
-				r.loadCharmap(r.grid.CharmapJSON)
-				r.grid.CharmapJSON = nil
-			}
-			if r.grid.AtlasData != nil {
-				r.loadAtlas(r.grid.AtlasData)
-				r.grid.AtlasData = nil
-			}
-			if r.grid.FrameData != nil {
-				r.loadCanvasFrame(r.grid.FrameData)
-				r.grid.FrameData = nil
-			}
 			// Game source files — load into local renderer.
 			if len(r.grid.GameSrcFiles) > 0 {
 				r.gameSrcFiles = r.grid.GameSrcFiles
@@ -222,36 +197,6 @@ func (r *ClientRenderer) readLoop() {
 	}
 }
 
-func (r *ClientRenderer) loadCharmap(jsonData []byte) {
-	var def render.CharMapDef
-	if err := json.Unmarshal(jsonData, &def); err != nil {
-		return
-	}
-	r.charmapDef = &def
-	r.spriteCache = make(map[rune]*ebiten.Image)
-}
-
-func (r *ClientRenderer) loadAtlas(gzipData []byte) {
-	gz, err := gzip.NewReader(bytes.NewReader(gzipData))
-	if err != nil {
-		return
-	}
-	defer gz.Close()
-
-	raw, err := io.ReadAll(gz)
-	if err != nil {
-		return
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return
-	}
-
-	r.atlasImage = ebiten.NewImageFromImage(img)
-	r.spriteCache = make(map[rune]*ebiten.Image)
-}
-
 // decompressBytes decompresses gzipped data.
 func decompressBytes(data []byte) []byte {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
@@ -264,26 +209,6 @@ func decompressBytes(data []byte) []byte {
 		return nil
 	}
 	return raw
-}
-
-func (r *ClientRenderer) loadCanvasFrame(gzipData []byte) {
-	gz, err := gzip.NewReader(bytes.NewReader(gzipData))
-	if err != nil {
-		return
-	}
-	defer gz.Close()
-
-	raw, err := io.ReadAll(gz)
-	if err != nil {
-		return
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return
-	}
-
-	r.canvasFrame = ebiten.NewImageFromImage(img)
 }
 
 // audioStream is the common interface implemented by all Ebitengine audio decoders.
@@ -400,22 +325,6 @@ func (r *ClientRenderer) drawLoadingOverlay(screen *ebiten.Image) {
 	text.Draw(screen, label, r.fontFace, dop)
 }
 
-func (cr *ClientRenderer) getSprite(r rune) *ebiten.Image {
-	if cr.charmapDef == nil || cr.atlasImage == nil {
-		return nil
-	}
-	if cached, ok := cr.spriteCache[r]; ok {
-		return cached
-	}
-	entry := cr.charmapDef.Lookup(r)
-	if entry == nil {
-		return nil
-	}
-	sprite := cr.atlasImage.SubImage(image.Rect(entry.X, entry.Y, entry.X+entry.W, entry.Y+entry.H)).(*ebiten.Image)
-	cr.spriteCache[r] = sprite
-	return sprite
-}
-
 // HandleInput implements display.Renderer.
 func (r *ClientRenderer) HandleInput(w *display.Window) {
 	// Start readLoop on first frame (game loop is running, window exists).
@@ -519,17 +428,11 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		r.localCanvas = nil
 	}
 
-	// Determine if we have a canvas frame to overlay (prefer local, fall back to server-sent).
+	// Canvas HD compositing: server fills viewport with CanvasCell placeholders;
+	// we draw the locally-rendered canvas first, then cells on top — skipping
+	// placeholders so the canvas shows through. Menus/dialogs that overlap
+	// replace placeholders with real cells, rendering on top automatically.
 	canvasImg := r.localCanvas
-	if canvasImg == nil {
-		canvasImg = r.canvasFrame
-	}
-
-	// Canvas compositing: the server fills the game viewport with CanvasCell
-	// placeholders in canvas mode. We draw the canvas first, then draw cells
-	// on top — but skip CanvasCell placeholders so the canvas shows through.
-	// Menus/dialogs that overlap the viewport replace placeholders with real
-	// cells, so they render on top of the canvas automatically.
 	if canvasImg != nil && vw > 0 && vh > 0 {
 		vpPx := vx * cellW()
 		vpPy := vy * cellH()
@@ -543,25 +446,18 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 		screen.DrawImage(canvasImg, fop)
 	}
 
-	// Convert TerminalGrid to ImageBuffer and render cells on top.
-	// CanvasCell placeholders are treated as transparent (skipped).
+	// Render cell buffer on top. Skip CanvasCell placeholders so local canvas shows through.
 	buf := r.grid.ToImageBuffer()
 	hasCanvas := canvasImg != nil && vw > 0 && vh > 0
-	spriteOpts := &display.DrawOptions{
-		SpriteFunc: func(char rune, cx, cy int) *ebiten.Image {
-			inViewport := vw > 0 && vh > 0 &&
-				cx >= vx && cx < vx+vw &&
-				cy >= vy && cy < vy+vh
-			if inViewport && render.IsPUA(char) {
-				return r.getSprite(char)
-			}
-			return nil
-		},
-		SkipFunc: func(char rune, cx, cy int) bool {
-			return hasCanvas && render.IsCanvasCell(char)
-		},
+	var drawOpts *display.DrawOptions
+	if hasCanvas {
+		drawOpts = &display.DrawOptions{
+			SkipFunc: func(char rune, _ int, _ int) bool {
+				return render.IsCanvasCell(char)
+			},
+		}
 	}
-	r.drawImageBuffer(screen, buf, spriteOpts)
+	r.drawImageBuffer(screen, buf, drawOpts)
 
 	// Draw text cursor if visible.
 	if r.grid.CursorVisible {

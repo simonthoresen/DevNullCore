@@ -120,11 +120,10 @@ type Model struct {
 	// Auto-selected to the best available mode on game load; changeable via Graphics menu.
 	renderMode domain.RenderMode
 
-	// Enhanced client protocol (dev-null-client with charmap/canvas/local-render support).
+	// Enhanced client protocol (dev-null-client with canvas/local-render support).
 	IsEnhancedClient bool
 	SessionWriter    io.Writer // direct session writer for OSC passthrough (bypasses renderer)
 	oscModeSent      bool     // true after the initial mode OSC has been sent
-	charmapSent      bool     // true after charmap+atlas OSC have been sent for the current game
 	gameSrcSent      bool     // true after game source files have been sent
 	assetsSent       bool     // true after game assets (audio/images) have been sent
 	lastStateJSON    string   // JSON of last sent Game.state (for delta detection)
@@ -435,21 +434,18 @@ func (m *Model) canUseRenderMode(mode domain.RenderMode) bool {
 		return true
 	case domain.RenderModeQuadrant:
 		return game != nil && game.HasCanvasMode()
-	case domain.RenderModeCanvas:
-		return game != nil && game.HasCanvasMode() && m.IsEnhancedClient && canvasScale > 0
 	case domain.RenderModeCanvasHD:
 		return game != nil && game.HasCanvasMode() && m.IsEnhancedClient && canvasScale > 0
 	}
 	return false
 }
 
-// bestRenderMode returns the highest-fidelity render mode available for the
-// current client and game. Called on game load to auto-select the best option.
+// bestRenderMode returns the best default render mode for the current client
+// and game. Prefers Quadrant for canvas games (works on all clients); CanvasHD
+// must be opted in explicitly via the Graphics menu.
 func (m *Model) bestRenderMode() domain.RenderMode {
-	for _, mode := range []domain.RenderMode{domain.RenderModeCanvasHD, domain.RenderModeCanvas, domain.RenderModeQuadrant} {
-		if m.canUseRenderMode(mode) {
-			return mode
-		}
+	if m.canUseRenderMode(domain.RenderModeQuadrant) {
+		return domain.RenderModeQuadrant
 	}
 	return domain.RenderModeText
 }

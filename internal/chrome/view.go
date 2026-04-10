@@ -2,7 +2,6 @@ package chrome
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -85,7 +84,7 @@ func (m *Model) View() tea.View {
 	m.api.State().RUnlock()
 	engine.ApplyShaders(m.shaders, buf, shaderElapsed)
 
-	// Enhanced client OSC protocol: send charmap data, game source, state, and viewport bounds.
+	// Enhanced client OSC protocol: send game source, state, and viewport bounds.
 	// OSC sequences are written directly to the session, bypassing Bubble Tea's cell renderer
 	// which would consume them as styled string content instead of passing them through.
 	isCanvasHD := m.renderMode == domain.RenderModeCanvasHD
@@ -107,16 +106,6 @@ func (m *Model) View() tea.View {
 				oscData += render.EncodeGameSourceOSC(sf.Name, sf.Content)
 			}
 			m.gameSrcSent = true
-		}
-		if !m.charmapSent {
-			if cm := game.CharMap(); cm != nil {
-				oscData += render.EncodeCharmapOSC(cm)
-				if cm.Atlas != "" {
-					atlasPath := filepath.Join(m.api.DataDir(), "charmaps", cm.Name, cm.Atlas)
-					oscData += render.EncodeAtlasOSC(atlasPath)
-				}
-			}
-			m.charmapSent = true
 		}
 		if !m.assetsSent {
 			assets := game.GameAssets()
@@ -156,19 +145,6 @@ func (m *Model) View() tea.View {
 					oscData += stateJSON
 					m.lastStateJSON = stateJSON
 				}
-			}
-
-			// Canvas frame: send PNG via OSC when render mode is Canvas (not for terminal clients).
-			// Use 2:1 height multiplier to match the terminal cell aspect ratio
-			// (cells are ~twice as tall as wide), preventing vertical stretch.
-			if m.renderMode == domain.RenderModeCanvas && phase == domain.PhasePlaying {
-				m.api.State().RLock()
-				canvasScale := m.api.State().CanvasScale
-				m.api.State().RUnlock()
-				pixelW := m.viewportW * canvasScale
-				pixelH := m.viewportH * canvasScale * 2
-				pngData := game.RenderCanvas(m.playerID, pixelW, pixelH)
-				oscData += render.EncodeFrameOSC(pngData)
 			}
 		}
 		if oscData != "" {
@@ -379,14 +355,14 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 	}
 	m.playingStatusBar.RightText = ""
 
-	// Capture viewport bounds for enhanced/terminal client OSC (wraps the render function).
+	// Capture viewport bounds for enhanced client OSC (wraps the render function).
 	if m.IsEnhancedClient && m.playingGameView.RenderFn != nil {
 		inner := m.playingGameView.RenderFn
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
 			m.viewportX, m.viewportY, m.viewportW, m.viewportH = x, y, w, h
-			if (m.renderMode == domain.RenderModeCanvas || m.renderMode == domain.RenderModeCanvasHD) && phase == domain.PhasePlaying {
-				// Canvas/Canvas HD: fill viewport with placeholder cells. The client
-				// treats these as transparent, showing the canvas image through.
+			if m.renderMode == domain.RenderModeCanvasHD && phase == domain.PhasePlaying {
+				// Canvas HD: fill viewport with placeholder cells. The client
+				// treats these as transparent, showing the locally-rendered canvas through.
 				// Menus/dialogs that overlap replace these with real cells.
 				gbuf.Fill(x, y, w, h, render.CanvasCell, nil, nil, render.AttrNone)
 			} else {

@@ -24,7 +24,6 @@ import (
 
 	"dev-null/internal/console"
 	"dev-null/internal/domain"
-	"dev-null/internal/render"
 	"dev-null/internal/engine"
 	"dev-null/internal/network"
 	"dev-null/internal/state"
@@ -602,9 +601,8 @@ func (a *Server) registerBuiltins() {
 			a.state.Unlock()
 			viewW := 120
 			viewH := viewW * 9 / 16
-			bw := render.CanvasBandwidthMbps(viewW, viewH, n, 10)
-			ctx.Reply(fmt.Sprintf("Canvas scale set to %d (%dx%d px). ~%.1f Mbps/user at %dx%d viewport.",
-				n, viewW*n, viewH*n, bw, viewW, viewH))
+			ctx.Reply(fmt.Sprintf("Canvas scale set to %d (%dx%d px at %dx%d viewport).",
+				n, viewW*n, viewH*n, viewW, viewH))
 		},
 	})
 
@@ -636,7 +634,6 @@ func (a *Server) registerBuiltins() {
 			hasCanvas := game != nil && game.HasCanvasMode()
 			viewW := 120
 			viewH := viewW * 9 / 16
-			bw := render.CanvasBandwidthMbps(viewW, viewH, scale, 10)
 			status := "no game loaded"
 			if game != nil {
 				if hasCanvas {
@@ -645,8 +642,8 @@ func (a *Server) registerBuiltins() {
 					status = "game has no renderCanvas hook"
 				}
 			}
-			ctx.Reply(fmt.Sprintf("Canvas scale: %d (%dx%d px). ~%.1f Mbps/user. %s",
-				scale, viewW*scale, viewH*scale, bw, status))
+			ctx.Reply(fmt.Sprintf("Canvas scale: %d (%dx%d px at %dx%d viewport). %s",
+				scale, viewW*scale, viewH*scale, viewW, viewH, status))
 		},
 	})
 

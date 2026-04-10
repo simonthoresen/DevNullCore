@@ -104,7 +104,7 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/domain/interfaces.go` | Game, Command, Shader, MenuDef, DialogRequest interfaces |
 | `internal/domain/clock.go` | Clock abstraction (RealClock, MockClock) |
 | `internal/render/buffer.go` | ImageBuffer: 2D cell grid, ANSI parsing/serialization |
-| `internal/render/charmap.go` | Charmap format: PUA codepoints, CharMapDef/Entry, loader |
+| `internal/render/charmap.go` | `CanvasCell` sentinel rune for Canvas HD viewport transparency |
 | `internal/state/state.go` | `CentralState`: players, chat, game phase |
 | `internal/state/teams.go` | Team management helpers |
 | `internal/state/persist.go` | Game state JSON save/load |
@@ -125,12 +125,11 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
 | `internal/datadir/datadir.go` | Data directory resolution, bootstrap (install dir → %APPDATA%/DevNull) |
 | `cmd/dev-null-server/` | Server entry point: boot sequence, console setup, signal handling |
-| `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine sprite rendering for charmap games |
+| `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine canvas rendering |
 | `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums |
 | `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
-| `internal/client/` | Client internals: SSH transport, ANSI parser, charmap atlas, Ebitengine renderer |
+| `internal/client/` | Client internals: SSH transport, ANSI parser, Ebitengine renderer |
 | `internal/client/audio.go` | MIDI synthesizer: go-meltysynth SoundFont rendering, NoteOff scheduling |
-| `dist/charmaps/` | Charmap assets: per-game subdirectories with charmap.json + atlas PNG |
 | `dist/soundfonts/` | SoundFont (.sf2) files for MIDI synthesis: chiptune.sf2, gm.sf2 |
 | `dist/start-server.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then dev-null-server.exe |
 | `dist/start-client.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts dev-null-client.exe |
@@ -164,6 +163,25 @@ Two primary mutexes protect shared state:
 Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.mu`, `lastUpdateMu`) are leaf locks — they don't call into JS or acquire `state.mu`.
 
 **`lastUpdateMu`** protects the `Server.lastUpdate` field, which is written from `startingTimer()`, `resumeGame()`, and read/written in `runTicker()`. All access must go through this mutex.
+
+## Rendering Model
+
+Game rendering is automatic based on connection type and game capability:
+
+| Connection | Game type | Mode |
+|---|---|---|
+| SSH | string-only | Text (game's `Render()`) |
+| SSH | canvas game | Quadrant (canvas→Unicode blocks, server-side) |
+| GUI client | string-only | Text (rendered as terminal) |
+| GUI client | canvas game | Quadrant (default) or Canvas HD (opt-in toggle) |
+
+**Canvas HD** (`RenderModeCanvasHD`): sends game JS source + state JSON each frame; client renders the canvas locally at full pixel resolution. Requires enhanced client (`DEV_NULL_CLIENT=enhanced`) and `CanvasScale > 0`.
+
+**Quadrant** (`RenderModeQuadrant`): server calls `RenderCanvasImage()` and converts to Unicode quadrant block characters (▖▗▘▙). Works on any terminal.
+
+**No charmap/spritesheet system** — removed. Games that want custom graphics use canvas rendering.
+
+The Graphics menu is only shown to enhanced GUI clients with a canvas game loaded, offering only the Quadrant/Canvas HD toggle.
 
 ## Render Tests — Golden Files
 
@@ -204,7 +222,7 @@ Read these as needed when working on specific areas:
 - [`docs/claude/game-lifecycle.md`](docs/claude/game-lifecycle.md) — lifecycle phases, suspend/resume, teams, Game.state, game over
 - [`docs/claude/game-api.md`](docs/claude/game-api.md) — Game interface (Go), JS game hooks & globals, Command struct, Message type
 - [`docs/claude/ui-layout.md`](docs/claude/ui-layout.md) — Screen layout (lobby/playing/console), themes, widget reconciler
-- [`docs/claude/extensions.md`](docs/claude/extensions.md) — plugins, shaders, charmaps, canvas rendering, OSC protocol
+- [`docs/claude/extensions.md`](docs/claude/extensions.md) — plugins, shaders, canvas rendering, OSC protocol
 - [`docs/claude/server-console.md`](docs/claude/server-console.md) — boot sequence, console UI, admin auth
 - [`docs/claude/networking.md`](docs/claude/networking.md) — release/distribution, connection strategy, invite token format, SSH PTY gotcha, init files
 - [`API-REFERENCE.md`](API-REFERENCE.md) — full JS game developer documentation

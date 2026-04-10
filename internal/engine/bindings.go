@@ -23,10 +23,6 @@ func (r *Runtime) registerGlobals() {
 	r.vm.Set("ATTR_UNDERLINE", int(render.AttrUnderline))
 	r.vm.Set("ATTR_REVERSE", int(render.AttrReverse))
 
-	// PUA codepoint range constants for charmap-based sprite rendering.
-	r.vm.Set("PUA_START", int(render.PUAStart))
-	r.vm.Set("PUA_END", int(render.PUAEnd))
-
 	r.vm.Set("log", func(msg string) {
 		if r.logFn != nil {
 			r.logFn(msg)
