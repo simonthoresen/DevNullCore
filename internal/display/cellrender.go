@@ -157,6 +157,69 @@ func init() {
 	sharedPixel.Fill(color.White)
 }
 
+// blockCharQuadrantMask returns a 4-bit quadrant fill mask for Unicode block
+// element characters (U+2580–U+259F).
+// Bit layout: bit3=upper-left, bit2=upper-right, bit1=lower-left, bit0=lower-right.
+// Returns -1 for characters not rendered as pixel fills.
+func blockCharQuadrantMask(r rune) int {
+	switch r {
+	case 0x2580:
+		return 0b1100 // ▀ upper half
+	case 0x2584:
+		return 0b0011 // ▄ lower half
+	case 0x2588:
+		return 0b1111 // █ full block
+	case 0x258C:
+		return 0b1010 // ▌ left half
+	case 0x2590:
+		return 0b0101 // ▐ right half
+	case 0x2596:
+		return 0b0010 // ▖ lower-left
+	case 0x2597:
+		return 0b0001 // ▗ lower-right
+	case 0x2598:
+		return 0b1000 // ▘ upper-left
+	case 0x2599:
+		return 0b1011 // ▙ upper-left + lower-left + lower-right
+	case 0x259A:
+		return 0b1001 // ▚ upper-left + lower-right
+	case 0x259B:
+		return 0b1110 // ▛ upper-left + upper-right + lower-left
+	case 0x259C:
+		return 0b1101 // ▜ upper-left + upper-right + lower-right
+	case 0x259D:
+		return 0b0100 // ▝ upper-right
+	case 0x259E:
+		return 0b0110 // ▞ upper-right + lower-left
+	case 0x259F:
+		return 0b0111 // ▟ upper-right + lower-left + lower-right
+	}
+	return -1
+}
+
+// drawBlockChar renders a block element character as Ebitengine pixel fills.
+// mask is the 4-bit quadrant mask from blockCharQuadrantMask.
+func drawBlockChar(screen *ebiten.Image, px, py, cw, ch int, mask int, fg color.RGBA) {
+	hw := cw / 2
+	hh := ch / 2
+	type quad struct{ x, y, w, h int }
+	quads := [4]quad{
+		{px, py, hw, hh},                    // bit3: upper-left
+		{px + hw, py, cw - hw, hh},          // bit2: upper-right
+		{px, py + hh, hw, ch - hh},          // bit1: lower-left
+		{px + hw, py + hh, cw - hw, ch - hh}, // bit0: lower-right
+	}
+	for i, q := range quads {
+		if mask&(1<<(3-i)) != 0 {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(float64(q.w), float64(q.h))
+			op.GeoM.Translate(float64(q.x), float64(q.y))
+			op.ColorScale.ScaleWithColor(fg)
+			screen.DrawImage(sharedPixel, op)
+		}
+	}
+}
+
 // DrawOptions configures optional behavior for DrawImageBuffer.
 type DrawOptions struct {
 	// SpriteFunc returns a sprite image for a character, or nil to render as text.
@@ -211,25 +274,26 @@ func DrawImageBuffer(screen *ebiten.Image, buf *render.ImageBuffer, fontFace tex
 				}
 			}
 
-			// Foreground text — clip to cell bounds so box-drawing glyphs
-			// don't bleed into adjacent cells.
+			// Foreground: block element chars are pixel fills; everything else is font.
 			if p.Char != ' ' && p.Char != 0 {
 				fg := color.RGBA{R: 204, G: 204, B: 204, A: 255}
 				if p.Fg != nil {
 					r, g, b, _ := p.Fg.RGBA()
 					fg = color.RGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 255}
 				}
-				// Block-element characters (█▀▄▌▐▖▗▘▙▚▛▜▝▞▟) don't overflow
-				// their cell, so skip the SubImage clip that causes visible
-				// seam lines when the TTF glyph doesn't fill the cell exactly.
-				dst := screen
-				if p.Char < 0x2580 || p.Char > 0x259F {
-					dst = screen.SubImage(image.Rect(px, py, px+CellW, py+CellH)).(*ebiten.Image)
+				// Block element characters (U+2580–U+259F) are rendered as
+				// direct pixel fills so they work regardless of whether the
+				// loaded font contains those glyphs (many don't).
+				if mask := blockCharQuadrantMask(p.Char); mask >= 0 {
+					drawBlockChar(screen, px, py, CellW, CellH, mask, fg)
+				} else {
+					// Clip to cell bounds so box-drawing glyphs don't bleed.
+					dst := screen.SubImage(image.Rect(px, py, px+CellW, py+CellH)).(*ebiten.Image)
+					dop := &text.DrawOptions{}
+					dop.GeoM.Translate(float64(px), float64(py))
+					dop.ColorScale.ScaleWithColor(fg)
+					text.Draw(dst, string(p.Char), fontFace, dop)
 				}
-				dop := &text.DrawOptions{}
-				dop.GeoM.Translate(float64(px), float64(py))
-				dop.ColorScale.ScaleWithColor(fg)
-				text.Draw(dst, string(p.Char), fontFace, dop)
 			}
 		}
 	}

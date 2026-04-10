@@ -440,12 +440,8 @@ func (m *Model) canUseRenderMode(mode domain.RenderMode) bool {
 
 // bestRenderMode returns the best default render mode for the current client
 // and game. Prefers Quadrant for canvas games (works on all clients); CanvasHD
-// For enhanced clients (GUI), Canvas HD is preferred — it renders locally and
-// never relies on the font having block-element glyphs. SSH clients get Quadrant.
+// Quadrant is the default for all clients — Canvas HD is an explicit opt-in.
 func (m *Model) bestRenderMode() domain.RenderMode {
-	if m.canUseRenderMode(domain.RenderModeCanvasHD) {
-		return domain.RenderModeCanvasHD
-	}
 	if m.canUseRenderMode(domain.RenderModeQuadrant) {
 		return domain.RenderModeQuadrant
 	}
