@@ -199,6 +199,21 @@ func (b *ImageBuffer) WriteString(x, y int, s string, fg, bg color.Color, attr P
 	return written
 }
 
+// WriteStringInherit writes plain text at (x, y), inheriting the existing
+// cell's fg and bg (preserving the theme background painted by the Window).
+func (b *ImageBuffer) WriteStringInherit(x, y int, s string) {
+	col := x
+	for _, r := range s {
+		if col >= b.Width {
+			break
+		}
+		if c := b.at(col, y); c != nil {
+			c.Char = r
+		}
+		col++
+	}
+}
+
 // Blit copies all cells from src onto b at position (x, y).
 // Only copies cells that fall within b's bounds.
 func (b *ImageBuffer) Blit(x, y int, src *ImageBuffer) {

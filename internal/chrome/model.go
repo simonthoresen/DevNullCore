@@ -153,6 +153,11 @@ type Model struct {
 	playingChatView  *widget.TextView
 	playingInput     *widget.CommandInput
 
+	// Starting dialog NC controls (rendered as overlay in game viewport).
+	startingWindow *widget.Window
+	startingSplash *widget.GameView
+	startingStatus *widget.Label
+
 	// Cached menu tree — rebuilt only on invalidation.
 	menuCache      []domain.MenuDef
 	menuCacheGame  domain.Game // game pointer when cache was built (nil = no game)
@@ -265,6 +270,23 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		StatusBar: playingStatusBar,
 	}
 
+	// Starting dialog — rendered as a centered overlay in the game viewport.
+	startingSplash := &widget.GameView{}
+	startingStatus := &widget.Label{Align: "center"}
+	startingWindow := &widget.Window{
+		Children: []widget.GridChild{
+			{Control: startingSplash, Constraint: widget.GridConstraint{
+				Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: widget.FillBoth,
+			}},
+			{Control: &widget.HDivider{Connected: true}, Constraint: widget.GridConstraint{
+				Col: 0, Row: 1, MinH: 1, Fill: widget.FillHorizontal,
+			}},
+			{Control: startingStatus, Constraint: widget.GridConstraint{
+				Col: 0, Row: 2, WeightX: 1, Fill: widget.FillHorizontal,
+			}},
+		},
+	}
+
 	m := Model{
 		api:           api,
 		playerID:      playerID,
@@ -286,6 +308,9 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		playingGameView:  playingGameView,
 		playingChatView:  playingChatView,
 		playingInput:     playingInputCtrl,
+		startingWindow:   startingWindow,
+		startingSplash:   startingSplash,
+		startingStatus:   startingStatus,
 	}
 	lobbyMenuBar.Overlay = &m.overlay
 	playingMenuBar.Overlay = &m.overlay

@@ -284,9 +284,7 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 	switch phase {
 	case domain.PhaseStarting:
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
-			if !game.RenderStarting(gbuf, m.playerID, x, y, w, h) {
-				m.defaultRenderStarting(gbuf, displayName, x, y, w, h)
-			}
+			m.renderStartingDialog(gbuf, game, displayName, x, y, w, h)
 		}
 		m.playingGameView.OnKey = nil // starting screen ignores game keys
 	case domain.PhaseEnding:
@@ -389,18 +387,10 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 	m.chatScrollOffset = m.playingChatView.ScrollOffset
 }
 
-// defaultRenderStarting renders a figlet game name (larry3d), countdown, and
-// per-player ready checkboxes centered in the viewport.
-func (m *Model) defaultRenderStarting(buf *render.ImageBuffer, name string, x, y, w, h int) {
-	// Try larry3d first, fall back to standard, then plain text.
-	titleLines := figletLines(name, "larry3d", w)
-	if titleLines == nil {
-		titleLines = figletLines(name, "", w)
-	}
-	if titleLines == nil {
-		titleLines = []string{name}
-	}
-
+// renderStartingDialog renders the starting screen as a centered dialog in the
+// game viewport. The splash area uses the game's RenderStarting (or a default
+// figlet title), and the status row shows a countdown + per-player ready state.
+func (m *Model) renderStartingDialog(buf *render.ImageBuffer, game domain.Game, name string, x, y, w, h int) {
 	// Read starting state.
 	st := m.api.State()
 	st.RLock()
@@ -419,42 +409,70 @@ func (m *Model) defaultRenderStarting(buf *render.ImageBuffer, name string, x, y
 	if remaining < 0 {
 		remaining = 0
 	}
-	countdownLine := fmt.Sprintf("Starting in %ds", remaining)
 
-	// Build player ready lines: "  [x] alice" or "  [ ] bob"
-	var playerLines []string
-	readyCount, totalCount := 0, 0
+	// Build status line: "Starting in Xs  [ ] alice  [x] bob"
+	var parts []string
+	parts = append(parts, fmt.Sprintf("Starting in %ds", remaining))
 	for _, team := range gameTeams {
 		for _, pid := range team.Players {
 			p := players[pid]
 			if p == nil {
 				continue
 			}
-			totalCount++
 			check := " "
 			if readyMap != nil && readyMap[pid] {
 				check = "x"
-				readyCount++
 			}
-			playerLines = append(playerLines, fmt.Sprintf("  [%s] %s", check, p.Name))
+			parts = append(parts, fmt.Sprintf("[%s] %s", check, p.Name))
 		}
 	}
-	readySummary := fmt.Sprintf("%d/%d ready", readyCount, totalCount)
+	m.startingStatus.Text = strings.Join(parts, "  ")
 
-	// Compose all content lines: title + blank + countdown + readySummary + blank + players.
-	var content []string
-	content = append(content, titleLines...)
-	content = append(content, "")
-	content = append(content, countdownLine+"   "+readySummary)
-	content = append(content, "")
-	content = append(content, playerLines...)
+	// Wire splash to game's custom starting screen or default figlet.
+	m.startingSplash.RenderFn = func(gbuf *render.ImageBuffer, sx, sy, sw, sh int) {
+		if !game.RenderStarting(gbuf, m.playerID, sx, sy, sw, sh) {
+			renderFigletSplash(gbuf, name, sx, sy, sw, sh)
+		}
+	}
+	m.startingWindow.Title = name
 
-	// Center vertically.
-	topPad := (h - len(content)) / 2
+	// Size the dialog: nearly fill the viewport with some margin.
+	dlgW := w
+	dlgH := h
+	if dlgW > 4 {
+		dlgW -= 4
+	}
+	if dlgH > 2 {
+		dlgH -= 2
+	}
+
+	// Render into a sub-buffer, blit centered.
+	layer := m.theme.LayerAt(1)
+	sub := render.NewImageBuffer(dlgW, dlgH)
+	m.startingWindow.RenderToBuf(sub, 0, 0, dlgW, dlgH, layer)
+
+	dlgX := x + (w-dlgW)/2
+	dlgY := y + (h-dlgH)/2
+	buf.Blit(dlgX, dlgY, sub)
+	render.BlitShadow(buf, dlgX, dlgY, dlgW, dlgH, m.theme.ShadowFg, m.theme.ShadowBg)
+}
+
+// renderFigletSplash renders a figlet title centered in the given area.
+// Tries larry3d first, falls back to standard, then plain text.
+func renderFigletSplash(buf *render.ImageBuffer, name string, x, y, w, h int) {
+	lines := figletLines(name, "larry3d", w)
+	if lines == nil {
+		lines = figletLines(name, "", w)
+	}
+	if lines == nil {
+		lines = []string{name}
+	}
+
+	topPad := (h - len(lines)) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
-	for i, line := range content {
+	for i, line := range lines {
 		row := y + topPad + i
 		if row >= y+h {
 			break
@@ -463,7 +481,8 @@ func (m *Model) defaultRenderStarting(buf *render.ImageBuffer, name string, x, y
 		if col < x {
 			col = x
 		}
-		buf.WriteString(col, row, line, nil, nil, render.AttrNone)
+		// Inherit the theme colors already painted by the Window fill.
+		buf.WriteStringInherit(col, row, line)
 	}
 }
 
