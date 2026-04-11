@@ -1,7 +1,6 @@
 package chrome
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +30,10 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Games...", Handler: func(_ string) { m.pushGamesDialog(0) }},
 		{Label: "&Saves...", Handler: func(_ string) { m.pushSavesDialog(0) }},
 		{Label: "---"},
-		{Label: "&Settings...", Handler: func(_ string) { m.pushSettingsDialog(0) }},
+		{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
+		{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
+		{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
+		{Label: "S&ynths...", Handler: func(_ string) { m.pushSynthDialog(0) }},
 		{Label: "---"},
 		{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(playerID string) {
 			m.overlay.PushDialog(domain.DialogRequest{
@@ -53,6 +55,26 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		}},
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
+
+	// Graphics menu — HD toggle for enhanced clients with a canvas game.
+	// Shown in both lobby and playing views whenever a canvas game is loaded.
+	if m.IsEnhancedClient && m.canUseRenderMode(domain.RenderModeCanvasHD) {
+		viewItems := []domain.MenuItemDef{
+			{
+				Label:   "Quadrant",
+				Toggle:  true,
+				Checked: func() bool { return m.renderMode != domain.RenderModeCanvasHD },
+				Handler: func(_ string) { m.dispatchInput("/render-quadrant") },
+			},
+			{
+				Label:   "Canvas &HD",
+				Toggle:  true,
+				Checked: func() bool { return m.renderMode == domain.RenderModeCanvasHD },
+				Handler: func(_ string) { m.dispatchInput("/render-canvas-hd") },
+			},
+		}
+		menus = append(menus, domain.MenuDef{Label: "&Graphics", Items: viewItems})
+	}
 
 	if game != nil {
 		menus = append(menus, game.Menus()...)
@@ -160,70 +182,6 @@ func (m *Model) pushShaderDialog(cursor int) {
 		},
 		Reload: m.pushShaderDialog,
 	})
-}
-
-func (m *Model) pushSettingsDialog(cursor int) {
-	// Build setting rows with current values.
-	themeName := m.themeName
-	if themeName == "" {
-		themeName = "default"
-	}
-	pluginCount := len(m.pluginNames)
-	shaderCount := len(m.shaderNames)
-
-	items := []string{"Theme", "Plugins", "Shaders", "SoundFont"}
-	tags := []string{
-		themeName,
-		fmt.Sprintf("%d loaded", pluginCount),
-		fmt.Sprintf("%d loaded", shaderCount),
-		m.synthLabel(),
-	}
-
-	// Add render mode if enhanced client with canvas game.
-	if m.IsEnhancedClient && m.canUseRenderMode(domain.RenderModeCanvasHD) {
-		items = append(items, "Render Mode")
-		tags = append(tags, m.renderMode.Label())
-	}
-
-	m.overlay.PushDialog(domain.DialogRequest{
-		Title:     "Settings",
-		ListItems: items,
-		ListTags:  tags,
-		Buttons:   []string{"Close"},
-		OnListEnter: func(idx int) {
-			switch items[idx] {
-			case "Theme":
-				m.pushThemeDialog(0)
-			case "Plugins":
-				m.pushPluginDialog(0)
-			case "Shaders":
-				m.pushShaderDialog(0)
-			case "SoundFont":
-				m.pushSynthDialog(0)
-			case "Render Mode":
-				m.toggleRenderMode()
-				// Refresh settings dialog to show new mode.
-				m.overlay.PopDialog()
-				m.pushSettingsDialog(idx)
-			}
-		},
-	})
-	m.overlay.SetTopCursor(cursor)
-}
-
-func (m *Model) synthLabel() string {
-	if m.synthName == "" {
-		return "default"
-	}
-	return m.synthName
-}
-
-func (m *Model) toggleRenderMode() {
-	if m.renderMode == domain.RenderModeCanvasHD {
-		m.dispatchInput("/render-quadrant")
-	} else {
-		m.dispatchInput("/render-canvas-hd")
-	}
 }
 
 func (m *Model) pushSynthDialog(cursor int) {
