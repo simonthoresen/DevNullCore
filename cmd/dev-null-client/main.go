@@ -12,6 +12,7 @@ import (
 	"log"
 	"os"
 	"os/user"
+	"strconv"
 	"strings"
 
 	"dev-null/internal/client"
@@ -52,6 +53,21 @@ func main() {
 		initCommands = append(initCommands, "/game-load "+*gameName)
 	}
 
+	// Terminal width for boot-step output; DEV_NULL_TERM_WIDTH is set by the launcher script.
+	termW := 80
+	if s := os.Getenv("DEV_NULL_TERM_WIDTH"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			termW = n
+		}
+	}
+	bootDots := func(label string) string {
+		n := termW - len(label) - 10 // 10 = 1 space + " [ DONE ]" (9)
+		if n < 1 {
+			n = 1
+		}
+		return strings.Repeat(".", n)
+	}
+
 	// Init font before dialing so CellW/CellH are set to their real values.
 	// This lets us request the correct PTY size from the very first frame,
 	// avoiding a size mismatch between the initial server render and the window.
@@ -60,15 +76,23 @@ func main() {
 	ptyW := display.WindowCols(winW)
 	ptyH := display.WindowRows(winH)
 
-	fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+	label1 := fmt.Sprintf("Connecting to %s:%d as %s", *host, *port, *player)
+	dots1 := bootDots(label1)
+	fmt.Printf("%s %s", label1, dots1)
 	conn, err := client.Dial(*host, *port, *player, *termFlag, *password, ptyW, ptyH, initCommands)
 	if err != nil {
+		fmt.Printf("\r%s %s [ FAIL ]\n", label1, dots1)
 		log.Fatalf("Failed to connect: %v", err)
 	}
+	fmt.Printf("\r%s %s [ DONE ]\n", label1, dots1)
 	defer conn.Close()
 
-	fmt.Println("Connected. Starting renderer...")
+	const label2 = "Starting renderer"
+	dots2 := bootDots(label2)
+	fmt.Printf("%s %s", label2, dots2)
 	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), *dataDirFlag)
+	fmt.Printf("\r%s %s [ DONE ]\n", label2, dots2)
+
 	if err := display.RunWindow(renderer, "dev-null", winW, winH, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
