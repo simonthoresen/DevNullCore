@@ -1,6 +1,7 @@
 package localcmd
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -113,21 +114,21 @@ func pushThemeAddDialog(opts ThemeDialogOptions, returnCursor int) {
 
 // GameDialogOptions configures the Games dialog.
 type GameDialogOptions struct {
-	DataDir      string
-	Overlay      *widget.OverlayState
-	CurrentGame  string // name of the currently loaded game, or ""
-	SelectedGame string // name selected in the list (drives Load/Remove), or ""
-	CanLoad      bool   // show Load button (chrome admin only)
-	CanAdd       bool   // show Add button
-	CanRemove    bool   // show Remove button (console only)
-	OnLoad       func(name string)             // called when Load is pressed or Add input confirmed
-	OnRemove     func(name string, cursor int) // nil → no Remove button
-	Reload       func(cursor int)
+	DataDir     string
+	Overlay     *widget.OverlayState
+	CurrentGame string // name of the currently loaded game, or ""
+	TeamCount   int    // current number of teams (for compatibility indicator)
+	CanAdd      bool   // show Add button
+	CanRemove   bool   // show Remove button (console only)
+	OnLoad      func(name string)             // nil means loading not allowed
+	OnRemove    func(name string, cursor int) // nil → no Remove button
+	Reload      func(cursor int)
 }
 
 // PushGameDialog opens the Games dialog on opts.Overlay.
 func PushGameDialog(cursor int, opts GameDialogOptions) {
-	available := engine.ListGames(filepath.Join(opts.DataDir, "games"))
+	gamesDir := filepath.Join(opts.DataDir, "games")
+	available := engine.ListGames(gamesDir)
 	if len(available) == 0 {
 		opts.Overlay.PushDialog(domain.DialogRequest{
 			Title:   "Games",
@@ -141,37 +142,38 @@ func PushGameDialog(cursor int, opts GameDialogOptions) {
 		})
 		return
 	}
+	items := make([]string, len(available))
 	tags := make([]string, len(available))
 	for i, name := range available {
-		switch {
-		case strings.EqualFold(name, opts.SelectedGame):
-			tags[i] = "(●)"
-		case strings.EqualFold(name, opts.CurrentGame):
-			tags[i] = "(◉)" // loaded but not selected
-		default:
-			tags[i] = "(○)"
+		if strings.EqualFold(name, opts.CurrentGame) {
+			items[i] = "→ " + name
+		} else {
+			items[i] = "  " + name
 		}
+		tr := engine.ProbeGameTeamRange(engine.ResolveGamePath(gamesDir, name))
+		tags[i] = formatGameTeamTag(tr, opts.TeamCount)
 	}
 	opts.Overlay.PushDialog(domain.DialogRequest{
 		Title:     "Games",
-		ListItems: available,
+		ListItems: items,
 		ListTags:  tags,
 		Buttons:   gameButtons(opts, true),
 		OnListEnter: func(idx int) {
-			// Mark the entered item as selected and reload.
-			opts.SelectedGame = available[idx]
-			opts.Overlay.PopDialog()
-			PushGameDialog(idx, opts)
+			if opts.OnLoad == nil {
+				return
+			}
+			name := available[idx]
+			if opts.CurrentGame != "" && !strings.EqualFold(opts.CurrentGame, name) {
+				opts.Overlay.PopDialog()
+				pushGameLoadConfirm(opts, name, idx)
+			} else {
+				opts.Overlay.PopDialog()
+				opts.OnLoad(name)
+			}
 		},
 		OnListAction: func(btn string, idx int) {
+			// Dialog already popped by fireDialogCloseEntry before this is called.
 			switch btn {
-			case "Load":
-				name := available[idx]
-				if opts.OnLoad != nil && opts.CurrentGame != "" && !strings.EqualFold(opts.CurrentGame, name) {
-					pushGameLoadConfirm(opts, name, idx)
-				} else if opts.OnLoad != nil {
-					opts.OnLoad(name)
-				}
 			case "Add":
 				pushGameAddDialog(opts, idx)
 			case "Remove":
@@ -184,16 +186,43 @@ func PushGameDialog(cursor int, opts GameDialogOptions) {
 	opts.Overlay.SetTopCursor(cursor)
 }
 
-func gameButtons(opts GameDialogOptions, hasItems bool) []string {
-	selected := hasItems && opts.SelectedGame != ""
-	var btns []string
-	if opts.CanLoad && selected {
-		btns = append(btns, "Load")
+// formatGameTeamTag returns the right-aligned tag for a game's team range entry.
+// Shows the range (e.g. "2-4", "2+", "≤4") prefixed with "!" when the current
+// team count falls outside that range. Returns "" when there is no constraint.
+func formatGameTeamTag(tr domain.TeamRange, teamCount int) string {
+	if tr.Min == 0 && tr.Max == 0 {
+		return ""
 	}
+	ok := true
+	if tr.Min > 0 && teamCount < tr.Min {
+		ok = false
+	}
+	if tr.Max > 0 && teamCount > tr.Max {
+		ok = false
+	}
+	var rng string
+	switch {
+	case tr.Min > 0 && tr.Max > 0 && tr.Min == tr.Max:
+		rng = fmt.Sprintf("%d", tr.Min)
+	case tr.Min > 0 && tr.Max > 0:
+		rng = fmt.Sprintf("%d-%d", tr.Min, tr.Max)
+	case tr.Min > 0:
+		rng = fmt.Sprintf("%d+", tr.Min)
+	default:
+		rng = fmt.Sprintf("≤%d", tr.Max)
+	}
+	if !ok {
+		return "!" + rng
+	}
+	return rng
+}
+
+func gameButtons(opts GameDialogOptions, hasItems bool) []string {
+	var btns []string
 	if opts.CanAdd {
 		btns = append(btns, "Add")
 	}
-	if opts.CanRemove && selected {
+	if opts.CanRemove && hasItems {
 		btns = append(btns, "Remove")
 	}
 	return append(btns, "Close")
@@ -209,7 +238,6 @@ func pushGameLoadConfirm(opts GameDialogOptions, name string, returnCursor int) 
 			if btn == "Load" && opts.OnLoad != nil {
 				opts.OnLoad(name)
 			} else {
-				opts.Overlay.PopDialog()
 				PushGameDialog(returnCursor, opts)
 			}
 		},

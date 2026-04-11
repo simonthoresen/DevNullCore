@@ -107,19 +107,23 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 func (m *Model) pushGamesDialog(cursor int) {
 	m.api.State().RLock()
 	currentGame := m.api.State().GameName
+	teamCount := len(m.api.State().Teams)
 	m.api.State().RUnlock()
 
-	localcmd.PushGameDialog(cursor, localcmd.GameDialogOptions{
+	opts := localcmd.GameDialogOptions{
 		DataDir:     m.api.DataDir(),
 		Overlay:     &m.overlay,
 		CurrentGame: currentGame,
-		CanLoad:     m.isAdmin(),
+		TeamCount:   teamCount,
 		CanAdd:      m.isAdmin(),
-		OnLoad: func(name string) {
+		Reload:      m.pushGamesDialog,
+	}
+	if m.isAdmin() {
+		opts.OnLoad = func(name string) {
 			m.dispatchInput("/game-load " + name)
-		},
-		Reload: m.pushGamesDialog,
-	})
+		}
+	}
+	localcmd.PushGameDialog(cursor, opts)
 }
 
 func (m *Model) pushSavesDialog(cursor int) {

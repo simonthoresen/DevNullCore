@@ -448,12 +448,14 @@ func (m *Model) pushShaderDialog(cursor int) {
 func (m *Model) pushGamesDialog(cursor int) {
 	m.api.State().RLock()
 	currentGame := m.api.State().GameName
+	teamCount := len(m.api.State().Teams)
 	m.api.State().RUnlock()
 
 	localcmd.PushGameDialog(cursor, localcmd.GameDialogOptions{
 		DataDir:     m.api.DataDir(),
 		Overlay:     &m.overlay,
 		CurrentGame: currentGame,
+		TeamCount:   teamCount,
 		CanAdd:      true,
 		CanRemove:   true,
 		OnLoad: func(name string) {
