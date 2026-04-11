@@ -67,7 +67,7 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("Connected. Starting renderer...")
-	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.DefaultDataDir())
+	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), datadir.DefaultDataDir())
 	if err := display.RunWindow(renderer, "dev-null", winW, winH, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

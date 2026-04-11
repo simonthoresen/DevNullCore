@@ -75,8 +75,11 @@ type ClientRenderer struct {
 	// MIDI synthesizer for SoundFont-based audio.
 	midiSynth *MidiSynth
 
-	// Data directory path (for locating SoundFont files, etc.).
-	dataDir string
+	// Directory paths for locating SoundFont files and other assets.
+	// installDir is the exe directory (bundled read-only assets).
+	// dataDir is the user data directory (user-added/overridden content).
+	installDir string
+	dataDir    string
 
 	// Cursor blink state.
 	cursorTick int
@@ -89,7 +92,7 @@ type ClientRenderer struct {
 
 // NewClientRenderer creates a new SSH client renderer.
 // Use with display.RunWindow to open the GUI.
-func NewClientRenderer(conn *SSHConn, width, height int, playerID, dataDir string) *ClientRenderer {
+func NewClientRenderer(conn *SSHConn, width, height int, playerID, installDir, dataDir string) *ClientRenderer {
 	cols := display.WindowCols(width)
 	rows := display.WindowRows(height)
 
@@ -102,7 +105,8 @@ func NewClientRenderer(conn *SSHConn, width, height int, playerID, dataDir strin
 		clientScreen:  NewClientScreen(t),
 		playerID:      playerID,
 		dataDir:       dataDir,
-		midiSynth:     NewMidiSynth(filepath.Join(dataDir, "soundfonts", "chiptune.sf2")),
+		installDir:    installDir,
+		midiSynth:     NewMidiSynth(findSoundFont(installDir, dataDir, "chiptune")),
 		readBuf:       make([]byte, 64*1024),
 		started:       make(chan struct{}),
 	}
@@ -178,7 +182,7 @@ func (r *ClientRenderer) readLoop() {
 			r.grid.MidiEvents = nil
 			// SoundFont switch.
 			if r.grid.SynthName != "" {
-				sf2Path := filepath.Join(r.dataDir, "soundfonts", r.grid.SynthName+".sf2")
+				sf2Path := findSoundFont(r.installDir, r.dataDir, r.grid.SynthName)
 				if err := r.midiSynth.LoadSoundFont(sf2Path); err == nil {
 					r.midiSynth.mu.Lock()
 					r.midiSynth.fontName = r.grid.SynthName
