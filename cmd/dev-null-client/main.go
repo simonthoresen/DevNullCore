@@ -33,6 +33,7 @@ func main() {
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
 	player := flag.String("player", defaultPlayer(), "player name")
+	dataDirFlag := flag.String("data-dir", datadir.DefaultDataDir(), "data directory (SoundFonts, etc.)")
 	gameName := flag.String("game", "", "game to load on connect (sends /game-load command)")
 	resumeName := flag.String("resume", "", "game/save to resume on connect, e.g. orbits/autosave (sends /game-resume command)")
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
@@ -67,7 +68,7 @@ func main() {
 	defer conn.Close()
 
 	fmt.Println("Connected. Starting renderer...")
-	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), datadir.DefaultDataDir())
+	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), *dataDirFlag)
 	if err := display.RunWindow(renderer, "dev-null", winW, winH, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

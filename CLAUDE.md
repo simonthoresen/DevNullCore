@@ -29,7 +29,7 @@ go test ./...
 ssh -p 23234 localhost   # connect via plain SSH (host plays this way too)
 
 # Client — always GUI (Ebitengine graphical window).
-go run ./cmd/dev-null-client
+go run ./cmd/dev-null-client --data-dir dist        # --data-dir needed in go-run mode (no bootstrap)
 go run ./cmd/dev-null-client --host example.com --port 23234 --player alice
 go run ./cmd/dev-null-client --game orbits          # send /game-load on connect
 go run ./cmd/dev-null-client --resume orbits/autosave  # send /game-resume on connect
