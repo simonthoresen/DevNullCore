@@ -105,6 +105,7 @@ func (a *mockConsoleAPI) SlogCh() <-chan console.SlogLine                    { r
 func (a *mockConsoleAPI) TabCandidates(string, []string) (string, []string) { return "", nil }
 func (a *mockConsoleAPI) DispatchCommand(string, domain.CommandContext)      {}
 func (a *mockConsoleAPI) SetConsoleWidth(int)                                {}
+func (a *mockConsoleAPI) InviteLinks() (string, string)                      { return "", "" }
 
 // ─── Mock chrome API ─────────────────────────────────────────────────────────
 
@@ -139,6 +140,7 @@ func (a *mockChromeAPI) SuspendGame(string) error                           { re
 func (a *mockChromeAPI) ResumeGame(string, string) error                    { return nil }
 func (a *mockChromeAPI) ListSuspends() []state.SuspendInfo                  { return nil }
 func (a *mockChromeAPI) KickPlayer(string) error                            { return nil }
+func (a *mockChromeAPI) InviteLinks() (string, string)                      { return "", "" }
 
 // ─── Mock game ───────────────────────────────────────────────────────────────
 

@@ -39,6 +39,9 @@ type ServerAPI interface {
 
 	// Console-specific
 	SetConsoleWidth(w int)
+
+	// Invite
+	InviteLinks() (win, mac string)
 }
 
 // taggedLine is a log line with its category.
@@ -338,6 +341,8 @@ func (m *Model) consoleMenus() []domain.MenuDef {
 				{Label: "&Themes...", Handler: func(_ string) { m.pushThemeDialog(0) }},
 				{Label: "&Plugins...", Handler: func(_ string) { m.pushPluginDialog(0) }},
 				{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
+				{Label: "---"},
+				{Label: "&Invite...", Handler: func(_ string) { m.pushInviteDialog() }},
 				{Label: "---"},
 				{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(_ string) {
 					m.overlay.PushDialog(domain.DialogRequest{
@@ -727,6 +732,21 @@ func catToLevel(cat LogCategory) slog.Level {
 	default: // CatDebug
 		return slog.LevelDebug
 	}
+}
+
+func (m *Model) pushInviteDialog() {
+	win, ssh := m.api.InviteLinks()
+	m.overlay.PushDialog(domain.DialogRequest{
+		Title: "Invite",
+		CopyItems: []domain.DialogCopyItem{
+			{Label: "WIN", Value: win},
+			{Label: "SSH", Value: ssh},
+		},
+		Buttons: []string{"Close"},
+		OnCopy: func(value string) {
+			m.pendingClipboard = value
+		},
+	})
 }
 
 func (m *Model) rebuildVisibleLines() {

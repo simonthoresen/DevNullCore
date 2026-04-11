@@ -47,6 +47,9 @@ type ServerAPI interface {
 
 	// Session management
 	KickPlayer(playerID string) error
+
+	// Invite
+	InviteLinks() (win, mac string)
 }
 
 // lobbyTeamPanelW is the fixed width of the team panel in the lobby.

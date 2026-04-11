@@ -47,6 +47,12 @@ type MenuDef struct {
 	Items []MenuItemDef
 }
 
+// DialogCopyItem is a labeled text entry with a [Copy] button in a dialog.
+type DialogCopyItem struct {
+	Label string // short label shown on the left, e.g. "Windows"
+	Value string // full text to copy (may be display-truncated in the dialog)
+}
+
 // DialogRequest asks the framework to show a modal dialog to a specific player.
 type DialogRequest struct {
 	Title   string
@@ -55,6 +61,12 @@ type DialogRequest struct {
 	Warning bool     // render with the warning theme layer (red) instead of the normal dialog layer
 	// OnClose is called with the pressed button label, or "" if dismissed with Esc.
 	OnClose func(button string)
+
+	// CopyItems shows labeled text entries each with a [Copy] button.
+	// When set, replaces the Body text content.
+	CopyItems []DialogCopyItem
+	// OnCopy is called when a [Copy] button is pressed, with the item's full Value.
+	OnCopy func(value string)
 
 	// List support — when ListItems is non-nil, the dialog renders a selectable,
 	// scrollable list instead of the Body text. The list cursor is tracked by

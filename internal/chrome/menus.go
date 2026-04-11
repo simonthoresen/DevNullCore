@@ -35,6 +35,8 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
 		{Label: "S&ynths...", Handler: func(_ string) { m.pushSynthDialog(0) }},
 		{Label: "---"},
+		{Label: "&Invite...", Handler: func(_ string) { m.pushInviteDialog() }},
+		{Label: "---"},
 		{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(playerID string) {
 			m.overlay.PushDialog(domain.DialogRequest{
 				Title:   "Exit",
@@ -225,4 +227,19 @@ func (m *Model) pushSynthDialog(cursor int) {
 		},
 	})
 	m.overlay.SetTopCursor(cursor)
+}
+
+func (m *Model) pushInviteDialog() {
+	win, ssh := m.api.InviteLinks()
+	m.overlay.PushDialog(domain.DialogRequest{
+		Title: "Invite",
+		CopyItems: []domain.DialogCopyItem{
+			{Label: "WIN", Value: win},
+			{Label: "SSH", Value: ssh},
+		},
+		Buttons: []string{"Close"},
+		OnCopy: func(value string) {
+			m.pendingClipboard = value
+		},
+	})
 }
