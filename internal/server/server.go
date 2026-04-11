@@ -48,9 +48,8 @@ type Server struct {
 	sessionsMu sync.RWMutex
 
 	// channels for communicating events to the console
-	logCh   chan string         // server log lines (legacy, used by serverLog)
-	chatCh  chan domain.Message // new chat messages
-	slogCh  chan console.SlogLine // slog records routed to console
+	chatCh chan domain.Message   // new chat messages
+	slogCh chan console.SlogLine // slog records routed to console
 
 	chatLogFile *os.File // persistent chat log (timestamp-chat.log)
 
@@ -85,7 +84,6 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 		maxPlayers:   domain.MaxConnections,
 		programs:     make(map[string]msgSender),
 		sessions:     make(map[string]ssh.Session),
-		logCh:        make(chan string, 256),
 		chatCh:       make(chan domain.Message, 256),
 		slogCh:       make(chan console.SlogLine, 256),
 	}
@@ -113,10 +111,6 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 
 func (a *Server) SetShutdownFunc(fn func()) {
 	a.shutdownFn = fn
-}
-
-func (a *Server) LogCh() <-chan string {
-	return a.logCh
 }
 
 func (a *Server) SlogCh() <-chan console.SlogLine { return a.slogCh }

@@ -191,34 +191,3 @@ func RenderScrollbarBuf(buf *render.ImageBuffer, x, y, total, visible, offset in
 	}
 }
 
-// RenderScrollbar returns styled string slices for a scrollbar (legacy).
-func RenderScrollbar(total, visible, offset int, style interface{ Render(strs ...string) string }) []string {
-	if visible <= 0 {
-		return nil
-	}
-	track := make([]string, visible)
-	if total <= visible {
-		for i := range track {
-			track[i] = style.Render(" ")
-		}
-		return track
-	}
-	thumbSize := max(1, visible*visible/total)
-	scrollRange := total - visible
-	topOffset := scrollRange - offset
-	if topOffset < 0 {
-		topOffset = 0
-	}
-	thumbPos := 0
-	if scrollRange > 0 {
-		thumbPos = topOffset * (visible - thumbSize) / scrollRange
-	}
-	for i := range track {
-		if i >= thumbPos && i < thumbPos+thumbSize {
-			track[i] = style.Render("█")
-		} else {
-			track[i] = style.Render("░")
-		}
-	}
-	return track
-}

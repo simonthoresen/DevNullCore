@@ -33,8 +33,6 @@ func (m *Model) persistClientConfig() {
 // Lines starting with any of these are stripped and re-generated.
 var managedPrefixes = []string{
 	"/theme-", "/plugin-", "/shader-", "/synth-", "/render-",
-	// Legacy prefixes (pre-flatten) — strip on upgrade.
-	"/theme ", "/plugin ", "/shader ", "/synth ",
 }
 
 // persistConfigFile rewrites the config file at path: strips managed lines,

@@ -169,24 +169,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// copyDir recursively copies a directory tree.
-func copyDir(src, dst string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-		if info.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		return copyFile(path, target)
-	})
-}
-
 // FileHash returns the hex-encoded SHA-256 hash of a file.
 func FileHash(path string) (string, error) {
 	f, err := os.Open(path)
