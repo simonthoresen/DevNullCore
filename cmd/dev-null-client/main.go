@@ -76,22 +76,30 @@ func main() {
 	ptyW := display.WindowCols(winW)
 	ptyH := display.WindowRows(winH)
 
+	bootEnd := func(label, dots, status string) {
+		color := "\033[32m" // green = DONE
+		if status == "FAIL" {
+			color = "\033[31m" // red
+		}
+		fmt.Printf("\r%s %s [ %s%s\033[0m ]\n", label, dots, color, status)
+	}
+
 	label1 := fmt.Sprintf("Connecting to %s:%d as %s", *host, *port, *player)
 	dots1 := bootDots(label1)
 	fmt.Printf("%s %s", label1, dots1)
 	conn, err := client.Dial(*host, *port, *player, *termFlag, *password, ptyW, ptyH, initCommands)
 	if err != nil {
-		fmt.Printf("\r%s %s [ FAIL ]\n", label1, dots1)
+		bootEnd(label1, dots1, "FAIL")
 		log.Fatalf("Failed to connect: %v", err)
 	}
-	fmt.Printf("\r%s %s [ DONE ]\n", label1, dots1)
+	bootEnd(label1, dots1, "DONE")
 	defer conn.Close()
 
 	const label2 = "Starting renderer"
 	dots2 := bootDots(label2)
 	fmt.Printf("%s %s", label2, dots2)
 	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), *dataDirFlag)
-	fmt.Printf("\r%s %s [ DONE ]\n", label2, dots2)
+	bootEnd(label2, dots2, "DONE")
 
 	if err := display.RunWindow(renderer, "dev-null", winW, winH, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
