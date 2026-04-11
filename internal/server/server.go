@@ -345,6 +345,8 @@ func (a *Server) inviteSSHCommand() string {
 		return fmt.Sprintf(" -p %d", port)
 	}
 
+	const sshOpts = " -o StrictHostKeyChecking=no"
+
 	// Prefer Pinggy tunnel.
 	if n.PinggyURL != "" {
 		host := n.PinggyURL
@@ -358,20 +360,20 @@ func (a *Server) inviteSSHCommand() string {
 			}
 			host = host[:idx]
 		}
-		return "ssh" + portFlag(port) + " " + host
+		return "ssh" + sshOpts + portFlag(port) + " " + host
 	}
 
 	// Public IP via UPnP.
 	if n.PublicIP != "" && n.UPnPMapped {
-		return "ssh" + portFlag(sshPort) + " " + n.PublicIP
+		return "ssh" + sshOpts + portFlag(sshPort) + " " + n.PublicIP
 	}
 
 	// LAN IP.
 	if n.LANIP != "" {
-		return "ssh" + portFlag(sshPort) + " " + n.LANIP
+		return "ssh" + sshOpts + portFlag(sshPort) + " " + n.LANIP
 	}
 
-	return "ssh" + portFlag(sshPort) + " localhost"
+	return "ssh" + sshOpts + portFlag(sshPort) + " localhost"
 }
 
 // InviteLinks returns the Windows and SSH join commands for sharing.
