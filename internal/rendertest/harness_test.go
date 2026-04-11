@@ -219,7 +219,9 @@ func checkOrUpdate(t *testing.T, path, got string) {
 	if err != nil {
 		t.Fatalf("golden file missing: %s\n  run with -update to generate it", path)
 	}
-	want := string(raw)
+	// Normalize CRLF→LF so golden files are stable across platforms and
+	// git autocrlf settings (Windows checks out with \r\n).
+	want := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	if got != want {
 		t.Errorf("render mismatch for %s\n--- got ---\n%s\n--- want ---\n%s",
 			path, got, want)
@@ -286,10 +288,9 @@ func renderChrome(
 				TermWidth:  w,
 				TermHeight: h,
 			}
-			st.ChatHistory = append(st.ChatHistory, domain.Message{
-				Author: "",
-				Text:   playerID + " joined.",
-			})
+			// Note: we do NOT add a join chat message here — the integration tests
+			// take their snapshot before the broadcast arrives, so omitting it
+			// keeps unit and integration golden files identical.
 		}
 		st.Unlock()
 		// Auto-assign to a new solo team (matches server registerSession behavior).
