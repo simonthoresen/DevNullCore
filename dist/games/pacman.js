@@ -649,7 +649,7 @@ var Game = {
         tick(dt);
     },
 
-    render: function(buf, playerID, ox, oy, width, height) {
+    renderAscii: function(buf, playerID, ox, oy, width, height) {
         render(buf, playerID, width, height);
     },
 

@@ -116,12 +116,27 @@ func (m *Model) dispatchInput(text string) {
 			}
 			m.handleSynthLoad(arg)
 			return
-		// Render mode commands.
+		// Graphics preference commands.
+		case "/render-ascii":
+			m.setGraphicsPref(domain.RenderModeAscii)
+			m.persistClientConfig()
+			return
+		case "/render-blocks":
+			m.setGraphicsPref(domain.RenderModeBlocks)
+			m.persistClientConfig()
+			return
+		case "/render-pixels":
+			m.setGraphicsPref(domain.RenderModePixels)
+			m.persistClientConfig()
+			return
+		// Legacy aliases — handle stale client.txt entries gracefully.
 		case "/render-quadrant":
-			m.setRenderMode(domain.RenderModeQuadrant)
+			m.setGraphicsPref(domain.RenderModeBlocks)
+			m.persistClientConfig()
 			return
 		case "/render-canvas-hd":
-			m.setRenderMode(domain.RenderModeCanvasHD)
+			m.setGraphicsPref(domain.RenderModePixels)
+			m.persistClientConfig()
 			return
 		}
 
