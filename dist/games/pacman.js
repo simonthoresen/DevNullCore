@@ -513,9 +513,7 @@ function render(buf, pid, width, height, cw) {
                 ents[k] = {ch: "X", fg: "#555555", bg: null};
             } else {
                 var col = PCOL[p.ci % PCOL.length];
-                var poN = ["^", "v", "<", ">"];
-                var ch = (Math.floor(animTimer * 10) % 6 < 3) ? poN[p.dir] : "o";
-                ents[k] = {ch: ch, fg: col, bg: null, bold: (plOrder[i] === pid)};
+                ents[k] = {ch: "@", fg: col, bg: null, bold: (plOrder[i] === pid)};
             }
         }
     }
