@@ -324,7 +324,7 @@ if ($existingListener) {
 Write-BootStepStart "Setting up network"
 Write-BootStepEnd "DONE"
 
-$serverArgs = @("--port", $Port)
+$serverArgs = @("--data-dir", $root, "--port", $Port)
 if ($Password) { $serverArgs = @("--password", $Password) + $serverArgs }
 if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
 

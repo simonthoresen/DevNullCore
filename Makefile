@@ -22,19 +22,19 @@ build-client:
 
 # Server: normal mode (SSH server + console TUI)
 run-server: build-server
-	./dist/dev-null-server.exe --data-dir dist
+	powershell -ExecutionPolicy Bypass -File dist/start-server.ps1 --no-update
 
 # Server: LAN-only mode (no UPnP, no public IP, no Pinggy)
 run-server-lan: build-server
-	./dist/dev-null-server.exe --data-dir dist --lan
+	powershell -ExecutionPolicy Bypass -File dist/start-server.ps1 --no-update --lan
 
 # Client: connect to a running server
 run-client: build-client
-	./dist/dev-null-client.exe
+	powershell -ExecutionPolicy Bypass -File dist/start-client.ps1 --no-update
 
 # Client: local mode (headless SSH server + graphical client)
 run-client-local: build-client
-	./dist/dev-null-client.exe --data-dir dist --local
+	powershell -ExecutionPolicy Bypass -File dist/start-client.ps1 --no-update --local
 
 # Run all tests
 test:

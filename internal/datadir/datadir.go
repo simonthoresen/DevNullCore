@@ -71,6 +71,16 @@ func Bootstrap(installDir, dataDir, buildCommit string) error {
 		}
 	}
 
+	// If install dir and data dir are the same the bundled assets are already
+	// in place — stamp the version marker and return without copying anything.
+	// (Copying a file to itself would truncate it before reading.)
+	if filepath.Clean(installDir) == filepath.Clean(dataDir) {
+		if err := os.MkdirAll(dataDir, 0o755); err != nil {
+			return fmt.Errorf("create data dir: %w", err)
+		}
+		return os.WriteFile(versionFile, []byte(buildCommit), 0o644)
+	}
+
 	// Load new manifest from install dir.
 	newManifest, err := loadManifest(filepath.Join(installDir, ".bundle-manifest.json"))
 	if err != nil {
