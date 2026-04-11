@@ -137,7 +137,7 @@ type Model struct {
 	lastStateHash    uint64   // FNV-64a hash of last sent Game.state JSON (for delta detection)
 	pendingSoundOSC  []string // sound/stop-sound OSC strings to inject into next View()
 	pendingMidiOSC   []string // MIDI event OSC strings to inject into next View()
-	synthName        string   // active SoundFont name (e.g. "chiptune", "gm"); empty = default
+	synthName        string   // active SoundFont name (e.g. "chiptune", "gm"); default = "chiptune"
 	synthSent        bool     // true after synth selection OSC has been sent
 
 	overlay widget.OverlayState
@@ -301,6 +301,7 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		theme:         theme.Default(),
 		ColorProfile:  colorprofile.TrueColor,
 		graphicsPref:  domain.RenderModeBlocks, // default: prefer Blocks (canvas as Unicode blocks)
+		synthName:     "chiptune",              // default SoundFont; overridden by client.txt
 		overlay:        widget.OverlayState{OpenMenu: -1},
 		lobbyWindow:    lobbyWindow,
 		lobbyChatView:  lobbyChatView,
