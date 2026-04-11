@@ -52,6 +52,13 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 	lr.vm.Set("figlet", func(goja.FunctionCall) goja.Value { return lr.vm.ToValue("") })
 	lr.vm.Set("include", func(string) {}) // includes are pre-expanded by the server
 
+	// MIDI stubs — client doesn't play audio, but games may call these at init time.
+	lr.vm.Set("midiNote", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiProgram", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiCC", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiPitch", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiSilence", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+
 	// Pixel attribute constants.
 	lr.vm.Set("ATTR_NONE", int(render.AttrNone))
 	lr.vm.Set("ATTR_BOLD", int(render.AttrBold))
