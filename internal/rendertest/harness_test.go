@@ -133,6 +133,7 @@ func (a *mockChromeAPI) ServerLog(string)                                   {}
 func (a *mockChromeAPI) TabCandidates(string, []string) (string, []string) { return "", nil }
 func (a *mockChromeAPI) DispatchCommand(string, domain.CommandContext)      {}
 func (a *mockChromeAPI) StartGame()                                         {}
+func (a *mockChromeAPI) ReadyUp(string)                                     {}
 func (a *mockChromeAPI) AcknowledgeGameOver(string)                         {}
 func (a *mockChromeAPI) SuspendGame(string) error                           { return nil }
 func (a *mockChromeAPI) ResumeGame(string, string) error                    { return nil }

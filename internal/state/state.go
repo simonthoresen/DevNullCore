@@ -40,6 +40,10 @@ type CentralState struct {
 	// disconnected mid-game. Used to rejoin them on reconnect.
 	GameDisconnected map[string]string
 
+	// StartingReady tracks which players have pressed Enter on the starting screen.
+	StartingReady map[string]bool
+	StartingStart time.Time // when the starting phase began (for countdown)
+
 	// GameOverReady tracks which players have acknowledged the game-over screen.
 	GameOverReady   map[string]bool
 	GameOverResults []domain.GameResult // ranked results from gameOver()
@@ -161,6 +165,12 @@ func (s *CentralState) SetGamePhase(phase domain.GamePhase) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.GamePhase = phase
+	if phase == domain.PhaseStarting {
+		s.StartingReady = make(map[string]bool)
+		s.StartingStart = time.Now()
+	} else {
+		s.StartingReady = nil
+	}
 	if phase == domain.PhaseEnding {
 		s.GameOverReady = make(map[string]bool)
 	} else {
@@ -198,6 +208,32 @@ func (s *CentralState) AllPlayersReady() bool {
 		for _, id := range t.Players {
 			// Only check players who are still connected.
 			if s.Players[id] != nil && !s.GameOverReady[id] {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// MarkStartingReady marks a player as ready on the starting screen.
+func (s *CentralState) MarkStartingReady(playerID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.StartingReady != nil {
+		s.StartingReady[playerID] = true
+	}
+}
+
+// AllPlayersStartingReady returns true if every connected game player is ready.
+func (s *CentralState) AllPlayersStartingReady() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.StartingReady == nil {
+		return false
+	}
+	for _, t := range s.GameTeams {
+		for _, id := range t.Players {
+			if s.Players[id] != nil && !s.StartingReady[id] {
 				return false
 			}
 		}

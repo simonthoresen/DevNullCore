@@ -157,6 +157,9 @@ var scenarios = []renderScenario{
 			st.ActiveGame = &mockGame{}
 			st.GameName = "testgame"
 			st.GamePhase = domain.PhaseStarting
+			st.StartingReady = make(map[string]bool)
+			st.StartingStart = fixedTime
+			st.GameTeams = []domain.Team{{Name: "alice", Players: []string{"alice"}}}
 		},
 	},
 

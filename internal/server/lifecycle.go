@@ -130,6 +130,8 @@ func (a *Server) loadGame(path string) error {
 	a.state.ActiveGame = rt
 	a.state.GameName = name
 	a.state.GamePhase = domain.PhaseStarting
+	a.state.StartingReady = make(map[string]bool)
+	a.state.StartingStart = a.clock.Now()
 	a.state.Unlock()
 
 	// Populate the teams cache so script teams() returns correct data.
@@ -195,6 +197,16 @@ func (a *Server) startingTimer() {
 	}
 }
 
+// ReadyUp marks a player as ready on the starting screen.
+// If all players are ready, the game starts immediately.
+func (a *Server) ReadyUp(playerID string) {
+	a.state.MarkStartingReady(playerID)
+	a.broadcastMsg(domain.StartingReadyMsg{PlayerID: playerID})
+	if a.state.AllPlayersStartingReady() {
+		a.StartGame()
+	}
+}
+
 // StartGame is called when an admin acknowledges the starting screen.
 func (a *Server) StartGame() {
 	select {
@@ -232,6 +244,7 @@ func (a *Server) unloadGame() {
 	a.state.ActiveGame = nil
 	a.state.GameName = ""
 	a.state.GamePhase = domain.PhaseNone
+	a.state.StartingReady = nil
 	a.state.GameOverReady = nil
 	a.state.Unlock()
 
@@ -374,6 +387,7 @@ func (a *Server) suspendGame(saveName string) error {
 	a.state.ActiveGame = nil
 	a.state.GameName = ""
 	a.state.GamePhase = domain.PhaseNone
+	a.state.StartingReady = nil
 	a.state.GameOverReady = nil
 	a.state.Unlock()
 

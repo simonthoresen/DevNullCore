@@ -39,6 +39,7 @@ type ServerAPI interface {
 
 	// Game lifecycle
 	StartGame()
+	ReadyUp(playerID string)
 	AcknowledgeGameOver(playerID string)
 	SuspendGame(saveName string) error
 	ResumeGame(gameName, saveName string) error

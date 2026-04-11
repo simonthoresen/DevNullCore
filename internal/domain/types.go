@@ -231,8 +231,9 @@ type PlayerLeftMsg struct{ PlayerID string }
 type ChatMsg struct{ Msg Message }
 type GameLoadedMsg struct{ Name string }
 type GameUnloadedMsg struct{}
-type GamePhaseMsg struct{ Phase GamePhase } // broadcast when game phase changes
-type TeamUpdatedMsg struct{}                // broadcast when team assignments change
+type GamePhaseMsg struct{ Phase GamePhase }       // broadcast when game phase changes
+type StartingReadyMsg struct{ PlayerID string }   // broadcast when a player readies up
+type TeamUpdatedMsg struct{}                       // broadcast when team assignments change
 type GameSuspendedMsg struct{ Name string } // broadcast when a game is suspended
 type GameResumedMsg struct{ Name string }   // broadcast when a suspended game is resumed
 type QuitRequestMsg struct{}                // sent to a player's program to request exit

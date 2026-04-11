@@ -346,12 +346,14 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 	m.playingMenuBar.Menus = menus
 	switch phase {
 	case domain.PhaseStarting:
-		player := m.api.State().GetPlayer(m.playerID)
-		isAdmin := player != nil && player.IsAdmin
-		if isAdmin {
-			m.playingStatusBar.LeftText = " [Enter] Start game"
+		st := m.api.State()
+		st.RLock()
+		isReady := st.StartingReady != nil && st.StartingReady[m.playerID]
+		st.RUnlock()
+		if isReady {
+			m.playingStatusBar.LeftText = " Ready! Waiting for others..."
 		} else {
-			m.playingStatusBar.LeftText = " Waiting for host to start..."
+			m.playingStatusBar.LeftText = " [Enter] Ready up"
 		}
 	case domain.PhaseEnding:
 		remaining := 15 - int(time.Since(m.gameOverStart).Seconds())
@@ -387,32 +389,72 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 	m.chatScrollOffset = m.playingChatView.ScrollOffset
 }
 
-// defaultRenderStarting renders a figlet game name centered in the viewport.
+// defaultRenderStarting renders a figlet game name (larry3d), countdown, and
+// per-player ready checkboxes centered in the viewport.
 func (m *Model) defaultRenderStarting(buf *render.ImageBuffer, name string, x, y, w, h int) {
-	figletTitle := strings.TrimRight(engine.Figlet(name, ""), "\n")
-	var lines []string
-	if figletTitle != "" {
-		lines = strings.Split(figletTitle, "\n")
-		// Check if figlet fits; fall back to plain text if too wide.
-		maxW := 0
-		for _, l := range lines {
-			if len(l) > maxW {
-				maxW = len(l)
-			}
-		}
-		if maxW > w {
-			lines = []string{name}
-		}
-	} else {
-		lines = []string{name}
+	// Try larry3d first, fall back to standard, then plain text.
+	titleLines := figletLines(name, "larry3d", w)
+	if titleLines == nil {
+		titleLines = figletLines(name, "", w)
+	}
+	if titleLines == nil {
+		titleLines = []string{name}
 	}
 
-	// Center vertically and horizontally.
-	topPad := (h - len(lines)) / 2
+	// Read starting state.
+	st := m.api.State()
+	st.RLock()
+	startingStart := st.StartingStart
+	readyMap := st.StartingReady
+	gameTeams := st.GameTeams
+	players := make(map[string]*domain.Player, len(st.Players))
+	for k, v := range st.Players {
+		players[k] = v
+	}
+	st.RUnlock()
+
+	// Countdown.
+	elapsed := m.api.Clock().Now().Sub(startingStart).Seconds()
+	remaining := 10 - int(elapsed)
+	if remaining < 0 {
+		remaining = 0
+	}
+	countdownLine := fmt.Sprintf("Starting in %ds", remaining)
+
+	// Build player ready lines: "  [x] alice" or "  [ ] bob"
+	var playerLines []string
+	readyCount, totalCount := 0, 0
+	for _, team := range gameTeams {
+		for _, pid := range team.Players {
+			p := players[pid]
+			if p == nil {
+				continue
+			}
+			totalCount++
+			check := " "
+			if readyMap != nil && readyMap[pid] {
+				check = "x"
+				readyCount++
+			}
+			playerLines = append(playerLines, fmt.Sprintf("  [%s] %s", check, p.Name))
+		}
+	}
+	readySummary := fmt.Sprintf("%d/%d ready", readyCount, totalCount)
+
+	// Compose all content lines: title + blank + countdown + readySummary + blank + players.
+	var content []string
+	content = append(content, titleLines...)
+	content = append(content, "")
+	content = append(content, countdownLine+"   "+readySummary)
+	content = append(content, "")
+	content = append(content, playerLines...)
+
+	// Center vertically.
+	topPad := (h - len(content)) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
-	for i, line := range lines {
+	for i, line := range content {
 		row := y + topPad + i
 		if row >= y+h {
 			break
@@ -423,6 +465,22 @@ func (m *Model) defaultRenderStarting(buf *render.ImageBuffer, name string, x, y
 		}
 		buf.WriteString(col, row, line, nil, nil, render.AttrNone)
 	}
+}
+
+// figletLines renders text with the given font and returns split lines,
+// or nil if the result is empty or too wide for the viewport.
+func figletLines(text, font string, maxW int) []string {
+	raw := strings.TrimRight(engine.Figlet(text, font), "\n")
+	if raw == "" {
+		return nil
+	}
+	lines := strings.Split(raw, "\n")
+	for _, l := range lines {
+		if len(l) > maxW {
+			return nil
+		}
+	}
+	return lines
 }
 
 // defaultRenderEnding renders a figlet "GAME OVER" title with ranked results.

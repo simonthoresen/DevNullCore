@@ -69,14 +69,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// Starting phase — admin can press Enter to start, others wait.
+	// Starting phase — any player can press Enter to ready up.
 	if m.inActiveGame && phase == domain.PhaseStarting {
 		switch msg.String() {
 		case "enter":
-			player := m.api.State().GetPlayer(m.playerID)
-			if player != nil && player.IsAdmin {
-				m.api.StartGame()
-			}
+			m.api.ReadyUp(m.playerID)
 		}
 		return m, nil
 	}
