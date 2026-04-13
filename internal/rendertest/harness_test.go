@@ -105,6 +105,7 @@ func (a *mockConsoleAPI) SlogCh() <-chan console.SlogLine                    { r
 func (a *mockConsoleAPI) TabCandidates(string, []string) (string, []string) { return "", nil }
 func (a *mockConsoleAPI) DispatchCommand(string, domain.CommandContext)      {}
 func (a *mockConsoleAPI) SetConsoleWidth(int)                                {}
+func (a *mockConsoleAPI) InviteLinks() (string, string)                      { return "", "" }
 
 // ─── Mock chrome API ─────────────────────────────────────────────────────────
 
@@ -139,6 +140,7 @@ func (a *mockChromeAPI) SuspendGame(string) error                           { re
 func (a *mockChromeAPI) ResumeGame(string, string) error                    { return nil }
 func (a *mockChromeAPI) ListSuspends() []state.SuspendInfo                  { return nil }
 func (a *mockChromeAPI) KickPlayer(string) error                            { return nil }
+func (a *mockChromeAPI) InviteLinks() (string, string)                      { return "", "" }
 
 // ─── Mock game ───────────────────────────────────────────────────────────────
 
@@ -155,6 +157,7 @@ func (g *mockGame) End()                                                        
 func (g *mockGame) Unload() any                                                   { return nil }
 func (g *mockGame) Suspend() any                                                  { return nil }
 func (g *mockGame) Resume(any)                                                    {}
+func (g *mockGame) OnPlayerJoin(string, string)                                   {}
 func (g *mockGame) OnPlayerLeave(string)                                          {}
 func (g *mockGame) OnInput(string, string)                                        {}
 func (g *mockGame) StatusBar(string) string                                       { return "score: 42 | level: 3" }
@@ -168,7 +171,7 @@ func (g *mockGame) GameSource() []domain.GameSourceFile                         
 func (g *mockGame) GameAssets() []domain.GameAsset                                { return nil }
 func (g *mockGame) Layout(string, int, int) *domain.WidgetNode                   { return nil }
 
-func (g *mockGame) Render(buf *render.ImageBuffer, _ string, x, y, w, h int) {
+func (g *mockGame) RenderAscii(buf *render.ImageBuffer, _ string, x, y, w, h int) {
 	// Draw a simple bordered box with fixed content.
 	if w < 4 || h < 3 {
 		return
@@ -216,7 +219,9 @@ func checkOrUpdate(t *testing.T, path, got string) {
 	if err != nil {
 		t.Fatalf("golden file missing: %s\n  run with -update to generate it", path)
 	}
-	want := string(raw)
+	// Normalize CRLF→LF so golden files are stable across platforms and
+	// git autocrlf settings (Windows checks out with \r\n).
+	want := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	if got != want {
 		t.Errorf("render mismatch for %s\n--- got ---\n%s\n--- want ---\n%s",
 			path, got, want)
@@ -283,10 +288,9 @@ func renderChrome(
 				TermWidth:  w,
 				TermHeight: h,
 			}
-			st.ChatHistory = append(st.ChatHistory, domain.Message{
-				Author: "",
-				Text:   playerID + " joined.",
-			})
+			// Note: we do NOT add a join chat message here — the integration tests
+			// take their snapshot before the broadcast arrives, so omitting it
+			// keeps unit and integration golden files identical.
 		}
 		st.Unlock()
 		// Auto-assign to a new solo team (matches server registerSession behavior).

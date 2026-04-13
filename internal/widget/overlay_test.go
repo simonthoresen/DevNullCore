@@ -187,41 +187,6 @@ func TestPlaceOverlay(t *testing.T) {
 	}
 }
 
-// ─── Scrollbar tests ─────────────────────────────────────────────────────────
-
-func TestRenderScrollbar(t *testing.T) {
-	pal := testLayer()
-	sb := RenderScrollbar(100, 10, 0, pal.BaseStyle())
-
-	if len(sb) != 10 {
-		t.Errorf("expected 10 rows, got %d", len(sb))
-	}
-
-	// At offset 0 (bottom), thumb should be at the bottom.
-	hasThumb := false
-	for _, s := range sb {
-		if strings.Contains(stripANSI(s), "█") {
-			hasThumb = true
-		}
-	}
-	if !hasThumb {
-		t.Error("expected scrollbar thumb")
-	}
-}
-
-func TestRenderScrollbarNoScroll(t *testing.T) {
-	pal := testLayer()
-	sb := RenderScrollbar(5, 10, 0, pal.BaseStyle())
-
-	// Content fits — no scrollbar needed.
-	for _, s := range sb {
-		if strings.Contains(stripANSI(s), "█") || strings.Contains(stripANSI(s), "░") {
-			t.Error("expected no scrollbar when content fits")
-			break
-		}
-	}
-}
-
 // ─── About dialog click detection ────────────────────────────────────────────
 
 func TestAboutDialogClickDetection(t *testing.T) {

@@ -48,9 +48,8 @@ type Server struct {
 	sessionsMu sync.RWMutex
 
 	// channels for communicating events to the console
-	logCh   chan string         // server log lines (legacy, used by serverLog)
-	chatCh  chan domain.Message // new chat messages
-	slogCh  chan console.SlogLine // slog records routed to console
+	chatCh chan domain.Message   // new chat messages
+	slogCh chan console.SlogLine // slog records routed to console
 
 	chatLogFile *os.File // persistent chat log (timestamp-chat.log)
 
@@ -85,7 +84,6 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 		maxPlayers:   domain.MaxConnections,
 		programs:     make(map[string]msgSender),
 		sessions:     make(map[string]ssh.Session),
-		logCh:        make(chan string, 256),
 		chatCh:       make(chan domain.Message, 256),
 		slogCh:       make(chan console.SlogLine, 256),
 	}
@@ -113,10 +111,6 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 
 func (a *Server) SetShutdownFunc(fn func()) {
 	a.shutdownFn = fn
-}
-
-func (a *Server) LogCh() <-chan string {
-	return a.logCh
 }
 
 func (a *Server) SlogCh() <-chan console.SlogLine { return a.slogCh }
@@ -323,34 +317,74 @@ func (a *Server) inviteToken() string {
 
 const joinScriptURL = "https://raw.githubusercontent.com/simonthoresen/dev-null/main/join.ps1"
 
-// inviteCommand returns the invite command formatted for terminal display.
-// The command is raw PowerShell — paste directly into a PowerShell window.
-// Line continuations (backtick + newline) are inserted to keep within console
-// width for easy copying.
-func (a *Server) inviteCommand() string {
+// inviteWinCommand returns the Windows invite command.
+// The command is wrapped in "powershell -Command ..." so it runs directly from
+// Win+R, a cmd prompt, or the Run dialog without opening PowerShell first.
+func (a *Server) inviteWinCommand() string {
 	token := a.inviteToken()
-	width := a.consoleWidth
-	if width < 40 {
-		width = 120 // default before first resize
+	inner := fmt.Sprintf("$env:NS='%s';irm %s|iex", token, joinScriptURL)
+	return fmt.Sprintf(`powershell -Command "%s"`, inner)
+}
+
+// inviteSSHCommand returns the SSH command to join the server,
+// choosing the best available endpoint (Pinggy > public IP > LAN IP > localhost).
+func (a *Server) inviteSSHCommand() string {
+	a.state.RLock()
+	n := a.state.Net
+	a.state.RUnlock()
+
+	var sshPort int
+	if p, err := net.LookupPort("tcp", a.port); err == nil {
+		sshPort = p
 	}
 
-	seg1 := fmt.Sprintf("$env:NS='%s';", token)
-	seg2 := fmt.Sprintf("irm %s|iex", joinScriptURL)
-
-	// Try single line first.
-	oneLine := seg1 + seg2
-	if len(oneLine) <= width {
-		return oneLine
+	portFlag := func(port int) string {
+		if port == 22 || port == 0 {
+			return ""
+		}
+		return fmt.Sprintf(" -p %d", port)
 	}
 
-	// Two lines: break between token assignment and irm.
-	return seg1 + " `\n" + seg2
+	const sshOpts = " -o StrictHostKeyChecking=no"
+
+	// Prefer Pinggy tunnel.
+	if n.PinggyURL != "" {
+		host := n.PinggyURL
+		if idx := strings.Index(host, "://"); idx >= 0 {
+			host = host[idx+3:]
+		}
+		port := 22
+		if idx := strings.LastIndex(host, ":"); idx >= 0 {
+			if p, err := net.LookupPort("tcp", host[idx+1:]); err == nil {
+				port = p
+			}
+			host = host[:idx]
+		}
+		return "ssh" + sshOpts + portFlag(port) + " " + host
+	}
+
+	// Public IP via UPnP.
+	if n.PublicIP != "" && n.UPnPMapped {
+		return "ssh" + sshOpts + portFlag(sshPort) + " " + n.PublicIP
+	}
+
+	// LAN IP.
+	if n.LANIP != "" {
+		return "ssh" + sshOpts + portFlag(sshPort) + " " + n.LANIP
+	}
+
+	return "ssh" + sshOpts + portFlag(sshPort) + " localhost"
+}
+
+// InviteLinks returns the Windows and SSH join commands for sharing.
+func (a *Server) InviteLinks() (win, ssh string) {
+	return a.inviteWinCommand(), a.inviteSSHCommand()
 }
 
 // LogInviteCommand writes the current invite command to the server log,
 // preceded by an ASCII QR code of the same string rendered with quadrant chars.
 func (a *Server) LogInviteCommand() {
-	cmd := a.inviteCommand()
+	cmd := a.inviteWinCommand()
 	qr, err := renderQR(cmd)
 	if err == nil {
 		a.serverLog("Invite:\n" + qr + cmd)
@@ -426,20 +460,29 @@ func (a *Server) SetConsoleSender(s msgSender) {
 
 func (a *Server) registerBuiltins() {
 	a.registry.Register(domain.Command{
-		Name:        "invite",
-		Description: "Show the shareable join command for this server",
+		Name:        "invite-win",
+		Description: "Show the Windows join command for this server",
 		Handler: func(ctx domain.CommandContext, args []string) {
-			cmd := a.inviteCommand()
+			cmd := a.inviteWinCommand()
 			if qr, err := renderQR(cmd); err == nil {
 				ctx.Reply(qr + cmd)
 			} else {
 				ctx.Reply(cmd)
 			}
 			if ctx.Clipboard != nil {
-				slog.Debug("invite: setting clipboard", "len", len(cmd))
 				ctx.Clipboard(cmd)
-			} else {
-				slog.Debug("invite: no clipboard callback")
+			}
+		},
+	})
+
+	a.registry.Register(domain.Command{
+		Name:        "invite-ssh",
+		Description: "Show the SSH join command for this server",
+		Handler: func(ctx domain.CommandContext, args []string) {
+			cmd := a.inviteSSHCommand()
+			ctx.Reply(cmd)
+			if ctx.Clipboard != nil {
+				ctx.Clipboard(cmd)
 			}
 		},
 	})

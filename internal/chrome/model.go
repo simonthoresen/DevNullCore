@@ -47,6 +47,9 @@ type ServerAPI interface {
 
 	// Session management
 	KickPlayer(playerID string) error
+
+	// Invite
+	InviteLinks() (win, mac string)
 }
 
 // lobbyTeamPanelW is the fixed width of the team panel in the lobby.
@@ -117,8 +120,12 @@ type Model struct {
 	shaders     []domain.Shader
 	shaderNames []string // parallel to shaders; display names
 
-	// Per-player render mode (Text, Quadrant, Canvas, CanvasHD).
-	// Auto-selected to the best available mode on game load; changeable via Graphics menu.
+	// Per-player graphics preference (Ascii/Blocks/Pixels) — the user's intent.
+	// The effective renderMode is derived from this preference + capabilities.
+	graphicsPref domain.RenderMode
+
+	// Per-player effective render mode (Ascii, Blocks, Pixels).
+	// Derived from graphicsPref + current capabilities; updated on game load.
 	renderMode domain.RenderMode
 
 	// Enhanced client protocol (dev-null-client with canvas/local-render support).
@@ -130,7 +137,7 @@ type Model struct {
 	lastStateHash    uint64   // FNV-64a hash of last sent Game.state JSON (for delta detection)
 	pendingSoundOSC  []string // sound/stop-sound OSC strings to inject into next View()
 	pendingMidiOSC   []string // MIDI event OSC strings to inject into next View()
-	synthName        string   // active SoundFont name (e.g. "chiptune", "gm"); empty = default
+	synthName        string   // active SoundFont name (e.g. "chiptune", "gm"); default = "chiptune"
 	synthSent        bool     // true after synth selection OSC has been sent
 
 	overlay widget.OverlayState
@@ -293,6 +300,8 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		teamEditInput: teamInput,
 		theme:         theme.Default(),
 		ColorProfile:  colorprofile.TrueColor,
+		graphicsPref:  domain.RenderModeBlocks, // default: prefer Blocks (canvas as Unicode blocks)
+		synthName:     "chiptune",              // default SoundFont; overridden by client.txt
 		overlay:        widget.OverlayState{OpenMenu: -1},
 		lobbyWindow:    lobbyWindow,
 		lobbyChatView:  lobbyChatView,
@@ -454,37 +463,45 @@ func (m *Model) canUseRenderMode(mode domain.RenderMode) bool {
 	m.api.State().RUnlock()
 
 	switch mode {
-	case domain.RenderModeText:
+	case domain.RenderModeAscii:
 		return true
-	case domain.RenderModeQuadrant:
+	case domain.RenderModeBlocks:
 		return game != nil && game.HasCanvasMode()
-	case domain.RenderModeCanvasHD:
+	case domain.RenderModePixels:
 		return game != nil && game.HasCanvasMode() && m.IsEnhancedClient
 	}
 	return false
 }
 
-// bestRenderMode returns the best default render mode for the current client
-// and game. Prefers Quadrant for canvas games (works on all clients); CanvasHD
-// Quadrant is the default for all clients — Canvas HD is an explicit opt-in.
-func (m *Model) bestRenderMode() domain.RenderMode {
-	if m.canUseRenderMode(domain.RenderModeQuadrant) {
-		return domain.RenderModeQuadrant
+// effectiveMode returns the best achievable render mode for the given preference
+// and current client/game capabilities. Degrades gracefully:
+// Pixels → Blocks → Ascii as capabilities require.
+func (m *Model) effectiveMode(pref domain.RenderMode) domain.RenderMode {
+	switch pref {
+	case domain.RenderModePixels:
+		if m.canUseRenderMode(domain.RenderModePixels) {
+			return domain.RenderModePixels
+		}
+		fallthrough
+	case domain.RenderModeBlocks:
+		if m.canUseRenderMode(domain.RenderModeBlocks) {
+			return domain.RenderModeBlocks
+		}
+		fallthrough
+	default:
+		return domain.RenderModeAscii
 	}
-	return domain.RenderModeText
 }
 
-// setRenderMode switches to the given mode if available, handling OSC state
-// resets needed when transitioning between local and remote canvas modes.
-func (m *Model) setRenderMode(mode domain.RenderMode) {
-	if !m.canUseRenderMode(mode) {
-		m.pluginReply(mode.Label() + " mode not available.")
-		return
-	}
-	wasLocal := m.renderMode == domain.RenderModeCanvasHD
-	m.renderMode = mode
-	isLocal := mode == domain.RenderModeCanvasHD
-	// Reset OSC state when switching between local and non-local modes.
+// setGraphicsPref stores the user's graphics preference and applies the effective
+// render mode derived from that preference + current capabilities.
+// Handles OSC state resets when transitioning between Pixels and non-Pixels modes.
+func (m *Model) setGraphicsPref(pref domain.RenderMode) {
+	m.graphicsPref = pref
+	wasLocal := m.renderMode == domain.RenderModePixels
+	m.renderMode = m.effectiveMode(pref)
+	isLocal := m.renderMode == domain.RenderModePixels
+	// Reset OSC state when switching between local (Pixels) and non-local modes.
 	if wasLocal != isLocal {
 		m.oscModeSent = false
 		m.gameSrcSent = false

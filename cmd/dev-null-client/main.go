@@ -14,6 +14,7 @@ import (
 	"os/user"
 	"strings"
 
+	"dev-null/internal/bootstep"
 	"dev-null/internal/client"
 	"dev-null/internal/datadir"
 	"dev-null/internal/display"
@@ -33,6 +34,7 @@ func main() {
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
 	player := flag.String("player", defaultPlayer(), "player name")
+	dataDirFlag := flag.String("data-dir", datadir.DefaultDataDir(), "data directory (SoundFonts, etc.)")
 	gameName := flag.String("game", "", "game to load on connect (sends /game-load command)")
 	resumeName := flag.String("resume", "", "game/save to resume on connect, e.g. orbits/autosave (sends /game-resume command)")
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
@@ -51,6 +53,8 @@ func main() {
 		initCommands = append(initCommands, "/game-load "+*gameName)
 	}
 
+	bootstep.Init(*termFlag)
+
 	// Init font before dialing so CellW/CellH are set to their real values.
 	// This lets us request the correct PTY size from the very first frame,
 	// avoiding a size mismatch between the initial server render and the window.
@@ -59,15 +63,19 @@ func main() {
 	ptyW := display.WindowCols(winW)
 	ptyH := display.WindowRows(winH)
 
-	fmt.Printf("Connecting to %s:%d as %s...\n", *host, *port, *player)
+	bootstep.Start(fmt.Sprintf("Connecting to %s:%d as %s", *host, *port, *player))
 	conn, err := client.Dial(*host, *port, *player, *termFlag, *password, ptyW, ptyH, initCommands)
 	if err != nil {
+		bootstep.Finish("FAIL")
 		log.Fatalf("Failed to connect: %v", err)
 	}
+	bootstep.Finish("DONE")
 	defer conn.Close()
 
-	fmt.Println("Connected. Starting renderer...")
-	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.DefaultDataDir())
+	bootstep.Start("Starting renderer")
+	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), *dataDirFlag)
+	bootstep.Finish("DONE")
+
 	if err := display.RunWindow(renderer, "dev-null", winW, winH, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

@@ -191,9 +191,11 @@ var scenarios = []renderScenario{
 		noIntegration: true,
 	},
 	{
-		// Games dialog showing a populated list; alice is admin so Load/Add visible.
-		name:     "games_dialog_list",
-		dataDir:  "testdata/fixtures",
+		// Games dialog with populated list. alice is admin so Add visible.
+		// cube is currently loaded (shown with → indicator).
+		// cube supports 1-4 teams (compatible with 2 teams); orbits 2-8 (compatible).
+		name:    "games_dialog_list",
+		dataDir: "testdata/fixtures",
 		playerID: "alice",
 		setup: func(st *state.CentralState) {
 			st.Lock()
@@ -201,15 +203,20 @@ var scenarios = []renderScenario{
 			st.Players["alice"] = &domain.Player{
 				ID: "alice", Name: "alice", IsAdmin: true,
 				TermWidth: termW, TermHeight: termH,
+			}
+			st.GameName = "cube"
+			st.Teams = []domain.Team{
+				{Name: "Red"},
+				{Name: "Blue"},
 			}
 		},
 		chromeKeys:    []string{"alt+f", "enter"},
 		noIntegration: true,
 	},
 	{
-		// Games list with first item selected (Enter on item reveals Load button).
-		name:     "games_dialog_selected",
-		dataDir:  "testdata/fixtures",
+		// Games dialog with cursor navigated to second item via Down key.
+		name:    "games_dialog_navigated",
+		dataDir: "testdata/fixtures",
 		playerID: "alice",
 		setup: func(st *state.CentralState) {
 			st.Lock()
@@ -218,8 +225,12 @@ var scenarios = []renderScenario{
 				ID: "alice", Name: "alice", IsAdmin: true,
 				TermWidth: termW, TermHeight: termH,
 			}
+			st.Teams = []domain.Team{
+				{Name: "Red"},
+				{Name: "Blue"},
+			}
 		},
-		chromeKeys:    []string{"alt+f", "enter", "enter"},
+		chromeKeys:    []string{"alt+f", "enter", "down"},
 		noIntegration: true,
 	},
 	{
@@ -231,12 +242,19 @@ var scenarios = []renderScenario{
 		noIntegration: true,
 	},
 	{
-		// Console Games list with first item selected (Enter reveals Remove button).
-		name:     "games_dialog_selected_console",
-		dataDir:  "testdata/fixtures",
+		// Console Games list with cursor on second item; Remove button visible.
+		name:    "games_dialog_navigated_console",
+		dataDir: "testdata/fixtures",
 		playerID: "alice",
-		setup:    func(st *state.CentralState) {},
-		consoleKeys: []string{"alt+f", "enter", "enter"},
+		setup: func(st *state.CentralState) {
+			st.Lock()
+			defer st.Unlock()
+			st.Teams = []domain.Team{
+				{Name: "Red"},
+				{Name: "Blue"},
+			}
+		},
+		consoleKeys: []string{"alt+f", "enter", "down"},
 		noIntegration: true,
 	},
 

@@ -49,7 +49,12 @@ $script:bootStepWidth = 80
 # ── boot-step helpers ────────────────────────────────────────────────────────
 
 function Get-TermWidth {
-    try { return $Host.UI.RawUI.BufferSize.Width } catch { return 80 }
+    try {
+        $w = $Host.UI.RawUI.WindowSize.Width
+        if ($w -gt 0) { return $w }
+    } catch {}
+    try { return $Host.UI.RawUI.BufferSize.Width } catch {}
+    return 80
 }
 
 function Get-StatusToken {
@@ -324,7 +329,7 @@ if ($existingListener) {
 Write-BootStepStart "Setting up network"
 Write-BootStepEnd "DONE"
 
-$serverArgs = @("--port", $Port)
+$serverArgs = @("--data-dir", $root, "--port", $Port)
 if ($Password) { $serverArgs = @("--password", $Password) + $serverArgs }
 if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
 

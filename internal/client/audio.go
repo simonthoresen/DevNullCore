@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,6 +14,19 @@ import (
 
 	"dev-null/internal/domain"
 )
+
+// findSoundFont returns the path to name.sf2, checking installDir before dataDir.
+// installDir is the exe directory (bundled assets); dataDir is the user data directory.
+func findSoundFont(installDir, dataDir, name string) string {
+	rel := filepath.Join("soundfonts", name+".sf2")
+	if installDir != "" {
+		p := filepath.Join(installDir, rel)
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return filepath.Join(dataDir, rel)
+}
 
 const (
 	midiSampleRate = 44100
@@ -100,23 +114,24 @@ func (ms *MidiSynth) LoadSoundFont(path string) error {
 // Must be called from the game loop (after ebiten.RunGame has started).
 func (ms *MidiSynth) ensurePlayer() {
 	ms.mu.Lock()
-	defer ms.mu.Unlock()
 	if !ms.needsPlayer || ms.synth == nil {
+		ms.mu.Unlock()
 		return
 	}
 	ms.needsPlayer = false
-
 	stream := &synthStream{synth: ms}
 	ctx := getAudioCtx()
 	player, err := ctx.NewPlayer(stream)
 	if err != nil {
 		slog.Warn("MIDI synth: failed to create audio player", "err", err)
 		ms.synth = nil
+		ms.mu.Unlock()
 		return
 	}
 	player.SetBufferSize(time.Millisecond * 50)
-	player.Play()
 	ms.player = player
+	ms.mu.Unlock() // release before Play() so the audio goroutine can acquire mu in synthStream.Read
+	player.Play()
 }
 
 // NoteOn triggers a note. If durationMs > 0, a NoteOff is scheduled automatically.

@@ -1,23 +1,23 @@
- File │ Help
+ File │ Graphics │ Help
 ╔═════════════════════════════════════════════╤════════════════════════════════╗
-║                                             │    Unassigned                  ║
-║                                             │                                ║
-║                                             │    Team alice                  ║
-║                                             │    alice                       ║
-║                                             │                                ║
-║                                             │                                ║
-║                                             │                                ║
-║                                             │                                ║
-║                                             │                                ║
-║                                             │                                ║
-║                                             │                                ║
-║                                             │                                ║
-║[system] Server started.                     │                                ║
-║<alice> hello world                          │                                ║
-║<alice> /help                                │                                ║
-║Available commands: /help /plugin /theme /sha│                                ║
-║der                                          │                                ║
-║[system] alice joined.                       │                                ║
+║                                            ░│    Unassigned                  ║
+║                                            ░│                                ║
+║                                            ░│    Team alice                  ║
+║                                            ░│    alice                       ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
+║[system] Server started.                    ░│                                ║
+║<alice> hello world                         ░│                                ║
+║<alice> /help                               ░│                                ║
+║Available commands: /help /plugin /theme /sh░│                                ║
+║ader                                        ░│                                ║
 ╟─────────────────────────────────────────────┴────────────────────────────────╢
 ║[············································································]║
 ╚══════════════════════════════════════════════════════════════════════════════╝

@@ -48,45 +48,97 @@ func (o *OverlayState) buildDialogWindow(d domain.DialogRequest) *dialogEntry {
 		Constraint: GridConstraint{Col: 0, Row: 0, MinW: dialogPad, MinH: dialogPad},
 	})
 
-	// --- Content area: body text OR list ---
-	if hasList {
-		lb := &ListBox{Items: d.ListItems, Tags: d.ListTags}
-		entry.listBox = lb
-		children = append(children, GridChild{
-			Control:  lb,
-			TabIndex: tabIdx,
-			Constraint: GridConstraint{
-				Col: 1, Row: row, WeightX: 1, WeightY: 1, Fill: FillBoth,
-			},
-		})
-		tabIdx++
-	} else if d.Body != "" {
-		bodyLines := strings.Split(d.Body, "\n")
-		maxW := 0
-		for _, line := range bodyLines {
-			if w := len([]rune(line)); w > maxW {
-				maxW = w
+	// --- Content area: body text OR list OR copy items ---
+	if len(d.CopyItems) > 0 {
+		// Each item renders as: header row (label + Copy button), value row, divider.
+		// The last item's divider serves as the pre-button divider.
+		const maxValWidth = 50
+		for _, item := range d.CopyItems {
+			copyBtn := &Button{
+				Label: "Copy",
+				OnPress: func() {
+					if d.OnCopy != nil {
+						d.OnCopy(item.Value)
+					}
+				},
 			}
+			children = append(children, GridChild{
+				Control: &Container{
+					Horizontal: true,
+					Children: []ContainerChild{
+						{Control: &Label{Text: item.Label}, Weight: 1},
+						{Control: copyBtn, Fixed: 8},
+					},
+				},
+				TabIndex: tabIdx,
+				Constraint: GridConstraint{
+					Col: 1, Row: row, WeightX: 1, Fill: FillHorizontal,
+				},
+			})
+			tabIdx++
+			row++
+
+			displayVal := item.Value
+			if len([]rune(displayVal)) > maxValWidth {
+				runes := []rune(displayVal)
+				displayVal = string(runes[:maxValWidth-3]) + "..."
+			}
+			children = append(children, GridChild{
+				Control: &Label{Text: displayVal},
+				Constraint: GridConstraint{
+					Col: 1, Row: row, WeightX: 1, MinW: len([]rune(displayVal)), MinH: 1,
+				},
+			})
+			row++
+
+			children = append(children, GridChild{
+				Control: &HDivider{},
+				Constraint: GridConstraint{
+					Col: 1, Row: row, MinH: 1, Fill: FillHorizontal,
+				},
+			})
+			row++
 		}
-		tv := &TextView{Lines: bodyLines}
+	} else {
+		if hasList {
+			lb := &ListBox{Items: d.ListItems, Tags: d.ListTags}
+			entry.listBox = lb
+			children = append(children, GridChild{
+				Control:  lb,
+				TabIndex: tabIdx,
+				Constraint: GridConstraint{
+					Col: 1, Row: row, WeightX: 1, WeightY: 1, Fill: FillBoth,
+				},
+			})
+			tabIdx++
+		} else if d.Body != "" {
+			bodyLines := strings.Split(d.Body, "\n")
+			maxW := 0
+			for _, line := range bodyLines {
+				if w := len([]rune(line)); w > maxW {
+					maxW = w
+				}
+			}
+			tv := &TextView{Lines: bodyLines}
+			children = append(children, GridChild{
+				Control: tv,
+				Constraint: GridConstraint{
+					Col: 1, Row: row, WeightX: 1,
+					MinW: maxW, MinH: len(bodyLines), Fill: FillBoth,
+				},
+			})
+		}
+		row++
+
+		// Divider before input or buttons.
 		children = append(children, GridChild{
-			Control: tv,
+			Control: &HDivider{},
 			Constraint: GridConstraint{
-				Col: 1, Row: row, WeightX: 1,
-				MinW: maxW, MinH: len(bodyLines), Fill: FillBoth,
+				Col: 1, Row: row, MinH: 1, Fill: FillHorizontal,
 			},
 		})
+		row++
 	}
-	row++
-
-	// Divider before input or buttons.
-	children = append(children, GridChild{
-		Control: &HDivider{},
-		Constraint: GridConstraint{
-			Col: 1, Row: row, MinH: 1, Fill: FillHorizontal,
-		},
-	})
-	row++
 
 	// --- Optional input field ---
 	if hasInput {
@@ -125,7 +177,6 @@ func (o *OverlayState) buildDialogWindow(d domain.DialogRequest) *dialogEntry {
 	// --- Button row: horizontal Container ---
 	var btnChildren []ContainerChild
 	for _, label := range btns {
-		label := label // capture for closure
 		btn := &Button{
 			Label: label,
 			OnPress: func() {

@@ -18,7 +18,7 @@ type LocalRenderer struct {
 	mu       sync.Mutex
 	vm       *goja.Runtime
 	loaded   bool
-	renderFn goja.Callable // Game.render(buf, playerID, x, y, w, h)
+	renderAsciiFn goja.Callable // Game.renderAscii(buf, playerID, x, y, w, h)
 	canvasFn goja.Callable // Game.renderCanvas(ctx, playerID, w, h)
 
 }
@@ -36,7 +36,7 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 
 	lr.vm = goja.New()
 	lr.loaded = false
-	lr.renderFn = nil
+	lr.renderAsciiFn = nil
 	lr.canvasFn = nil
 
 	// Register stub globals — client doesn't need game logic, just rendering.
@@ -51,6 +51,13 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 	lr.vm.Set("registerCommand", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
 	lr.vm.Set("figlet", func(goja.FunctionCall) goja.Value { return lr.vm.ToValue("") })
 	lr.vm.Set("include", func(string) {}) // includes are pre-expanded by the server
+
+	// MIDI stubs — client doesn't play audio, but games may call these at init time.
+	lr.vm.Set("midiNote", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiProgram", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiCC", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiPitch", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
+	lr.vm.Set("midiSilence", func(goja.FunctionCall) goja.Value { return goja.Undefined() })
 
 	// Pixel attribute constants.
 	lr.vm.Set("ATTR_NONE", int(render.AttrNone))
@@ -79,8 +86,8 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 		return
 	}
 
-	if fn, ok := goja.AssertFunction(gameObj.Get("render")); ok {
-		lr.renderFn = fn
+	if fn, ok := goja.AssertFunction(gameObj.Get("renderAscii")); ok {
+		lr.renderAsciiFn = fn
 	}
 	if fn, ok := goja.AssertFunction(gameObj.Get("renderCanvas")); ok {
 		lr.canvasFn = fn
@@ -131,11 +138,11 @@ func (lr *LocalRenderer) HasCanvas() bool {
 	return lr.canvasFn != nil
 }
 
-// RenderCells calls Game.render() locally and returns the ImageBuffer.
+// RenderCells calls Game.renderAscii() locally and returns the ImageBuffer.
 func (lr *LocalRenderer) RenderCells(playerID string, width, height int) *render.ImageBuffer {
 	lr.mu.Lock()
 	defer lr.mu.Unlock()
-	if !lr.loaded || lr.renderFn == nil {
+	if !lr.loaded || lr.renderAsciiFn == nil {
 		return nil
 	}
 
@@ -148,7 +155,7 @@ func (lr *LocalRenderer) RenderCells(playerID string, width, height int) *render
 				log.Printf("local render panic: %v", r)
 			}
 		}()
-		lr.renderFn(goja.Undefined(),
+		lr.renderAsciiFn(goja.Undefined(),
 			lr.vm.ToValue(jsBuf),
 			lr.vm.ToValue(playerID),
 			lr.vm.ToValue(0), lr.vm.ToValue(0),

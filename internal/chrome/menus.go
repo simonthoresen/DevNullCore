@@ -9,6 +9,7 @@ import (
 	"dev-null/internal/engine"
 	"dev-null/internal/localcmd"
 	"dev-null/internal/theme"
+	"dev-null/internal/widget"
 )
 
 // invalidateMenuCache forces the next cachedMenus() call to rebuild.
@@ -35,6 +36,8 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Shaders...", Handler: func(_ string) { m.pushShaderDialog(0) }},
 		{Label: "S&ynths...", Handler: func(_ string) { m.pushSynthDialog(0) }},
 		{Label: "---"},
+		{Label: "&Invite...", Handler: func(_ string) { m.pushInviteDialog() }},
+		{Label: "---"},
 		{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(playerID string) {
 			m.overlay.PushDialog(domain.DialogRequest{
 				Title:   "Exit",
@@ -56,25 +59,30 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
 
-	// Graphics menu — HD toggle for enhanced clients with a canvas game.
-	// Shown in both lobby and playing views whenever a canvas game is loaded.
-	if m.IsEnhancedClient && m.canUseRenderMode(domain.RenderModeCanvasHD) {
-		viewItems := []domain.MenuItemDef{
-			{
-				Label:   "Quadrant",
-				Toggle:  true,
-				Checked: func() bool { return m.renderMode != domain.RenderModeCanvasHD },
-				Handler: func(_ string) { m.dispatchInput("/render-quadrant") },
-			},
-			{
-				Label:   "Canvas &HD",
-				Toggle:  true,
-				Checked: func() bool { return m.renderMode == domain.RenderModeCanvasHD },
-				Handler: func(_ string) { m.dispatchInput("/render-canvas-hd") },
-			},
-		}
-		menus = append(menus, domain.MenuDef{Label: "&Graphics", Items: viewItems})
+	// Graphics menu — always visible; shows current preference as radio toggles.
+	// Pixels is disabled for SSH (non-enhanced) clients since they can't render locally.
+	graphicsItems := []domain.MenuItemDef{
+		{
+			Label:   "&Ascii",
+			Toggle:  true,
+			Checked: func() bool { return m.graphicsPref == domain.RenderModeAscii },
+			Handler: func(_ string) { m.dispatchInput("/render-ascii") },
+		},
+		{
+			Label:   "&Blocks",
+			Toggle:  true,
+			Checked: func() bool { return m.graphicsPref == domain.RenderModeBlocks },
+			Handler: func(_ string) { m.dispatchInput("/render-blocks") },
+		},
+		{
+			Label:    "&Pixels",
+			Toggle:   true,
+			Disabled: !m.IsEnhancedClient,
+			Checked:  func() bool { return m.graphicsPref == domain.RenderModePixels },
+			Handler:  func(_ string) { m.dispatchInput("/render-pixels") },
+		},
 	}
+	menus = append(menus, domain.MenuDef{Label: "&Graphics", Items: graphicsItems})
 
 	if game != nil {
 		menus = append(menus, game.Menus()...)
@@ -99,19 +107,23 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 func (m *Model) pushGamesDialog(cursor int) {
 	m.api.State().RLock()
 	currentGame := m.api.State().GameName
+	teamCount := len(m.api.State().Teams)
 	m.api.State().RUnlock()
 
-	localcmd.PushGameDialog(cursor, localcmd.GameDialogOptions{
+	opts := localcmd.GameDialogOptions{
 		DataDir:     m.api.DataDir(),
 		Overlay:     &m.overlay,
 		CurrentGame: currentGame,
-		CanLoad:     m.isAdmin(),
+		TeamCount:   teamCount,
 		CanAdd:      m.isAdmin(),
-		OnLoad: func(name string) {
+		Reload:      m.pushGamesDialog,
+	}
+	if m.isAdmin() {
+		opts.OnLoad = func(name string) {
 			m.dispatchInput("/game-load " + name)
-		},
-		Reload: m.pushGamesDialog,
-	})
+		}
+	}
+	localcmd.PushGameDialog(cursor, opts)
 }
 
 func (m *Model) pushSavesDialog(cursor int) {
@@ -220,4 +232,13 @@ func (m *Model) pushSynthDialog(cursor int) {
 		},
 	})
 	m.overlay.SetTopCursor(cursor)
+}
+
+func (m *Model) pushInviteDialog() {
+	winLink, sshLink := m.api.InviteLinks()
+	win := widget.BuildInviteWindow(winLink, sshLink,
+		func(v string) { m.pendingClipboard = v },
+		m.overlay.PopDialog,
+	)
+	m.overlay.PushWindowDialog(win)
 }

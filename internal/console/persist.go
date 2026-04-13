@@ -21,8 +21,6 @@ func (m *Model) persistServerConfig() {
 // managedPrefixes are command prefixes managed by persistConfigFile.
 var managedPrefixes = []string{
 	"/theme-", "/plugin-", "/shader-",
-	// Legacy prefixes (pre-flatten) — strip on upgrade.
-	"/theme ", "/plugin ", "/shader ",
 }
 
 // persistConfigFile rewrites the config file at path: strips managed lines,

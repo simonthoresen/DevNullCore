@@ -29,7 +29,7 @@ go test ./...
 ssh -p 23234 localhost   # connect via plain SSH (host plays this way too)
 
 # Client — always GUI (Ebitengine graphical window).
-go run ./cmd/dev-null-client
+go run ./cmd/dev-null-client --data-dir dist        # --data-dir needed in go-run mode (no bootstrap)
 go run ./cmd/dev-null-client --host example.com --port 23234 --player alice
 go run ./cmd/dev-null-client --game orbits          # send /game-load on connect
 go run ./cmd/dev-null-client --resume orbits/autosave  # send /game-resume on connect
@@ -59,7 +59,7 @@ Built binaries use two directories:
 | Directory | Default | Purpose |
 |-----------|---------|---------|
 | **Install dir** | Exe directory | Binaries, bundled assets, `.bundle-manifest.json` (read-only, managed by installer) |
-| **Data dir** | `%APPDATA%/DevNull` | Working copies of assets, user-added content, saves, host keys (read-write) |
+| **Data dir** | `%LOCALAPPDATA%/DevNull` | Working copies of assets, user-added content, saves, host keys (read-write) |
 
 On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets from install dir to data dir using a manifest-based merge:
 - New bundled files are copied; updated bundled files are overwritten; user-added files are left alone.
@@ -123,7 +123,7 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/engine/figlet.go` | Figlet ASCII art rendering |
 | `internal/engine/gamelist.go` | Game discovery, path resolution, team range probing |
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
-| `internal/datadir/datadir.go` | Data directory resolution, bootstrap (install dir → %APPDATA%/DevNull) |
+| `internal/datadir/datadir.go` | Data directory resolution, bootstrap (install dir → %LOCALAPPDATA%/DevNull) |
 | `cmd/dev-null-server/` | Server entry point: boot sequence, console setup, signal handling |
 | `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine canvas rendering |
 | `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums |
@@ -165,22 +165,25 @@ Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.
 
 ## Rendering Model
 
-Game rendering is automatic based on connection type and game capability:
+Game rendering is controlled by the player's graphics preference (Ascii/Blocks/Pixels), set via the always-visible Graphics menu. The effective mode degrades gracefully based on connection type and game capability:
 
-| Connection | Game type | Mode |
-|---|---|---|
-| SSH | string-only | Text (game's `Render()`) |
-| SSH | canvas game | Quadrant (canvas→Unicode blocks, server-side) |
-| GUI client | string-only | Text (rendered as terminal) |
-| GUI client | canvas game | Quadrant (default) or Canvas HD (opt-in toggle) |
+| Preference | Connection | Game type | Effective mode |
+|---|---|---|---|
+| Ascii | any | any | Ascii (game's `renderAscii()`) |
+| Blocks | SSH or GUI | canvas game | Blocks (canvas→Unicode quadrant blocks, server-side) |
+| Blocks | SSH or GUI | string-only | Ascii (fallback) |
+| Pixels | GUI client | canvas game | Pixels (client-side local rendering) |
+| Pixels | SSH | canvas game | Blocks (fallback — Pixels requires enhanced client) |
 
-**Canvas HD** (`RenderModeCanvasHD`): sends game JS source + state JSON each frame; client renders the canvas locally at its own window pixel resolution. Requires enhanced client (`DEV_NULL_CLIENT=enhanced`).
+**Pixels** (`RenderModePixels`): sends game JS source + state JSON each frame; client renders the canvas locally at its own window pixel resolution. Requires enhanced client (`DEV_NULL_CLIENT=enhanced`). Pixels option is disabled (greyed out) in the Graphics menu for SSH clients.
 
-**Quadrant** (`RenderModeQuadrant`): server calls `RenderCanvasImage()` and converts to Unicode quadrant block characters (▖▗▘▙). Works on any terminal.
+**Blocks** (`RenderModeBlocks`): server calls `RenderCanvasImage()` and converts to Unicode quadrant block characters (▖▗▘▙). Works on any terminal.
+
+**Ascii** (`RenderModeAscii`): always uses the game's text-based `renderAscii()` hook, even if `renderCanvas` is available.
 
 **No charmap/spritesheet system** — removed. Games that want custom graphics use canvas rendering.
 
-The Graphics menu is only shown to enhanced GUI clients with a canvas game loaded, offering only the Quadrant/Canvas HD toggle.
+The Graphics menu is always visible in the menu bar (lobby and playing views) for all clients. Preference is persisted to `~/.dev-null/client.txt` as `/render-ascii` or `/render-pixels`; Blocks (the default) is not written.
 
 ## Render Tests — Golden Files
 

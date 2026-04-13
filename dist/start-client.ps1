@@ -50,7 +50,12 @@ $script:bootStepWidth = 80
 # ── boot-step helpers ────────────────────────────────────────────────────────
 
 function Get-TermWidth {
-    try { return $Host.UI.RawUI.BufferSize.Width } catch { return 80 }
+    try {
+        $w = $Host.UI.RawUI.WindowSize.Width
+        if ($w -gt 0) { return $w }
+    } catch {}
+    try { return $Host.UI.RawUI.BufferSize.Width } catch {}
+    return 80
 }
 
 function Get-StatusToken {
@@ -130,12 +135,8 @@ function Update-FromRelease {
         $remoteVersion = ""
         if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
 
-        if ($localVersion -ne "") {
-            # .version exists — a local build or prior install owns this directory; skip update.
+        if ($localVersion -eq $remoteVersion -and $localVersion -ne "") {
             Write-BootStepEnd "DONE"
-            if ($localVersion -ne $remoteVersion) {
-                Write-RunLogLine "local version ($localVersion) differs from release ($remoteVersion), skipping update (local build)"
-            }
             return
         }
 
