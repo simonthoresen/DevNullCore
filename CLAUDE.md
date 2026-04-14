@@ -95,7 +95,7 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/chrome/view.go` | Per-player rendering: lobby, playing, starting, ending |
 | `internal/chrome/input.go` | Key/mouse handling: lobby, game, team editing |
 | `internal/chrome/commands.go` | Per-player command dispatch: /plugin, /theme, /shader |
-| `internal/chrome/menus.go` | Menu tree construction and dialog helpers |
+| `internal/chrome/menus.go` | Menu tree construction, sub-menu builders, font tag injection |
 | `internal/console/console.go` | Server console TUI: model, view, log filtering |
 | `internal/console/commands.go` | Console command dispatch: /plugin, /theme, /shader |
 | `internal/localcmd/localcmd.go` | Shared /theme, /plugin, /shader command handlers (used by chrome and console) |
@@ -141,6 +141,18 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 **All UI must build on the NC widget system** (`internal/widget/`). Never hand-draw ANSI strings for dialogs, overlays, or modals. Use `Window` + child Controls (`Label`, `Button`, `ListBox`, `TextInput`, `TextView`, etc.) and render via `RenderToBuf`. If a control doesn't exist, add it to `internal/widget/` — that extends the system rather than creating a parallel one. Dialogs are NC Windows rendered into a sub-buffer and blitted as overlays.
 
 **Theme layer depth:** Layer 0 = main window (lobby/playing). Menus can only open from layer 0, so they always render at layer 1. Dialogs render at `1 + stackIndex` — the first dialog is layer 1 (same as menus, which close when a dialog opens), a dialog opened from a dialog is layer 2, etc. Use `OverlayState.DialogLayer()` to get the current layer.
+
+## Sub-Menus
+
+Menus support arbitrary-depth sub-menus via `MenuItemDef.SubItems`. Items with non-empty `SubItems` show "►" right-aligned and open a nested dropdown on right-arrow/Enter. State is tracked as a stack (`OverlayState.SubMenus []subMenuState`). `left` pops one level, `right`/`enter` pushes a new level or activates the leaf item. Toggle items stay open after activation.
+
+Games, Themes, Plugins, Shaders, Synths, Fonts, and Invite are all sub-menus of the File menu. Admin-only "Add..." items appear at the top (with a separator) when `isAdmin()` is true. Console items have `OnDelete` callbacks for Del-key file deletion via confirmation dialogs. Saves remain a dialog (not a sub-menu).
+
+All dropdowns (including sub-menus) scroll with a scrollbar when they exceed available screen height. The shared `renderMenuDropdown()` function handles rendering for both top-level dropdowns and sub-menus.
+
+## Font Tags in Chat
+
+Chat messages support `<font=name>text</font>` tags. The server expands them to figlet ASCII art via `expandFontTags()` in `server_chat.go` before broadcasting. Clicking a font in the Fonts sub-menu injects `<font=name></font>` at the cursor position in the chat input.
 
 **Theme junction characters:** `BorderSet` has a complete set of junction characters for every combination of inner divider (`─`/`│`) meeting outer border (`═`/`║`) or another inner divider. The outer-to-inner junctions (`CrossL/R/T/B`) use mixed double/single characters (e.g. `╟`, `╧`). The inner-to-inner T-junctions use all-thin characters: `InnerCrossT` (`┬`), `InnerCrossB` (`┴`), `InnerCrossL` (`├`), `InnerCrossR` (`┤`). The inner cross is `CrossX` (`┼`). The post-processing in `Window.RenderToBuf` and `Panel.Render` automatically selects the right character based on whether each divider edge touches the outer border or an interior divider.
 
