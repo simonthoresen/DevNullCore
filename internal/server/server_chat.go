@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 
 	"dev-null/internal/console"
 	"dev-null/internal/domain"
+	"dev-null/internal/engine"
 	"dev-null/internal/widget"
 )
 
@@ -65,8 +67,36 @@ func (a *Server) broadcastMsg(msg tea.Msg) {
 	}
 }
 
+// fontTagRe matches <font=name>text</font> tags in chat messages.
+var fontTagRe = regexp.MustCompile(`<font=([^>]+)>([^<]*)</font>`)
+
+// expandFontTags replaces <font=name>text</font> tags with figlet-rendered ASCII art.
+func expandFontTags(text string) string {
+	return fontTagRe.ReplaceAllStringFunc(text, func(match string) string {
+		groups := fontTagRe.FindStringSubmatch(match)
+		if len(groups) < 3 {
+			return match
+		}
+		fontName := groups[1]
+		innerText := groups[2]
+		if innerText == "" {
+			return ""
+		}
+		rendered := engine.Figlet(innerText, fontName)
+		if rendered == "" {
+			return innerText // fallback to plain text
+		}
+		return strings.TrimRight(rendered, "\n")
+	})
+}
+
 func (a *Server) broadcastChat(msg domain.Message) {
 	start := time.Now()
+
+	// Expand <font=name>text</font> tags before broadcasting.
+	if msg.Text != "" {
+		msg.Text = expandFontTags(msg.Text)
+	}
 
 	// Messages with no visible text (e.g. sound-only stop commands) skip history
 	// and log storage but are still broadcast so graphical clients receive the OSC.
