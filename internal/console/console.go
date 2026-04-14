@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -401,52 +400,31 @@ func (m *Model) buildGameSubItems() []domain.MenuItemDef {
 	currentGame := m.api.State().GameName
 	m.api.State().RUnlock()
 
-	gamesDir := filepath.Join(m.api.DataDir(), "games")
-	available := engine.ListGames(gamesDir)
-	items := []domain.MenuItemDef{
-		{Label: "&Add...", Handler: func(_ string) {
+	return localcmd.BuildGameSubItems(localcmd.GameSubMenuOptions{
+		DataDir:     m.api.DataDir(),
+		CurrentGame: currentGame,
+		OnAdd: func(_ string) {
 			localcmd.PushGameAddDialog(&m.overlay, m.api.DataDir(), func(name string) {
 				m.submitInput("/game-load " + name)
 			})
-		}},
-		{Label: "---"},
-	}
-	for _, name := range available {
-		n := name
-		label := n
-		if strings.EqualFold(n, currentGame) {
-			label = n + "*"
-		}
-		items = append(items, domain.MenuItemDef{
-			Label:    label,
-			Handler:  func(_ string) { m.submitInput("/game-load " + n) },
-			OnDelete: func(_ string) { m.showGameRemoveConfirm(n) },
-		})
-	}
-	return items
+		},
+		OnLoad:   func(name string) { m.submitInput("/game-load " + name) },
+		OnDelete: func(name, _ string) { m.showGameRemoveConfirm(name) },
+	})
 }
 
 func (m *Model) buildThemeSubItems() []domain.MenuItemDef {
-	available := theme.ListThemes(m.api.DataDir())
-	items := []domain.MenuItemDef{
-		{Label: "&Add...", Handler: func(_ string) {
+	return localcmd.BuildThemeSubItems(localcmd.ThemeSubMenuOptions{
+		DataDir:      m.api.DataDir(),
+		CurrentTheme: m.themeName,
+		OnAdd: func(_ string) {
 			localcmd.PushThemeAddDialog(&m.overlay, m.api.DataDir(), func(name string) {
 				m.submitInput("/theme-load " + name)
 			})
-		}},
-		{Label: "---"},
-	}
-	for _, name := range available {
-		n := name
-		items = append(items, domain.MenuItemDef{
-			Label:   n,
-			Toggle:  true,
-			Checked: func() bool { return strings.EqualFold(n, m.themeName) },
-			Handler: func(_ string) { m.submitInput("/theme-load " + n) },
-			OnDelete: func(_ string) { m.showThemeRemoveConfirm(n) },
-		})
-	}
-	return items
+		},
+		OnLoad:   func(name string) { m.submitInput("/theme-load " + name) },
+		OnDelete: func(name, _ string) { m.showThemeRemoveConfirm(name) },
+	})
 }
 
 func (m *Model) buildPluginSubItems() []domain.MenuItemDef {
@@ -458,96 +436,48 @@ func (m *Model) buildShaderSubItems() []domain.MenuItemDef {
 }
 
 func (m *Model) buildScriptSubItems(subDir string, loaded []string, loadCmd, unloadCmd string) []domain.MenuItemDef {
-	dir := filepath.Join(m.api.DataDir(), subDir)
-	available := engine.ListScripts(dir)
-	availableSet := make(map[string]bool)
-	for _, n := range available {
-		availableSet[n] = true
-	}
-	all := append([]string(nil), available...)
-	for _, n := range loaded {
-		if !availableSet[n] {
-			all = append(all, n)
-		}
-	}
-	sort.Strings(all)
-
-	loadedSet := make(map[string]bool)
-	for _, n := range loaded {
-		loadedSet[n] = true
-	}
-
-	// "plugins" → "Plugin", "shaders" → "Shader"
 	noun := strings.TrimSuffix(subDir, "s")
 	if len(noun) > 0 {
 		noun = strings.ToUpper(noun[:1]) + noun[1:]
 	}
-
-	items := []domain.MenuItemDef{
-		{Label: "&Add...", Handler: func(_ string) {
+	return localcmd.BuildScriptSubItems(localcmd.ScriptSubMenuOptions{
+		DataDir: m.api.DataDir(),
+		SubDir:  subDir,
+		Loaded:  loaded,
+		OnAdd: func(_ string) {
 			localcmd.PushScriptAddDialog(&m.overlay, noun, func(name string) {
 				m.submitInput(loadCmd + name)
 			})
-		}},
-		{Label: "---"},
-	}
-	for _, name := range all {
-		n := name
-		items = append(items, domain.MenuItemDef{
-			Label:  n,
-			Toggle: true,
-			Checked: func() bool { return loadedSet[n] },
-			Handler: func(_ string) {
-				if loadedSet[n] {
-					m.submitInput(unloadCmd + n)
-				} else {
-					m.submitInput(loadCmd + n)
-				}
-			},
-			OnDelete: func(_ string) { m.showScriptRemoveConfirm(subDir, n) },
-		})
-	}
-	return items
+		},
+		OnToggle: func(name string, load bool) {
+			if load {
+				m.submitInput(loadCmd + name)
+			} else {
+				m.submitInput(unloadCmd + name)
+			}
+		},
+		OnDelete: func(name, _ string) { m.showScriptRemoveConfirm(subDir, name) },
+	})
 }
 
 func (m *Model) buildSynthSubItems() []domain.MenuItemDef {
-	sf2Dir := filepath.Join(m.api.DataDir(), "soundfonts")
-	available := engine.ListDir(sf2Dir, ".sf2")
-	items := []domain.MenuItemDef{
-		{Label: "&Add...", Handler: func(_ string) {
-			localcmd.PushSynthAddDialog(&m.overlay, func(name string) {
-				// Synths are client-side; console just manages files.
-			})
-		}},
-		{Label: "---"},
-	}
-	for _, name := range available {
-		n := name
-		items = append(items, domain.MenuItemDef{
-			Label:    n,
-			OnDelete: func(_ string) { m.showSynthRemoveConfirm(n) },
-		})
-	}
-	return items
+	return localcmd.BuildSynthSubItems(localcmd.SynthSubMenuOptions{
+		DataDir: m.api.DataDir(),
+		OnAdd: func(_ string) {
+			localcmd.PushSynthAddDialog(&m.overlay, func(_ string) {})
+		},
+		OnDelete: func(name, _ string) { m.showSynthRemoveConfirm(name) },
+	})
 }
 
 func (m *Model) buildFontSubItems() []domain.MenuItemDef {
-	fontsDir := filepath.Join(m.api.DataDir(), "fonts")
-	available := engine.ListDir(fontsDir, ".flf")
-	items := []domain.MenuItemDef{
-		{Label: "&Add...", Handler: func(_ string) {
+	return localcmd.BuildFontSubItems(localcmd.FontSubMenuOptions{
+		DataDir: m.api.DataDir(),
+		OnAdd: func(_ string) {
 			localcmd.PushFontAddDialog(&m.overlay, func(_ string) {})
-		}},
-		{Label: "---"},
-	}
-	for _, name := range available {
-		n := name
-		items = append(items, domain.MenuItemDef{
-			Label: n,
-			OnDelete: func(_ string) { m.showFontRemoveConfirm(n) },
-		})
-	}
-	return items
+		},
+		OnDelete: func(name, _ string) { m.showFontRemoveConfirm(name) },
+	})
 }
 
 func (m *Model) buildInviteSubItems() []domain.MenuItemDef {
