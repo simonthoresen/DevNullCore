@@ -56,12 +56,8 @@ type ServerAPI interface {
 const lobbyTeamPanelW = 32
 
 // SetInputStyle applies matching background/foreground to all textinput sub-styles
-// and switches to the real terminal cursor (not the virtual cursor).
-//
-// The virtual cursor's TextStyle (used during blink-hide) has no background by
-// default, causing the character under the cursor to flash to terminal default
-// (black) on every blink. Using the real cursor avoids this entirely: all text
-// renders with a solid background, and the terminal handles cursor blinking.
+// and switches to the real terminal cursor (not the virtual cursor), with blink
+// disabled so the cursor shows as a steady block.
 func SetInputStyle(input *textinput.Model, bg, fg color.Color) {
 	base := lipgloss.NewStyle().Background(bg).Foreground(fg)
 	s := input.Styles()
@@ -72,9 +68,9 @@ func SetInputStyle(input *textinput.Model, bg, fg color.Color) {
 	s.Blurred.Text = base
 	s.Blurred.Placeholder = base.Faint(true)
 	s.Cursor.Color = fg
-	s.Cursor.Blink = true
+	s.Cursor.Blink = false
 	input.SetStyles(s)
-	input.SetVirtualCursor(false) // use real terminal cursor; see comment above
+	input.SetVirtualCursor(false)
 }
 
 

@@ -81,9 +81,8 @@ type ClientRenderer struct {
 	installDir string
 	dataDir    string
 
-	// Cursor blink state.
-	cursorTick int
-	cursorImg  *ebiten.Image
+	// Cached cursor image.
+	cursorImg *ebiten.Image
 
 	// Read buffer for SSH data.
 	readBuf []byte
@@ -494,20 +493,11 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 	}
 }
 
-// drawCursor renders a blinking block cursor at the grid's cursor position.
+// drawCursor renders a steady block cursor at the grid's cursor position.
 func (r *ClientRenderer) drawCursor(screen *ebiten.Image) {
 	cx := r.grid.CursorX
 	cy := r.grid.CursorY
 	if cx < 0 || cx >= r.grid.Width || cy < 0 || cy >= r.grid.Height {
-		return
-	}
-
-	// Blink: visible for 30 frames, hidden for 30 frames (~500ms on/off at 60 TPS).
-	r.cursorTick++
-	if r.cursorTick >= 60 {
-		r.cursorTick = 0
-	}
-	if r.cursorTick >= 30 {
 		return
 	}
 

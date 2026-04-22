@@ -81,7 +81,7 @@ func (ti *TextInput) Render(buf *render.ImageBuffer, x, y, width, height int, fo
 	s.Focused.Text = inputStyle
 	s.Focused.Placeholder = lipgloss.NewStyle()
 	s.Cursor.Color = inputFg
-	s.Cursor.Blink = true
+	s.Cursor.Blink = false
 	ti.Model.SetStyles(s)
 	ti.Model.SetVirtualCursor(false)
 
