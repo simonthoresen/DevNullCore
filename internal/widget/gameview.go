@@ -8,8 +8,12 @@ import (
 )
 
 // GameView wraps a game's Render() function as a Control. When focused,
-// non-Tab keys are forwarded to the game via OnKey. Enter triggers a
-// focus cycle (to move to the command input for chat).
+// keys other than Tab/Shift+Tab are forwarded to the game via OnKey.
+//
+// Enter and Esc are framework-reserved and are handled by the input
+// router before Update() is called, so GameView will never see them.
+// The router's default (when the focused widget doesn't implement
+// EnterConsumer/EscConsumer) is to focus the chat / activate the menu.
 type GameView struct {
 	RenderFn             func(buf *render.ImageBuffer, x, y, w, h int)
 	OnKey                func(key string) // bound to game.OnInput(playerID, key)
@@ -32,9 +36,6 @@ func (g *GameView) Update(msg tea.Msg) {
 	g.WantBackTab = false
 	if km, ok := msg.(tea.KeyPressMsg); ok {
 		switch km.String() {
-		case "enter":
-			// Enter moves focus to the command input for chat.
-			g.WantTab = true
 		case "tab":
 			g.WantTab = true
 		case "shift+tab":

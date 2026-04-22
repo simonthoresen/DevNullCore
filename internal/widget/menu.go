@@ -154,10 +154,12 @@ func (o *OverlayState) IsActive() bool {
 
 // ─── Key handling ──────────────────────────────────────────────────────────────
 
-// HandleKey routes a key press through the overlay state machine.
-// Returns true if the key was consumed and normal chrome should not process it.
+// HandleKey routes a key press to the menu state machine. It assumes the
+// overlay is currently in Menu mode (bar focused or dropdown/submenu open).
+// The input router routes keys here via ActionRouteToMenu.
 func (o *OverlayState) HandleKey(key string, menus []domain.MenuDef, playerID string) bool {
-	// Global hotkeys: check all menu items for matching hotkey bindings.
+	// Global hotkeys: a menu item may bind a Hotkey (e.g. "ctrl+s"). These
+	// fire even inside menu mode so the user can activate an item directly.
 	for _, m := range menus {
 		for _, it := range m.Items {
 			if it.Hotkey != "" && it.Hotkey == key && !it.Disabled && it.Handler != nil {
@@ -168,20 +170,30 @@ func (o *OverlayState) HandleKey(key string, menus []domain.MenuDef, playerID st
 		}
 	}
 
-	if o.HasDialog() {
-		return true
+	if o.OpenMenu >= 0 && len(o.SubMenus) > 0 {
+		return o.handleMenuKey(key, menus, playerID)
 	}
-	if key == "f10" {
-		if o.MenuFocused || o.OpenMenu >= 0 {
-			o.closeMenus()
-		} else {
-			o.MenuFocused = true
-			o.MenuCursor = 0
-			o.OpenMenu = -1
+	if o.MenuFocused {
+		return o.handleMenuBarKey(key, menus)
+	}
+	return false
+}
+
+// HandleDesktopShortcut checks for key bindings that open the menu from
+// Desktop mode: Alt+X opens a menu by its ampersand-shortcut, and any
+// menu-item Hotkey fires its handler directly. Returns true if the key
+// was consumed.
+func (o *OverlayState) HandleDesktopShortcut(key string, menus []domain.MenuDef, playerID string) bool {
+	// Global hotkeys first.
+	for _, m := range menus {
+		for _, it := range m.Items {
+			if it.Hotkey != "" && it.Hotkey == key && !it.Disabled && it.Handler != nil {
+				it.Handler(playerID)
+				return true
+			}
 		}
-		return true
 	}
-	// Alt+letter opens a menu by its shortcut key (e.g. Alt+F for "&File").
+	// Alt+letter opens a menu by its shortcut (e.g. Alt+F → "&File").
 	if strings.HasPrefix(key, "alt+") && len(key) == 5 {
 		letter := rune(key[4])
 		for i, m := range menus {
@@ -192,12 +204,6 @@ func (o *OverlayState) HandleKey(key string, menus []domain.MenuDef, playerID st
 				return true
 			}
 		}
-	}
-	if o.OpenMenu >= 0 && len(o.SubMenus) > 0 {
-		return o.handleMenuKey(key, menus, playerID)
-	}
-	if o.MenuFocused {
-		return o.handleMenuBarKey(key, menus)
 	}
 	return false
 }

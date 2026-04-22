@@ -110,18 +110,27 @@ func TestGameViewUpdate(t *testing.T) {
 		t.Errorf("expected 'a', got %q", captured)
 	}
 
-	// Enter triggers tab.
-	gv.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	// Tab triggers a focus cycle.
+	gv.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	fwd, _ := gv.TabWant()
 	if !fwd {
-		t.Error("expected WantTab after Enter")
+		t.Error("expected WantTab after Tab")
 	}
 
-	// Tab triggers tab.
-	gv.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	fwd, _ = gv.TabWant()
-	if !fwd {
-		t.Error("expected WantTab after Tab")
+	// Shift+Tab triggers a backwards focus cycle.
+	gv.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	_, back := gv.TabWant()
+	if !back {
+		t.Error("expected WantBackTab after Shift+Tab")
+	}
+
+	// Enter is framework-reserved: the router handles it before Update
+	// is called, so the GameView should never see it. If a stray Enter
+	// does arrive, it must not trigger a focus cycle.
+	gv.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	fwd, back = gv.TabWant()
+	if fwd || back {
+		t.Error("GameView must not cycle focus on Enter (Enter is router-owned)")
 	}
 }
 

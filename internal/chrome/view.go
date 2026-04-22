@@ -439,7 +439,9 @@ func (m *Model) renderStartingDialog(buf *render.ImageBuffer, name string, x, y,
 		dlgH -= 2
 	}
 
-	// Render into a sub-buffer, blit centered.
+	// Render into a sub-buffer, blit centered. The Ready button is child
+	// index 4 of startingWindow (set as FocusIdx), so RenderToBuf draws it
+	// focused automatically.
 	layer := m.theme.LayerAt(1)
 	sub := render.NewImageBuffer(dlgW, dlgH)
 	m.startingWindow.RenderToBuf(sub, 0, 0, dlgW, dlgH, layer)
@@ -530,14 +532,21 @@ func (m *Model) renderGameOverScreen(buf *render.ImageBuffer, results []domain.G
 		}
 	}
 
-	// Center vertically.
-	topPad := (h - len(lines)) / 2
+	// Reserve a row at the bottom for the Continue button.
+	reserveBtn := 2 // blank line + button row
+	availH := h - reserveBtn
+	if availH < 1 {
+		availH = 1
+	}
+
+	// Center vertically within the available area (above the button).
+	topPad := (availH - len(lines)) / 2
 	if topPad < 0 {
 		topPad = 0
 	}
 	for i, line := range lines {
 		row := y + topPad + i
-		if row >= y+h {
+		if row >= y+availH {
 			break
 		}
 		col := x + (w-len(line))/2
@@ -545,6 +554,17 @@ func (m *Model) renderGameOverScreen(buf *render.ImageBuffer, results []domain.G
 			col = x
 		}
 		buf.WriteString(col, row, line, nil, nil, render.AttrNone)
+	}
+
+	// Continue button, centered on the last row of the viewport. Drawn
+	// with focused=true because it is the focus target during PhaseEnding.
+	btnLabel := m.phaseContinueButton.Label
+	btnText := "[ " + btnLabel + " ]"
+	btnW := len(btnText)
+	btnX := x + (w-btnW)/2
+	btnY := y + h - 1
+	if btnX >= x && btnY >= y {
+		m.phaseContinueButton.Render(buf, btnX, btnY, btnW, 1, true, m.theme.LayerAt(0))
 	}
 }
 

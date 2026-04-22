@@ -41,16 +41,11 @@ func TestOverlayMenuNavigation(t *testing.T) {
 		{Label: "&Edit", Items: []domain.MenuItemDef{{Label: "&Copy"}}},
 	}
 
-	// F10 activates menu bar.
-	if !o.HandleKey("f10", menus, "") {
-		t.Error("F10 should be consumed")
-	}
-	if !o.MenuFocused {
-		t.Error("expected menuFocused after F10")
-	}
-	if o.MenuCursor != 0 {
-		t.Errorf("expected cursor 0, got %d", o.MenuCursor)
-	}
+	// Menu activation comes from the input router (via ActionActivateMenu);
+	// here we set that state directly to simulate Esc on Desktop.
+	o.MenuFocused = true
+	o.MenuCursor = 0
+	o.OpenMenu = -1
 
 	// Right arrow moves to Edit.
 	o.HandleKey("right", menus, "")
@@ -101,9 +96,15 @@ func TestOverlayAltActivation(t *testing.T) {
 		{Label: "&Edit", Items: []domain.MenuItemDef{{Label: "Item"}}},
 	}
 
-	o.HandleKey("alt+e", menus, "")
+	// Desktop shortcut: Alt+E opens the Edit menu directly.
+	if !o.HandleDesktopShortcut("alt+e", menus, "") {
+		t.Error("expected Alt+E to be consumed by desktop shortcut")
+	}
 	if o.OpenMenu != 1 {
 		t.Errorf("expected Alt+E to open Edit menu (index 1), got %d", o.OpenMenu)
+	}
+	if !o.MenuFocused {
+		t.Error("expected menuFocused after Alt+E")
 	}
 }
 

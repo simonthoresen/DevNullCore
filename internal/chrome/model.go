@@ -166,6 +166,13 @@ type Model struct {
 	startingSplash *widget.GameView
 	startingStatus *widget.Label
 
+	// Phase action buttons — focus targets during starting/ending phases.
+	// They are standalone: not part of any Window's focus hierarchy. Input
+	// routing sets the current focused widget to the appropriate phase
+	// button while in PhaseStarting / PhaseEnding.
+	phaseReadyButton    *widget.Button
+	phaseContinueButton *widget.Button
+
 	// Cached menu tree — rebuilt only on invalidation.
 	menuCache      []domain.MenuDef
 	menuCacheGame  domain.Game // game pointer when cache was built (nil = no game)
@@ -278,10 +285,17 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		StatusBar: playingStatusBar,
 	}
 
+	// Phase action buttons — constructed here, wired to api callbacks
+	// below after Model is assembled.
+	phaseReadyButton := &widget.Button{Label: "Ready", Align: "center"}
+	phaseContinueButton := &widget.Button{Label: "Continue", Align: "center"}
+
 	// Starting dialog — rendered as a centered overlay in the game viewport.
+	// The Ready button is a proper grid child so layout is automatic.
 	startingSplash := &widget.GameView{}
 	startingStatus := &widget.Label{Align: "center"}
 	startingWindow := &widget.Window{
+		FocusIdx: 4, // focus the Ready button
 		Children: []widget.GridChild{
 			{Control: startingSplash, Constraint: widget.GridConstraint{
 				Col: 0, Row: 0, WeightX: 1, WeightY: 1, Fill: widget.FillBoth,
@@ -291,6 +305,12 @@ func NewModel(api ServerAPI, playerID string) *Model {
 			}},
 			{Control: startingStatus, Constraint: widget.GridConstraint{
 				Col: 0, Row: 2, WeightX: 1, Fill: widget.FillHorizontal,
+			}},
+			{Control: &widget.HDivider{Connected: true}, Constraint: widget.GridConstraint{
+				Col: 0, Row: 3, MinH: 1, Fill: widget.FillHorizontal,
+			}},
+			{Control: phaseReadyButton, TabIndex: 0, Constraint: widget.GridConstraint{
+				Col: 0, Row: 4, MinH: 1, Fill: widget.FillHorizontal,
 			}},
 		},
 	}
@@ -322,6 +342,8 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		startingWindow:   startingWindow,
 		startingSplash:   startingSplash,
 		startingStatus:   startingStatus,
+		phaseReadyButton:    phaseReadyButton,
+		phaseContinueButton: phaseContinueButton,
 	}
 	lobbyMenuBar.Overlay = &m.overlay
 	playingMenuBar.Overlay = &m.overlay
@@ -333,16 +355,22 @@ func NewModel(api ServerAPI, playerID string) *Model {
 	// Wire playing command input callbacks.
 	playingInputCtrl.OnSubmit = func(text string) {
 		m.dispatchInput(text)
-		// Return focus to gameview after submitting.
-		m.playingWindow.FocusIdx = 0
-		m.playingInput.Model.Blur()
-	}
-	playingInputCtrl.OnEsc = func() {
-		// Return focus to gameview on Esc.
+		// Return focus to gameview after submitting so the next Enter
+		// re-triggers the framework's focus-chat action.
 		m.playingWindow.FocusIdx = 0
 		m.playingInput.Model.Blur()
 	}
 	playingInputCtrl.OnTab = m.lobbyTabComplete // same tab completion logic
+
+	// Wire phase action buttons.
+	phaseReadyButton.OnPress = func() { m.api.ReadyUp(m.playerID) }
+	phaseReadyButton.Disabled = func() bool {
+		st := m.api.State()
+		st.RLock()
+		defer st.RUnlock()
+		return st.StartingReady != nil && st.StartingReady[m.playerID]
+	}
+	phaseContinueButton.OnPress = func() { m.api.AcknowledgeGameOver(m.playerID) }
 
 	// Wire team panel callbacks.
 	lobbyTeamPanel.OnMoveToTeam = func(teamIdx int) {

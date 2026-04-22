@@ -10,6 +10,7 @@ import (
 // Button is a clickable button: [ Label ].
 type Button struct {
 	Label    string
+	Align    string // "left" (default), "center", "right"
 	OnPress  func()
 	Disabled func() bool // if non-nil and returns true, button is grayed and non-functional
 
@@ -63,7 +64,21 @@ func (b *Button) Render(buf *render.ImageBuffer, x, y, width, height int, focuse
 		attr = render.AttrBold
 	}
 	label := "[ " + b.Label + " ]"
-	col := x
+	labelW := len(label)
+	startX := x
+	switch b.Align {
+	case "center":
+		startX = x + (width-labelW)/2
+		if startX < x {
+			startX = x
+		}
+	case "right":
+		startX = x + width - labelW
+		if startX < x {
+			startX = x
+		}
+	}
+	col := startX
 	for _, r := range label {
 		if col >= x+width {
 			break

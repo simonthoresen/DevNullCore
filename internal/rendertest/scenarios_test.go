@@ -92,11 +92,12 @@ var scenarios = []renderScenario{
 
 	// ── Lobby: menu navigation ─────────────────────────────────────────────
 	{
-		// F10 focuses the menu bar on the first item (File), no dropdown yet.
+		// Esc from desktop focuses the menu bar on the first item (File),
+		// with no dropdown yet. A second Esc returns to desktop.
 		name:          "lobby_menu_focused",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"f10"},
+		chromeKeys:    []string{"esc"},
 		noIntegration: true,
 	},
 	{

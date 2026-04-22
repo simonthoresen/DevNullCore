@@ -14,6 +14,7 @@ import (
 
 	"dev-null/internal/domain"
 	"dev-null/internal/engine"
+	"dev-null/internal/input"
 	"dev-null/internal/localcmd"
 	"dev-null/internal/render"
 	"dev-null/internal/state"
@@ -285,39 +286,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		// Hard exit on Ctrl+C / Ctrl+D — always works, bypasses everything.
-		if msg.String() == "ctrl+c" || msg.String() == "ctrl+d" {
-			if m.cancel != nil {
-				m.cancel()
-			}
-			return m, tea.Quit
-		}
-		// Dialog overlay gets the real tea.Msg for NC control handling.
-		if m.overlay.HasDialog() {
-			consumed, cmd := m.overlay.HandleDialogMsg(msg)
-			if consumed {
-				return m, cmd
-			}
-		}
-		// Let the overlay handle F10/menu keys.
-		if m.overlay.HandleKey(msg.String(), m.consoleMenus(), "") {
-			return m, nil
-		}
-		// PgUp/PgDn always scroll the log, regardless of focus.
-		switch msg.String() {
-		case "pgup", "pgdown":
-			m.logView.Update(msg)
-			return m, nil
-		case "enter":
-			// Enter outside the command bar moves focus there.
-			if m.window.FocusIdx != 2 {
-				m.window.FocusIdx = 2
-				return m, m.inputCtrl.Model.Focus()
-			}
-		}
-		// Everything else goes to the focused window control.
-		cmd := m.window.HandleUpdate(msg)
-		return m, cmd
+		return m.handleKey(msg)
 
 	case tea.MouseWheelMsg:
 		// Route scroll events to the panel (NCTextView handles them).
@@ -328,6 +297,85 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Forward other messages to focused control (cursor blink etc.)
 	cmd := m.window.HandleUpdate(msg)
 	return m, cmd
+}
+
+// currentMode returns the current input mode for the router.
+func (m *Model) currentMode() input.Mode {
+	if m.overlay.HasDialog() {
+		return input.ModeDialog
+	}
+	if m.overlay.MenuFocused || m.overlay.OpenMenu >= 0 {
+		return input.ModeMenu
+	}
+	return input.ModeDesktop
+}
+
+// currentFocus returns the focused widget that the router consults for
+// WantsEnter / WantsEsc. The console has a single focus hierarchy (the
+// main window's children).
+func (m *Model) currentFocus() any {
+	if m.window == nil {
+		return nil
+	}
+	if m.window.FocusIdx < 0 || m.window.FocusIdx >= len(m.window.Children) {
+		return nil
+	}
+	return m.window.Children[m.window.FocusIdx].Control
+}
+
+// handleKey is the console's single entry point for keyboard input. It
+// delegates to the shared input.Route and executes the returned Action.
+func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	mode := m.currentMode()
+
+	// Desktop: check menu shortcuts (Alt+X and global hotkeys) first.
+	if mode == input.ModeDesktop {
+		if m.overlay.HandleDesktopShortcut(key, m.consoleMenus(), "") {
+			return m, nil
+		}
+	}
+
+	action := input.Route(key, mode, m.currentFocus())
+	switch action {
+	case input.ActionQuit:
+		if m.cancel != nil {
+			m.cancel()
+		}
+		return m, tea.Quit
+
+	case input.ActionScrollChatUp, input.ActionScrollChatDown:
+		m.logView.Update(msg)
+		return m, nil
+
+	case input.ActionCloseTopDialog:
+		m.overlay.PopDialog()
+		return m, nil
+
+	case input.ActionRouteToDialog:
+		_, cmd := m.overlay.HandleDialogMsg(msg)
+		return m, cmd
+
+	case input.ActionRouteToMenu:
+		m.overlay.HandleKey(key, m.consoleMenus(), "")
+		return m, nil
+
+	case input.ActionActivateMenu:
+		m.overlay.MenuFocused = true
+		m.overlay.MenuCursor = 0
+		m.overlay.OpenMenu = -1
+		m.overlay.SubMenus = nil
+		return m, nil
+
+	case input.ActionFocusChat:
+		// Console's "chat input" is the command input at child index 2.
+		m.window.FocusIdx = 2
+		return m, m.inputCtrl.Model.Focus()
+
+	case input.ActionRouteToFocused:
+		return m, m.window.HandleUpdate(msg)
+	}
+	return m, nil
 }
 
 func (m *Model) consoleMenus() []domain.MenuDef {

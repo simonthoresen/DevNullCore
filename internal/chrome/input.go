@@ -6,95 +6,187 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"dev-null/internal/domain"
+	"dev-null/internal/input"
+	"dev-null/internal/widget"
 )
 
-func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	phase := m.api.State().GetGamePhase()
-
-	// Ctrl+C / Ctrl+D quit from any mode.
-	switch msg.String() {
-	case "ctrl+c", "ctrl+d":
-		return m, tea.Quit
-	}
-
-	// Chat scroll — handled in all modes.
-	switch msg.String() {
-	case "pgup":
-		chatH := max(1, m.chatH)
-		m.chatScrollOffset += chatH - 1
-		maxOffset := len(m.chatLines) - chatH
-		if maxOffset < 0 {
-			maxOffset = 0
-		}
-		if m.chatScrollOffset > maxOffset {
-			m.chatScrollOffset = maxOffset
-		}
-		return m, nil
-	case "pgdown":
-		chatH := max(1, m.chatH)
-		m.chatScrollOffset -= chatH - 1
-		if m.chatScrollOffset < 0 {
-			m.chatScrollOffset = 0
-		}
-		return m, nil
-	}
-
-	// Dialog overlay gets the real tea.Msg for proper NC control handling.
+// currentMode returns the current input mode for the router.
+// Dialog takes precedence over Menu takes precedence over Desktop.
+func (m *Model) currentMode() input.Mode {
 	if m.overlay.HasDialog() {
-		consumed, cmd := m.overlay.HandleDialogMsg(msg)
-		if consumed {
-			return m, cmd
+		return input.ModeDialog
+	}
+	if m.overlay.MenuFocused || m.overlay.OpenMenu >= 0 {
+		return input.ModeMenu
+	}
+	return input.ModeDesktop
+}
+
+// currentWindow returns the top-level window for the current game phase.
+// Used for focus tracking and default key dispatch on Desktop.
+func (m *Model) currentWindow() *widget.Window {
+	if !m.inActiveGame {
+		return m.lobbyWindow
+	}
+	return m.playingWindow
+}
+
+// currentFocus returns the focused widget that the router should consult
+// for WantsEnter/WantsEsc. During starting/ending phases the phase buttons
+// are the effective focus target; otherwise it is the focused child of the
+// active window.
+func (m *Model) currentFocus() any {
+	if m.inActiveGame {
+		phase := m.api.State().GetGamePhase()
+		switch phase {
+		case domain.PhaseStarting:
+			return m.phaseReadyButton
+		case domain.PhaseEnding:
+			return m.phaseContinueButton
 		}
 	}
-
-	// Menu overlay intercepts keys when active (F10, menu navigation).
-	m.menuCache = nil // force rebuild so menus reflect current game/state
-	if m.overlay.HandleKey(msg.String(), m.cachedMenus(), m.playerID) {
-		return m, nil
+	win := m.currentWindow()
+	if win == nil {
+		return nil
 	}
+	if win.FocusIdx < 0 || win.FocusIdx >= len(win.Children) {
+		return nil
+	}
+	return win.Children[win.FocusIdx].Control
+}
 
-	// Team rename mode — capture all keys for the team name input.
+// focusCommandInput moves focus to the chat command input in the current
+// window and starts the cursor blink.
+func (m *Model) focusCommandInput() tea.Cmd {
+	if !m.inActiveGame {
+		// Lobby command input is already at FocusIdx 4; focus it.
+		m.lobbyWindow.FocusIdx = 4
+		return m.lobbyInput.Model.Focus()
+	}
+	m.playingWindow.FocusIdx = 4
+	return m.playingInput.Model.Focus()
+}
+
+// activateMenuBar enters menu mode with the bar focused on the first item,
+// no dropdown open. First Esc activates; second Esc returns to Desktop.
+func (m *Model) activateMenuBar() {
+	m.overlay.MenuFocused = true
+	m.overlay.MenuCursor = 0
+	m.overlay.OpenMenu = -1
+	m.overlay.SubMenus = nil
+}
+
+// scrollChat scrolls the chat panel by the given direction: +1 page up, -1 page down.
+func (m *Model) scrollChat(dir int) {
+	chatH := max(1, m.chatH)
+	m.chatScrollOffset += (chatH - 1) * dir
+	maxOffset := len(m.chatLines) - chatH
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if m.chatScrollOffset > maxOffset {
+		m.chatScrollOffset = maxOffset
+	}
+	if m.chatScrollOffset < 0 {
+		m.chatScrollOffset = 0
+	}
+}
+
+// handleKey is the single entry point for keyboard input in the chrome.
+// It consults the input router for a routing Action and executes it.
+//
+// The router owns the reserved-key set (Ctrl+C/D, Esc, Enter, PgUp/Dn)
+// and the two-step Esc/Enter contract. Games never see reserved keys.
+func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+
+	// Team-rename legacy bypass (converted to a proper dialog in the next
+	// commit). Captures all keys for the inline rename text input.
 	if m.teamEditing {
 		return m.handleTeamEditKey(msg)
 	}
 
-	// Lobby: delegate to the NCWindow which routes to the focused child
-	// (NCCommandInput or NCTeamPanel). Tab cycling is handled by the window.
-	if !m.inActiveGame {
-		cmd := m.lobbyWindow.HandleUpdate(msg)
-		// Reset tab candidates on non-tab keys.
-		if msg.String() != "tab" {
-			m.tabCandidates = nil
+	// Rebuild menus once per key so overlays reflect current state.
+	m.menuCache = nil
+
+	mode := m.currentMode()
+
+	// On Desktop, check for menu shortcuts (global hotkeys and Alt+X menu
+	// openers) BEFORE invoking the router. These always take precedence
+	// over focused-widget input.
+	if mode == input.ModeDesktop {
+		if m.overlay.HandleDesktopShortcut(key, m.cachedMenus(), m.playerID) {
+			return m, nil
 		}
+	}
+
+	action := input.Route(key, mode, m.currentFocus())
+
+	switch action {
+	case input.ActionQuit:
+		return m, tea.Quit
+
+	case input.ActionScrollChatUp:
+		m.scrollChat(+1)
+		return m, nil
+
+	case input.ActionScrollChatDown:
+		m.scrollChat(-1)
+		return m, nil
+
+	case input.ActionCloseTopDialog:
+		m.overlay.PopDialog()
+		return m, nil
+
+	case input.ActionRouteToDialog:
+		_, cmd := m.overlay.HandleDialogMsg(msg)
 		return m, cmd
-	}
 
-	// Starting phase — any player can press Enter to ready up.
-	if m.inActiveGame && phase == domain.PhaseStarting {
-		switch msg.String() {
-		case "enter":
-			m.api.ReadyUp(m.playerID)
-		}
+	case input.ActionRouteToMenu:
+		m.overlay.HandleKey(key, m.cachedMenus(), m.playerID)
 		return m, nil
-	}
 
-	// Ending phase — Enter acknowledges.
-	if m.inActiveGame && phase == domain.PhaseEnding {
-		switch msg.String() {
-		case "enter":
-			m.api.AcknowledgeGameOver(m.playerID)
-		}
+	case input.ActionActivateMenu:
+		m.activateMenuBar()
 		return m, nil
+
+	case input.ActionFocusChat:
+		cmd := m.focusCommandInput()
+		return m, cmd
+
+	case input.ActionRouteToFocused:
+		return m.routeToFocused(msg)
 	}
 
-	// Playing: delegate to the playing NCWindow which routes to the focused child
-	// (GameView, NCCommandInput, or NC-tree controls).
-	cmd := m.playingWindow.HandleUpdate(msg)
-	// Reset tab candidates on non-tab keys.
-	if msg.String() != "tab" {
+	return m, nil
+}
+
+// routeToFocused dispatches a non-reserved key (or a reserved key that
+// the focused widget opted into via WantsEnter/WantsEsc) to the active
+// focus target.
+func (m *Model) routeToFocused(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	if key != "tab" {
 		m.tabCandidates = nil
 	}
-	return m, cmd
+	// Phase buttons are the focus target during starting/ending. They are
+	// not part of any Window's focus hierarchy, so dispatch directly.
+	if m.inActiveGame {
+		phase := m.api.State().GetGamePhase()
+		switch phase {
+		case domain.PhaseStarting:
+			m.phaseReadyButton.Update(msg)
+			return m, nil
+		case domain.PhaseEnding:
+			m.phaseContinueButton.Update(msg)
+			return m, nil
+		}
+	}
+	win := m.currentWindow()
+	if win == nil {
+		return m, nil
+	}
+	return m, win.HandleUpdate(msg)
 }
 
 func (m *Model) handleTeamEditKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
