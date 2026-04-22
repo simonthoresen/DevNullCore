@@ -30,6 +30,10 @@ func (b *Button) HandleClick(rx, ry int) {
 }
 func (b *Button) MinSize() (int, int)   { return len(b.Label) + 4, 1 } // "[ " + label + " ]"
 func (b *Button) TabWant() (bool, bool) { return b.WantTab, b.WantBackTab }
+
+// WantsEnter always consumes Enter when focused — pressing Enter activates
+// the button. The framework's focus-chat action never reaches a focused button.
+func (b *Button) WantsEnter() bool { return !b.isDisabled() }
 func (b *Button) Update(msg tea.Msg) {
 	b.WantTab = false
 	b.WantBackTab = false

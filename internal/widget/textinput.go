@@ -29,6 +29,14 @@ type TextInput struct {
 
 func (ti *TextInput) TabWant() (bool, bool) { return ti.WantTab, ti.WantBackTab }
 
+// WantsEnter consumes Enter when focused (submits the field).
+func (ti *TextInput) WantsEnter() bool { return ti.Model.Focused() }
+
+// WantsEsc consumes Esc when focused with non-empty text (clears the draft).
+// Empty & focused → framework takes Esc (opens menu). This is the two-step
+// Esc contract: first Esc clears, second Esc opens the menu.
+func (ti *TextInput) WantsEsc() bool { return ti.Model.Focused() && ti.Model.Value() != "" }
+
 func (ti *TextInput) Focusable() bool     { return true }
 func (ti *TextInput) MinSize() (int, int) { return 4, 1 }
 func (ti *TextInput) Value() string       { return ti.Model.Value() }
@@ -48,6 +56,9 @@ func (ti *TextInput) Update(msg tea.Msg) {
 					ti.OnSubmit(text)
 				}
 			}
+			return
+		case "esc":
+			ti.Model.SetValue("")
 			return
 		case "tab":
 			ti.WantTab = true
@@ -145,6 +156,14 @@ type CommandInput struct {
 	historyIdx   int
 	historyDraft string
 }
+
+// WantsEnter consumes Enter when focused (submits the command).
+func (ci *CommandInput) WantsEnter() bool { return ci.Model.Focused() }
+
+// WantsEsc consumes Esc when focused with non-empty text (clears the draft).
+// Empty & focused → framework takes Esc (opens menu). This is the two-step
+// Esc contract: first Esc clears, second Esc opens the menu.
+func (ci *CommandInput) WantsEsc() bool { return ci.Model.Focused() && ci.Model.Value() != "" }
 
 func (ci *CommandInput) AddHistory(text string) {
 	maxH := ci.MaxHistory

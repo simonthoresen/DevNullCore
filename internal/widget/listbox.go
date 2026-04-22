@@ -30,6 +30,11 @@ type ListBox struct {
 func (lb *ListBox) Focusable() bool       { return len(lb.Items) > 0 }
 func (lb *ListBox) TabWant() (bool, bool) { return lb.wantTab, lb.wantBackTab }
 
+// WantsEnter consumes Enter when a selection handler is registered by the
+// owning dialog. Used only inside dialogs today (ListBox is not placed on
+// the desktop), so this is effectively a safety net for forward compat.
+func (lb *ListBox) WantsEnter() bool { return true }
+
 func (lb *ListBox) SetCursor(idx int) {
 	lb.Cursor = idx
 	lb.ensureVisible()
