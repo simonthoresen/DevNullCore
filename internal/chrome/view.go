@@ -261,17 +261,11 @@ func (m *Model) renderLobby(buf *render.ImageBuffer, menus []domain.MenuDef) {
 
 
 func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, game domain.Game, gameName string, phase domain.GamePhase) {
-	// Compute game viewport height (16:9 aspect ratio with min chat height).
+	// Chat is always exactly 5 rows; the game viewport takes everything else.
 	// Window interior = total - menuBar(1) - statusBar(1) - topBorder(1) - bottomBorder(1) = height - 4
-	// Interior rows: gameView + divider(1) + chat + divider(1) + cmdInput(1) = gameH + chatH + 3
-	interiorH := m.height - 4 // screen chrome (menu bar, status bar) + window borders
-	gameH := m.width * 9 / 16
-	chatH := interiorH - 3 - gameH // 3 = two dividers + command input
-	minChatH := max(5, interiorH/3)
-	if chatH < minChatH {
-		chatH = minChatH
-		gameH = interiorH - 3 - chatH
-	}
+	// Interior rows: gameView + divider(1) + chat(5) + divider(1) + cmdInput(1) = gameH + 8
+	interiorH := m.height - 4
+	gameH := interiorH - 8
 	if gameH < 1 {
 		gameH = 1
 	}

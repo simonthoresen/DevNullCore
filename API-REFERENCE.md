@@ -540,7 +540,7 @@ Any playing game can be suspended — no opt-in flag is required.
 │ game viewport (width × height)     │  ← Game.render(buf, playerID, ox, oy, w, h)
 │                                    │
 ├────────────────────────────────────┤
-│ chat (remaining rows, min 5)       │
+│ chat (exactly 5 rows)              │
 ├────────────────────────────────────┤
 │ command bar (1 row)                │  ← Game.commandBar() when idle; text input on Enter
 ├────────────────────────────────────┤
@@ -549,7 +549,7 @@ Any playing game can be suspended — no opt-in flag is required.
 ```
 
 - `width` = full terminal width
-- `height` = `width * 9 / 16` (clamped down if terminal is too short to leave 5 rows for chat)
+- `height` = terminal height minus 12 rows of chrome (menu bar, window borders, two dividers, chat's 5 rows, command bar, status bar)
 - Return exactly `height` newline-separated rows from `renderAscii()`. Fewer rows are padded; more are clipped.
 - The menu bar is full width — `gameName` can use it entirely.
 
