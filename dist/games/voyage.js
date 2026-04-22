@@ -1,30 +1,76 @@
-// voyage.js — Amiga-style space flythrough demo
-// One unified scene: solar system with sun, planets, moons, Earth with
-// continents, and the pyramids at Giza. A single camera flies an exciting
-// path — starting near Neptune, slingshotting around it, sweeping past
-// Saturn and Jupiter, then diving into Earth and landing at the pyramids.
+// voyage.js — 3D solar system tour
+//
+// A cinematic camera orbits Earth, then flies along a smooth curved path
+// to a random unvisited planet, orbits it, and continues until every
+// planet has been visited. It then returns to Earth and starts over.
 //
 // Load with: /game load voyage
-//
-// No player interaction — pure cinematic demo (~55 seconds).
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TIMING (seconds)
+// SOLAR SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════
 
-var T_FLY     = 2;   // Camera starts its journey
-var T_LAND    = 44;  // Touchdown at Giza
-var T_SETTLE  = 50;  // Dust settling
-var T_END     = 55;  // Game over
+var EARTH = 2;
+var SUN_R = 20;
+
+var PLANETS = [
+    { name: "Mercury", orbit:  60, r:  2.5, col: "#A8A8A8", spd: 1.00, a0: 0.5, ring: false },
+    { name: "Venus",   orbit:  85, r:  4.5, col: "#E8CC80", spd: 0.60, a0: 2.1, ring: false },
+    { name: "Earth",   orbit: 120, r:  5.0, col: "#3A7FEE", spd: 0.45, a0: 4.5, ring: false },
+    { name: "Mars",    orbit: 155, r:  3.5, col: "#CC4422", spd: 0.28, a0: 1.0, ring: false },
+    { name: "Jupiter", orbit: 230, r: 15.0, col: "#D4A870", spd: 0.08, a0: 5.8, ring: false },
+    { name: "Saturn",  orbit: 310, r: 13.0, col: "#E8D888", spd: 0.05, a0: 3.2, ring: true  },
+    { name: "Uranus",  orbit: 380, r:  8.0, col: "#7EC8DC", spd: 0.03, a0: 0.7, ring: false },
+    { name: "Neptune", orbit: 450, r:  7.5, col: "#2855D8", spd: 0.02, a0: 5.1, ring: false }
+];
+
+// Star directions as points on the unit sphere.
+var STARS = [];
+(function() {
+    for (var i = 0; i < 600; i++) {
+        var u = Math.random() * 2 - 1;
+        var a = Math.random() * Math.PI * 2;
+        var r = Math.sqrt(1 - u * u);
+        STARS.push({
+            x: r * Math.cos(a),
+            y: u,
+            z: r * Math.sin(a),
+            b: 0.35 + Math.random() * 0.65
+        });
+    }
+})();
+
+var ORBIT_DURATION  = 4.0;
+var TRAVEL_DURATION = 6.0;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MATH
 // ═══════════════════════════════════════════════════════════════════════════
 
-function lerp(a, b, t) { return a + (b - a) * t; }
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
-function smooth(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
-function progress(tNow, a, b) { return clamp((tNow - a) / (b - a), 0, 1); }
+function lerp(a, b, t)    { return a + (b - a) * t; }
+function smooth(t)        { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+
+function vAdd(a, b)       { return [a[0]+b[0], a[1]+b[1], a[2]+b[2]]; }
+function vSub(a, b)       { return [a[0]-b[0], a[1]-b[1], a[2]-b[2]]; }
+function vScale(a, s)     { return [a[0]*s, a[1]*s, a[2]*s]; }
+function vDot(a, b)       { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+function vCross(a, b) {
+    return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+}
+function vLen(a)          { return Math.sqrt(vDot(a, a)); }
+function vNorm(a)         { var L = vLen(a) || 1; return [a[0]/L, a[1]/L, a[2]/L]; }
+function vLerp(a, b, t)   { return [lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]; }
+
+function bezier3(p0, p1, p2, p3, t) {
+    var u = 1 - t;
+    var w0 = u*u*u, w1 = 3*u*u*t, w2 = 3*u*t*t, w3 = t*t*t;
+    return [
+        p0[0]*w0 + p1[0]*w1 + p2[0]*w2 + p3[0]*w3,
+        p0[1]*w0 + p1[1]*w1 + p2[1]*w2 + p3[1]*w3,
+        p0[2]*w0 + p1[2]*w1 + p2[2]*w2 + p3[2]*w3
+    ];
+}
 
 function hex(r, g, b, a) {
     r = clamp(Math.round(r), 0, 255);
@@ -41,852 +87,333 @@ function hex(r, g, b, a) {
     return s;
 }
 
-function hashF(a, b) {
-    var n = Math.sin(a * 127.1 + b * 311.7) * 43758.5453;
-    return n - Math.floor(n);
-}
-
-function catmullRom(p0, p1, p2, p3, t) {
-    return 0.5 * (
-        2 * p1 +
-        (-p0 + p2) * t +
-        (2*p0 - 5*p1 + 4*p2 - p3) * t*t +
-        (-p0 + 3*p1 - 3*p2 + p3) * t*t*t
-    );
+function parseCol(col) {
+    return [
+        parseInt(col.substring(1, 3), 16),
+        parseInt(col.substring(3, 5), 16),
+        parseInt(col.substring(5, 7), 16)
+    ];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// WORLD DATA — everything in one coordinate system
+// SOLAR SYSTEM GEOMETRY
 // ═══════════════════════════════════════════════════════════════════════════
-
-var STARS = [];
-for (var _i = 0; _i < 400; _i++) {
-    STARS.push({
-        x: Math.random() * 4000 - 2000,
-        y: Math.random() * 4000 - 2000,
-        z: Math.random() * 0.8 + 0.2,
-        bright: Math.random() * 0.6 + 0.4,
-        twinkle: Math.random() * 6.283
-    });
-}
-
-var DUST = [];
-for (var _i = 0; _i < 120; _i++) {
-    DUST.push({
-        x:     (Math.random() - 0.5) * 2.0,
-        vy0:   -(Math.random() * 1.2 + 0.4),
-        vx:    (Math.random() - 0.5) * 1.4,
-        size:  Math.random() * 3 + 1.5,
-        life:  Math.random() * 2.5 + 1.5,
-        delay: Math.random() * 3.5,
-        shade: Math.random() * 0.3
-    });
-}
-
-var SUN_R = 25;
-var PLANETS = [
-    { name: "Mercury", orbit: 55,  r: 3,   col: "#A8A8A8", spd: 1.2,   a0: 0.5  },
-    { name: "Venus",   orbit: 80,  r: 5.5, col: "#E8CC80", spd: 0.48,  a0: 2.1  },
-    { name: "Earth",   orbit: 120, r: 7,   col: "#4488EE", spd: 0.3,   a0: 4.5  },
-    { name: "Mars",    orbit: 170, r: 4.5, col: "#CC4422", spd: 0.16,  a0: 1.0  },
-    { name: "Jupiter", orbit: 300, r: 20,  col: "#D4A870", spd: 0.025, a0: 5.8  },
-    { name: "Saturn",  orbit: 400, r: 16,  col: "#E8D888", spd: 0.01,  a0: 3.2, ring: true },
-    { name: "Uranus",  orbit: 520, r: 11,  col: "#7EC8DC", spd: 0.004, a0: 0.7  },
-    { name: "Neptune", orbit: 640, r: 10,  col: "#2855D8", spd: 0.002, a0: 5.1  }
-];
-
-// Moons — exaggerated orbits for visibility
-var MOONS = [
-    { p: 2, dist: 4,  r: 2.0, col: "#C8C8C8", spd: 2.5,  a0: 0   },  // Moon
-    { p: 4, dist: 5,  r: 1.2, col: "#E8D060", spd: 5.0,  a0: 0   },  // Io
-    { p: 4, dist: 8,  r: 1.0, col: "#C8D8E8", spd: 3.2,  a0: 1.5 },  // Europa
-    { p: 4, dist: 11, r: 1.5, col: "#B0A898", spd: 1.6,  a0: 3.0 },  // Ganymede
-    { p: 4, dist: 15, r: 1.3, col: "#887868", spd: 0.7,  a0: 4.5 },  // Callisto
-    { p: 5, dist: 10, r: 1.8, col: "#D8C080", spd: 1.0,  a0: 2.0 },  // Titan
-];
-
-// ═══════════════════════════════════════════════════════════════════════════
-// CAMERA PATH — Catmull-Rom spline through waypoints
-// ═══════════════════════════════════════════════════════════════════════════
-
-var camPath = [];
 
 function planetPos(idx, t) {
     var p = PLANETS[idx];
     var a = t * p.spd + p.a0;
-    return { x: Math.cos(a) * p.orbit, y: Math.sin(a) * p.orbit };
+    return [Math.cos(a) * p.orbit, 0, Math.sin(a) * p.orbit];
 }
 
-function buildCameraPath() {
-    camPath = [];
-
-    // ── Neptune slingshot ───────────────────────────────────────────────
-    var nep = planetPos(7, 2);
-    var nLen = Math.sqrt(nep.x*nep.x + nep.y*nep.y);
-    var nd = { x: nep.x/nLen, y: nep.y/nLen };
-    var np = { x: -nd.y, y: nd.x };
-
-    camPath.push({ t: 0,  x: nep.x + nd.x*120 + np.x*80,
-                          y: nep.y + nd.y*120 + np.y*80, zoom: 0.30 });
-    camPath.push({ t: 4,  x: nep.x + np.x*20,
-                          y: nep.y + np.y*20,             zoom: 2.0  });
-    camPath.push({ t: 7,  x: nep.x - nd.x*60 - np.x*80,
-                          y: nep.y - nd.y*60 - np.y*80,  zoom: 0.50 });
-
-    // ── Saturn flyby ────────────────────────────────────────────────────
-    var sat = planetPos(5, 12);
-    var sLen = Math.sqrt(sat.x*sat.x + sat.y*sat.y);
-    var sd = { x: sat.x/sLen, y: sat.y/sLen };
-    var sp = { x: -sd.y, y: sd.x };
-
-    camPath.push({ t: 11, x: sat.x + sp.x*30 + sd.x*15,
-                          y: sat.y + sp.y*30 + sd.y*15,  zoom: 1.8  });
-    camPath.push({ t: 14, x: sat.x - sp.x*25 - sd.x*20,
-                          y: sat.y - sp.y*25 - sd.y*20,  zoom: 0.60 });
-
-    // ── Jupiter flyby ───────────────────────────────────────────────────
-    var jup = planetPos(4, 19);
-    var jLen = Math.sqrt(jup.x*jup.x + jup.y*jup.y);
-    var jd = { x: jup.x/jLen, y: jup.y/jLen };
-    var jp = { x: -jd.y, y: jd.x };
-
-    camPath.push({ t: 18, x: jup.x + jp.x*35,
-                          y: jup.y + jp.y*35,             zoom: 2.0  });
-    camPath.push({ t: 21, x: jup.x - jd.x*30 - jp.x*20,
-                          y: jup.y - jd.y*30 - jp.y*20,  zoom: 0.65 });
-
-    // ── Cross inner solar system ────────────────────────────────────────
-    var mars = planetPos(3, 24);
-    camPath.push({ t: 24, x: mars.x * 0.7,
-                          y: mars.y * 0.7,                zoom: 0.70 });
-
-    // ── Earth approach ──────────────────────────────────────────────────
-    var e27 = planetPos(2, 27);
-    camPath.push({ t: 27, x: e27.x * 1.3, y: e27.y * 1.3, zoom: 3.0  });
-    var e29 = planetPos(2, 29);
-    camPath.push({ t: 29, x: e29.x,       y: e29.y,        zoom: 5.0  });
-    var e31 = planetPos(2, 31);
-    camPath.push({ t: 31, x: e31.x,       y: e31.y,        zoom: 10.0 });
+function orbitRadiusFor(idx) {
+    return PLANETS[idx].r * 5;
 }
 
-function getPathState(t) {
-    if (t <= camPath[0].t) {
-        return { x: camPath[0].x, y: camPath[0].y, zoom: camPath[0].zoom };
-    }
-    var last = camPath[camPath.length - 1];
-    if (t >= last.t) {
-        return { x: last.x, y: last.y, zoom: last.zoom };
-    }
-
-    var seg = 0;
-    for (var i = 0; i < camPath.length - 1; i++) {
-        if (t >= camPath[i].t && t < camPath[i + 1].t) { seg = i; break; }
-    }
-
-    var localT = (t - camPath[seg].t) / (camPath[seg + 1].t - camPath[seg].t);
-
-    var i0 = Math.max(0, seg - 1);
-    var i1 = seg;
-    var i2 = seg + 1;
-    var i3 = Math.min(camPath.length - 1, seg + 2);
-    var p0 = camPath[i0], p1 = camPath[i1], p2 = camPath[i2], p3 = camPath[i3];
-
-    return {
-        x:    catmullRom(p0.x, p1.x, p2.x, p3.x, localT),
-        y:    catmullRom(p0.y, p1.y, p2.y, p3.y, localT),
-        zoom: Math.exp(catmullRom(
-            Math.log(p0.zoom), Math.log(p1.zoom),
-            Math.log(p2.zoom), Math.log(p3.zoom), localT))
-    };
-}
-
-function getCameraState(t) {
-    if (t >= 30) {
-        var earth = planetPos(2, t);
-        var zoomT = smooth(progress(t, 29, T_LAND));
-        var zoom  = 5 * Math.pow(200, zoomT);
-        return { x: earth.x, y: earth.y, zoom: zoom };
-    }
-
-    var ps = getPathState(t);
-
-    if (t > 27) {
-        var bt    = smooth(progress(t, 27, 30));
-        var earth = planetPos(2, t);
-        var zoomT = smooth(progress(t, 29, T_LAND));
-        var tz    = 5 * Math.pow(200, zoomT);
-        ps.x    = lerp(ps.x, earth.x, bt);
-        ps.y    = lerp(ps.y, earth.y, bt);
-        ps.zoom = Math.exp(lerp(Math.log(ps.zoom), Math.log(tz), bt));
-    }
-
-    return ps;
+function orbitPosition(idx, t, phaseStart) {
+    var pp = planetPos(idx, t);
+    var rr = orbitRadiusFor(idx);
+    var a  = (t - phaseStart) * 0.5;
+    return [pp[0] + Math.cos(a) * rr, rr * 0.3, pp[2] + Math.sin(a) * rr];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GAME STATE
+// TOUR / CAMERA STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
-var time = 0;
-var ended = false;
-var midiCue = 0;
+function newTour() {
+    // Earth first, the other 7 planets in random order, then Earth again.
+    var others = [];
+    for (var i = 0; i < PLANETS.length; i++) if (i !== EARTH) others.push(i);
+    for (var i = others.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var tmp = others[i]; others[i] = others[j]; others[j] = tmp;
+    }
+    return [EARTH].concat(others).concat([EARTH]);
+}
+
+function beginOrbit(st, t) {
+    st.phase = "orbit";
+    st.phaseStart = t;
+    st.travel = null;
+}
+
+function beginTravel(st, t) {
+    var from = st.tour[st.tourIdx];
+    var to   = st.tour[st.tourIdx + 1];
+    var tArr = t + TRAVEL_DURATION;
+
+    var start = orbitPosition(from, t, st.phaseStart);
+    var dpp   = planetPos(to, tArr);
+    var rr    = orbitRadiusFor(to);
+    // End matches orbitPosition(to, tArr, tArr) — so the hand-off to the
+    // orbit phase has no visible jump.
+    var end   = [dpp[0] + rr, rr * 0.3, dpp[2]];
+
+    var line = vSub(end, start);
+    var dist = vLen(line);
+    var perp = vNorm([-line[2], 0, line[0]]); // perpendicular in the xz-plane
+    var sa = Math.random() < 0.5 ? -1 : 1;
+    var sb = Math.random() < 0.5 ? -1 : 1;
+
+    var cp1 = vAdd(vAdd(start, vScale(line, 0.30)), vScale(perp, dist * 0.25 * sa));
+    cp1[1] += dist * 0.15 * sa;
+    var cp2 = vAdd(vSub(end, vScale(line, 0.30)), vScale(perp, dist * 0.25 * sb));
+    cp2[1] += dist * 0.15 * sb;
+
+    st.phase = "travel";
+    st.phaseStart = t;
+    st.travel = { from: from, to: to, p0: start, p1: cp1, p2: cp2, p3: end };
+}
+
+function advanceTour(st, t) {
+    if (st.tourIdx + 1 >= st.tour.length) {
+        // Back at Earth — reshuffle and start a new cycle.
+        st.tour = newTour();
+        st.tourIdx = 0;
+        beginOrbit(st, t);
+        return;
+    }
+    beginTravel(st, t);
+}
+
+function updateCamera(st, t) {
+    var dur = st.phase === "orbit" ? ORBIT_DURATION : TRAVEL_DURATION;
+    if (t - st.phaseStart < dur) return;
+    if (st.phase === "orbit") {
+        advanceTour(st, t);
+    } else {
+        st.tourIdx += 1;
+        beginOrbit(st, t);
+    }
+}
+
+function currentCamera(st, t) {
+    if (st.phase === "orbit") {
+        var idx = st.tour[st.tourIdx];
+        return { pos: orbitPosition(idx, t, st.phaseStart), look: planetPos(idx, t) };
+    }
+    var s    = clamp((t - st.phaseStart) / TRAVEL_DURATION, 0, 1);
+    var ease = smooth(s);
+    var pos  = bezier3(st.travel.p0, st.travel.p1, st.travel.p2, st.travel.p3, ease);
+    var look = vLerp(planetPos(st.travel.from, t), planetPos(st.travel.to, t), ease);
+    return { pos: pos, look: look };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROJECTION
+// ═══════════════════════════════════════════════════════════════════════════
+
+function makeProjector(pos, look, w, h) {
+    var fwd   = vNorm(vSub(look, pos));
+    var right = vNorm(vCross(fwd, [0, 1, 0]));
+    var up    = vCross(right, fwd);
+    var focal = w * 0.9;
+    var cx = w * 0.5, cy = h * 0.5;
+    function proj(p) {
+        var d  = vSub(p, pos);
+        var lz = vDot(d, fwd);
+        if (lz < 0.01) return null;
+        return {
+            x: cx + vDot(d, right) / lz * focal,
+            y: cy - vDot(d, up)    / lz * focal,
+            z: lz,
+            scale: focal / lz
+        };
+    }
+    function projDir(d) {
+        var lz = vDot(d, fwd);
+        if (lz < 0.05) return null;
+        return { x: cx + vDot(d, right) / lz * focal, y: cy - vDot(d, up) / lz * focal };
+    }
+    return { project: proj, projectDir: projDir };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderStars(ctx, proj, w, h) {
+    for (var i = 0; i < STARS.length; i++) {
+        var s = STARS[i];
+        var p = proj.projectDir([s.x, s.y, s.z]);
+        if (!p) continue;
+        if (p.x < 0 || p.x >= w || p.y < 0 || p.y >= h) continue;
+        var v = Math.round(s.b * 220);
+        ctx.setFillStyle(hex(v, v, v));
+        ctx.fillRect(p.x, p.y, 1, 1);
+    }
+}
+
+function renderOrbitRings(ctx, proj) {
+    var SEG = 96;
+    for (var i = 0; i < PLANETS.length; i++) {
+        var R = PLANETS[i].orbit;
+        ctx.setStrokeStyle("#283050");
+        ctx.setLineWidth(1);
+        ctx.beginPath();
+        var started = false;
+        for (var j = 0; j <= SEG; j++) {
+            var a = j / SEG * Math.PI * 2;
+            var p = proj.project([Math.cos(a) * R, 0, Math.sin(a) * R]);
+            if (!p) { started = false; continue; }
+            if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+            else           ctx.lineTo(p.x, p.y);
+        }
+        ctx.stroke();
+    }
+}
+
+function renderSun(ctx, p) {
+    var r = Math.max(2, SUN_R * p.scale);
+    for (var i = 5; i >= 1; i--) {
+        ctx.setFillStyle(hex(255, 170, 60, Math.round((6 - i) * 12)));
+        ctx.fillCircle(p.x, p.y, r * (1 + i * 0.7));
+    }
+    ctx.setFillStyle("#FFE288");
+    ctx.fillCircle(p.x, p.y, r);
+    ctx.setFillStyle("#FFFFEE");
+    ctx.fillCircle(p.x, p.y, r * 0.6);
+}
+
+function renderPlanet(ctx, proj, idx, t) {
+    var wp = planetPos(idx, t);
+    var p  = proj.project(wp);
+    if (!p) return;
+    var r = PLANETS[idx].r * p.scale;
+    if (r < 0.5) {
+        ctx.setFillStyle(PLANETS[idx].col);
+        ctx.fillCircle(p.x, p.y, Math.max(0.8, r));
+        return;
+    }
+
+    // Lit direction in screen space: offset a point on the planet toward the
+    // Sun (at origin) and see which way that shifts on screen.
+    var sunDir = vNorm(vSub([0, 0, 0], wp));
+    var litRef = proj.project(vAdd(wp, vScale(sunDir, PLANETS[idx].r * 0.4)));
+    var lx = 0, ly = 0;
+    if (litRef) {
+        var dx = litRef.x - p.x, dy = litRef.y - p.y;
+        var L  = Math.sqrt(dx*dx + dy*dy) || 1;
+        lx = dx / L; ly = dy / L;
+    }
+
+    var c = parseCol(PLANETS[idx].col);
+    // Dark side, mid, lit — concentric disks offset toward the light.
+    ctx.setFillStyle(hex(c[0]*0.30, c[1]*0.30, c[2]*0.45));
+    ctx.fillCircle(p.x, p.y, r);
+    ctx.setFillStyle(hex(c[0]*0.65, c[1]*0.65, c[2]*0.70));
+    ctx.fillCircle(p.x + lx*r*0.25, p.y + ly*r*0.25, r*0.85);
+    ctx.setFillStyle(PLANETS[idx].col);
+    ctx.fillCircle(p.x + lx*r*0.45, p.y + ly*r*0.45, r*0.55);
+    if (r > 3) {
+        ctx.setFillStyle(hex(c[0]*0.4 + 150, c[1]*0.4 + 150, c[2]*0.4 + 150));
+        ctx.fillCircle(p.x + lx*r*0.6, p.y + ly*r*0.6, r*0.22);
+    }
+
+    if (PLANETS[idx].ring) renderRings(ctx, proj, wp, idx);
+}
+
+function renderRings(ctx, proj, planetWP, idx) {
+    var inner = PLANETS[idx].r * 1.35;
+    var outer = PLANETS[idx].r * 2.30;
+    var SEG = 72;
+    for (var k = 0; k < 4; k++) {
+        var rad = lerp(inner, outer, k / 3);
+        var g   = lerp(0.5, 0.95, k / 3);
+        ctx.setStrokeStyle(hex(220*g, 195*g, 140*g, 220));
+        ctx.setLineWidth(1);
+        ctx.beginPath();
+        var started = false;
+        for (var j = 0; j <= SEG; j++) {
+            var a = j / SEG * Math.PI * 2;
+            var pp = proj.project(vAdd(planetWP, [Math.cos(a)*rad, 0, Math.sin(a)*rad]));
+            if (!pp) { started = false; continue; }
+            if (!started) { ctx.moveTo(pp.x, pp.y); started = true; }
+            else          ctx.lineTo(pp.x, pp.y);
+        }
+        ctx.stroke();
+    }
+}
+
+function renderScene(ctx, cam, t, w, h) {
+    ctx.setFillStyle("#000008");
+    ctx.fillRect(0, 0, w, h);
+
+    var proj = makeProjector(cam.pos, cam.look, w, h);
+
+    renderStars(ctx, proj, w, h);
+    renderOrbitRings(ctx, proj);
+
+    // Z-sort Sun and planets back-to-front (painter's algorithm).
+    var items = [];
+    var sp = proj.project([0, 0, 0]);
+    if (sp) items.push({ z: sp.z, kind: "sun", p: sp });
+    for (var i = 0; i < PLANETS.length; i++) {
+        var pp = proj.project(planetPos(i, t));
+        if (pp) items.push({ z: pp.z, kind: "planet", idx: i });
+    }
+    items.sort(function(a, b) { return b.z - a.z; });
+
+    for (var k = 0; k < items.length; k++) {
+        var it = items[k];
+        if (it.kind === "sun") renderSun(ctx, it.p);
+        else                   renderPlanet(ctx, proj, it.idx, t);
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GAME OBJECT
 // ═══════════════════════════════════════════════════════════════════════════
 
+var time = 0;
+
 var Game = {
     gameName: "Voyage",
 
-    load: function(saved) {},
+    state: { tour: [], tourIdx: 0, phase: "orbit", phaseStart: 0, travel: null },
+
+    load: function(_saved) {},
 
     begin: function() {
         time = 0;
-        ended = false;
-        midiCue = 0;
-        buildCameraPath();
+        Game.state.tour = newTour();
+        Game.state.tourIdx = 0;
+        Game.state.phase = "orbit";
+        Game.state.phaseStart = 0;
+        Game.state.travel = null;
     },
 
     update: function(dt) {
         time += dt;
-        updateMusic();
-        if (time >= T_END && !ended) {
-            ended = true;
-            gameOver([{ name: "Voyage", result: "Complete" }]);
-        }
+        updateCamera(Game.state, time);
     },
 
-    onInput: function(pid, key) {},
+    onInput: function(_pid, _key) {},
 
-    // ── Single unified renderer ─────────────────────────────────────────
-    renderCanvas: function(ctx, pid, w, h) {
-        // In pixel mode the client never calls update(), so sync time from
-        // Game.state._t which the engine injects automatically each frame.
-        if (Game.state && Game.state._t !== undefined) time = Game.state._t;
-        // Lazy-build camera path (client doesn't call begin())
-        if (camPath.length === 0) buildCameraPath();
-
-        ctx.setFillStyle("#000011");
-        ctx.fillRect(0, 0, w, h);
-
-        var cam   = getCameraState(time);
-        var scale = cam.zoom * w / 1200;
-        var cx    = w / 2;
-        var cy    = h / 2;
-
-        // Earth's projected state
-        var earthA   = time * PLANETS[2].spd + PLANETS[2].a0;
-        var earthWX  = Math.cos(earthA) * PLANETS[2].orbit;
-        var earthWY  = Math.sin(earthA) * PLANETS[2].orbit;
-        var earthSX  = cx + (earthWX - cam.x) * scale;
-        var earthSY  = cy + (earthWY - cam.y) * scale;
-        var earthSR  = PLANETS[2].r * scale;
-        var relR     = earthSR / w;
-
-        // ── Globe shift: push center down to reveal sky above the limb ──
-        // As relR grows past 0.5, the globe gradually moves down so that
-        // its top edge descends into the screen, creating a visible sky
-        // band above it. By relR=1.0 the sky occupies the top ~25%.
-        if (relR > 0.5) {
-            var shiftT = smooth(clamp((relR - 0.5) / 0.5, 0, 1));
-            earthSY = lerp(earthSY, earthSR + h * 0.25, shiftT);
-        }
-
-        // ── Atmospheric sky (behind the globe) ─────────────────────────
-        // Rendered before the globe so the globe covers the ground portion.
-        // Visible as a crescent above the globe's shifted top edge.
-        if (relR > 0.5) {
-            var globeTop = earthSY - earthSR;
-            var skyFade = smooth(clamp((relR - 0.5) / 0.3, 0, 1));
-            renderAtmosphericSky(ctx, w, globeTop, skyFade);
-        }
-
-        // ── Stars ───────────────────────────────────────────────────────
-        renderStarfield(ctx, w, h, cx, cy, cam.x, cam.y, scale);
-
-        // ── Speed lines (during transit between planets) ────────────────
-        if (time > T_FLY && time < 27) {
-            var flyFrac = (time - T_FLY) / (27 - T_FLY);
-            renderSpeedLines(ctx, w, h, cx, cy, flyFrac);
-        }
-
-        // ── Orbit rings ────────────────────────────────────────────────
-        renderOrbits(ctx, w, h, cx, cy, cam.x, cam.y, scale);
-
-        // ── Sun ────────────────────────────────────────────────────────
-        renderSun(ctx, w, h, cx, cy, cam.x, cam.y, scale);
-
-        // ── Planets + moons (Earth always handled separately) ──────────
-        renderPlanets(ctx, w, h, cx, cy, cam.x, cam.y, scale);
-
-        // ── Earth: always as detailed globe ────────────────────────────
-        if (earthSR > 0.5 && relR < 1.0) {
-            drawGlobe(ctx, earthSX, earthSY, earthSR, w, h);
-            // Atmosphere rim glow
-            if (earthSR > 10 && relR < 0.7) {
-                for (var i = 3; i >= 1; i--) {
-                    var gr = earthSR + i * Math.max(2, earthSR * 0.03);
-                    ctx.setFillStyle(hex(80, 130, 255, Math.round(30 / i)));
-                    ctx.beginPath();
-                    ctx.arc(earthSX, earthSY, gr, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-            }
-        }
-
-        // ── Earth's Moon (at shifted position) ─────────────────────────
-        if (earthSR > 1) {
-            renderMoonsFor(ctx, 2, earthSX, earthSY, scale, w, h);
-        }
-
-        // ── Surface (when globe fills the screen) ──────────────────────
-        if (relR >= 1.0) {
-            renderSurfaceLayer(ctx, w, h);
-        }
-
-        // ── Fade in from black ─────────────────────────────────────────
-        if (time < 2) {
-            ctx.setFillStyle(hex(0, 0, 0, Math.round((1 - time / 2) * 255)));
+    renderCanvas: function(ctx, _pid, w, h) {
+        // In pixel-mode the client never calls update(), so sync from _t.
+        if (Game.state._t !== undefined) time = Game.state._t;
+        if (!Game.state.tour || Game.state.tour.length < 2) {
+            ctx.setFillStyle("#000008");
             ctx.fillRect(0, 0, w, h);
+            return;
         }
+        var cam = currentCamera(Game.state, time);
+        renderScene(ctx, cam, time, w, h);
     },
 
-    statusBar: function(pid) {
-        var pct = Math.min(100, Math.floor(time / T_END * 100));
-        return phaseLabel() + "  [" + pct + "%]";
+    statusBar: function(_pid) {
+        var st = Game.state;
+        if (!st.tour || st.tour.length === 0) return "Voyage";
+        if (st.phase === "orbit") {
+            return "Orbiting " + PLANETS[st.tour[st.tourIdx]].name;
+        }
+        var s = clamp((time - st.phaseStart) / TRAVEL_DURATION, 0, 1);
+        return PLANETS[st.travel.from].name + " → " + PLANETS[st.travel.to].name
+             + "  [" + Math.round(s * 100) + "%]";
     },
 
-    commandBar: function(pid) {
+    commandBar: function(_pid) {
         return "Sit back and enjoy the ride";
     }
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MUSIC — continuous evolution across the journey
-// ═══════════════════════════════════════════════════════════════════════════
-
-function updateMusic() {
-    if (midiCue < 1 && time > 1) {
-        midiCue = 1;
-        midiProgram(0, 89);
-        midiNote(0, 36, 35, 54000);
-        midiNote(0, 48, 30, 54000);
-        midiNote(0, 55, 25, 54000);
-    }
-    if (midiCue < 2 && time > 4) {
-        midiCue = 2;
-        midiProgram(1, 91);
-        midiNote(1, 60, 22, 20000);
-        midiNote(1, 67, 18, 20000);
-    }
-    if (midiCue < 3 && time > 11) {
-        midiCue = 3;
-        midiProgram(2, 90);
-        midiNote(2, 62, 28, 8000);
-        midiNote(2, 69, 24, 8000);
-    }
-    if (midiCue < 4 && time > 18) {
-        midiCue = 4;
-        midiNote(1, 64, 28, 10000);
-        midiNote(1, 72, 24, 10000);
-    }
-    if (midiCue < 5 && time > 24) {
-        midiCue = 5;
-        midiNote(2, 67, 30, 8000);
-        midiNote(2, 71, 26, 8000);
-    }
-    if (midiCue < 6 && time > 32) {
-        midiCue = 6;
-        midiProgram(3, 92);
-        midiNote(3, 48, 45, 10000);
-        midiNote(3, 55, 40, 10000);
-        midiNote(3, 60, 38, 10000);
-    }
-    if (midiCue < 7 && time > T_LAND) {
-        midiCue = 7;
-        midiProgram(4, 47);
-        midiNote(4, 36, 70, 2000);
-        midiNote(4, 41, 55, 1500);
-    }
-    if (midiCue < 8 && time > T_SETTLE + 1) {
-        midiCue = 8;
-        midiProgram(5, 88);
-        midiNote(5, 60, 55, 6000);
-        midiNote(5, 64, 50, 6000);
-        midiNote(5, 67, 50, 6000);
-        midiNote(5, 72, 45, 6000);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function phaseLabel() {
-    if (time < T_FLY)    return "Deep Space";
-    if (time < 8)        return "Neptune Slingshot";
-    if (time < 15)       return "Saturn Flyby";
-    if (time < 22)       return "Jupiter Flyby";
-    if (time < 27)       return "Inner Solar System";
-    if (time < 34)       return "Approaching Earth";
-    if (time < 40)       return "Entering Atmosphere";
-    if (time < T_LAND)   return "Descending to Giza";
-    if (time < T_SETTLE) return "Landing...";
-    return "Voyage Complete";
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ATMOSPHERIC SKY (gradient above the globe's limb)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderAtmosphericSky(ctx, w, globeTop, blend) {
-    if (globeTop < 1) return;
-    var bands = Math.min(16, Math.max(2, Math.round(globeTop / 8)));
-    for (var i = 0; i < bands; i++) {
-        var t  = i / bands;
-        var by = t * globeTop;
-        var bh = globeTop / bands + 1;
-        var sr = lerp(8, 140, t * t);
-        var sg = lerp(15, 130, t);
-        var sb = lerp(55, 185, Math.sqrt(t));
-        if (t > 0.75) {
-            var glow = (t - 0.75) / 0.25;
-            sr = lerp(sr, 200, glow * 0.4);
-            sg = lerp(sg, 170, glow * 0.3);
-            sb = lerp(sb, 130, glow * 0.1);
-        }
-        ctx.setFillStyle(hex(sr, sg, sb, Math.round(blend * 255)));
-        ctx.fillRect(0, by, w, bh);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STARFIELD (parallax background)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderStarfield(ctx, w, h, cx, cy, camX, camY, scale) {
-    for (var i = 0; i < STARS.length; i++) {
-        var s  = STARS[i];
-        var sx = cx + (s.x - camX * s.z * 0.8) * scale * 0.25;
-        var sy = cy + (s.y - camY * s.z * 0.8) * scale * 0.25;
-        if (sx < -2 || sx >= w + 2 || sy < -2 || sy >= h + 2) continue;
-
-        var twk = Math.sin(time * 3 + s.twinkle) * 0.15 + 0.85;
-        var v   = Math.round(s.bright * twk * 255);
-        ctx.setFillStyle(hex(v, v, v));
-        ctx.fillRect(sx, sy, Math.max(1, s.z * 1.2), Math.max(1, s.z * 1.2));
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SPEED LINES (during fast transit)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderSpeedLines(ctx, w, h, cx, cy, flyFrac) {
-    var lineAlpha = Math.sin(flyFrac * Math.PI) * 0.35;
-    if (lineAlpha < 0.01) return;
-    for (var i = 0; i < 30; i++) {
-        var lx  = (hashF(i, 42) * 2 - 1) * w * 0.85 + cx;
-        var ly  = (hashF(i, 73) * 2 - 1) * h * 0.85 + cy;
-        var ll  = 4 + hashF(i, 99) * 14;
-        var dx  = lx - cx;
-        var dy  = ly - cy;
-        var len = Math.sqrt(dx * dx + dy * dy) + 0.001;
-        dx /= len; dy /= len;
-        var a = Math.round(lineAlpha * 140);
-        if (a < 3) continue;
-        ctx.setStrokeStyle(hex(160, 180, 255, a));
-        ctx.setLineWidth(1);
-        ctx.beginPath();
-        ctx.moveTo(lx, ly);
-        ctx.lineTo(lx + dx * ll * (0.5 + flyFrac * 2.5), ly + dy * ll * (0.5 + flyFrac * 2.5));
-        ctx.stroke();
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ORBIT RINGS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderOrbits(ctx, w, h, cx, cy, camX, camY, scale) {
-    for (var i = 0; i < PLANETS.length; i++) {
-        var orbitR = PLANETS[i].orbit * scale;
-        if (orbitR < 2) continue;
-        var ocx = cx - camX * scale;
-        var ocy = cy - camY * scale;
-        if (ocx + orbitR < -50 || ocx - orbitR > w + 50) continue;
-        if (ocy + orbitR < -50 || ocy - orbitR > h + 50) continue;
-        ctx.setStrokeStyle(hex(40, 40, 70, 50));
-        ctx.setLineWidth(1);
-        ctx.beginPath();
-        ctx.arc(ocx, ocy, orbitR, 0, Math.PI * 2);
-        ctx.stroke();
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SUN
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderSun(ctx, w, h, cx, cy, camX, camY, scale) {
-    var sx = cx - camX * scale;
-    var sy = cy - camY * scale;
-    var sr = Math.max(2, SUN_R * scale);
-    if (sx < -sr * 5 || sx > w + sr * 5 || sy < -sr * 5 || sy > h + sr * 5) return;
-
-    for (var i = 5; i >= 1; i--) {
-        ctx.setFillStyle(hex(255, 100, 0, Math.round((6 - i) * 7)));
-        ctx.fillCircle(sx, sy, sr * (1 + i * 0.7));
-    }
-    ctx.setFillStyle("#FFD700");
-    ctx.fillCircle(sx, sy, sr * 0.6);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PLANETS + MOONS (Earth always handled separately by the globe renderer)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderPlanets(ctx, w, h, cx, cy, camX, camY, scale) {
-    for (var i = 0; i < PLANETS.length; i++) {
-        if (i === 2) continue; // Earth rendered by drawGlobe
-        var p     = PLANETS[i];
-        var angle = time * p.spd + p.a0;
-        var pwx   = Math.cos(angle) * p.orbit;
-        var pwy   = Math.sin(angle) * p.orbit;
-        var psx   = cx + (pwx - camX) * scale;
-        var psy   = cy + (pwy - camY) * scale;
-        var pr    = p.r * scale;
-
-        if (pr < 0.4) continue;
-        if (psx < -pr * 4 || psx > w + pr * 4) continue;
-        if (psy < -pr * 4 || psy > h + pr * 4) continue;
-
-        ctx.setFillStyle(p.col + "30");
-        ctx.fillCircle(psx, psy, Math.max(pr * 1.8, 2));
-        ctx.setFillStyle(p.col);
-        ctx.fillCircle(psx, psy, Math.max(pr * 0.65, 1));
-
-        if (p.ring && pr > 2) {
-            ctx.setStrokeStyle("#C8A060C0");
-            ctx.setLineWidth(Math.max(1, pr * 0.12));
-            ctx.beginPath();
-            ctx.arc(psx, psy, pr * 1.7, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-
-        renderMoonsFor(ctx, i, psx, psy, scale, w, h);
-    }
-}
-
-function renderMoonsFor(ctx, planetIdx, parentSX, parentSY, scale, w, h) {
-    for (var j = 0; j < MOONS.length; j++) {
-        var m = MOONS[j];
-        if (m.p !== planetIdx) continue;
-        var ma  = time * m.spd + m.a0;
-        var msx = parentSX + Math.cos(ma) * m.dist * scale;
-        var msy = parentSY + Math.sin(ma) * m.dist * scale;
-        var mr  = m.r * scale;
-        if (mr < 0.4) continue;
-        if (msx < -mr * 3 || msx > w + mr * 3) continue;
-        if (msy < -mr * 3 || msy > h + mr * 3) continue;
-        ctx.setFillStyle(m.col + "30");
-        ctx.fillCircle(msx, msy, Math.max(mr * 1.6, 1.5));
-        ctx.setFillStyle(m.col);
-        ctx.fillCircle(msx, msy, Math.max(mr * 0.6, 0.8));
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// GLOBE RENDERING (detailed Earth — used at ALL zoom levels)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function drawGlobe(ctx, cx, cy, radius, w, h) {
-    if (radius < 4) {
-        ctx.setFillStyle("#4488EE");
-        ctx.fillCircle(cx, cy, radius);
-        return;
-    }
-
-    ctx.setFillStyle("#1A3580");
-    ctx.fillCircle(cx, cy, radius);
-
-    ctx.setFillStyle("#2255AA30");
-    ctx.fillCircle(cx - radius * 0.15, cy - radius * 0.15, radius * 0.75);
-
-    // Adaptive step capped at 6 for quality at high zoom
-    var step = Math.max(1, Math.min(Math.ceil(radius / 55), 6));
-    var r2   = radius * radius;
-    var rotLon = 25;
-
-    var yStart = Math.max(Math.ceil(-radius), Math.ceil(-cy));
-    var yEnd   = Math.min(Math.floor(radius), Math.floor(h - 1 - cy));
-
-    for (var py = yStart; py <= yEnd; py += step) {
-        var rowHalf = Math.sqrt(r2 - py * py);
-        var xStart  = Math.max(Math.ceil(-rowHalf), Math.ceil(-cx));
-        var xEnd    = Math.min(Math.floor(rowHalf), Math.floor(w - 1 - cx));
-
-        for (var px = xStart; px <= xEnd; px += step) {
-            var d2 = px * px + py * py;
-            if (d2 >= r2) continue;
-
-            var nz  = Math.sqrt(1 - d2 / r2);
-            var nx  = px / radius;
-            var ny  = -py / radius;
-            var lat = Math.asin(ny) * 57.2958;
-            var lon = Math.atan2(nx, nz) * 57.2958 + rotLon;
-
-            if (!isLand(lat, lon)) continue;
-
-            var light = clamp(nz * 0.65 + nx * 0.25 + ny * 0.1, 0.18, 1.0);
-
-            var cr, cg, cb;
-            if (lat > 70 || lat < -65) {
-                cr = 230 * light; cg = 240 * light; cb = 250 * light;
-            } else if (lat > 15 && lat < 36 && lon > -10 && lon < 55) {
-                cr = 215 * light; cg = 185 * light; cb = 120 * light;
-            } else if (Math.abs(lat) < 15) {
-                cr = 25 * light; cg = 115 * light; cb = 30 * light;
-            } else {
-                cr = 45 * light; cg = 145 * light; cb = 45 * light;
-            }
-
-            ctx.setFillStyle(hex(cr, cg, cb));
-            ctx.fillRect(cx + px, cy + py, step, step);
-        }
-    }
-
-    ctx.setFillStyle("#FFFFFF30");
-    for (var i = 0; i < 10; i++) {
-        var cla = (Math.sin(i * 1.7 + 0.5) * 50) * 0.01745;
-        var clo = ((i * 40 + time * 1.5) % 360 - 180) * 0.01745;
-        var cnz = Math.cos(cla) * Math.cos(clo);
-        if (cnz < 0.1) continue;
-        var cpx = cx + Math.cos(cla) * Math.sin(clo) * radius;
-        var cpy = cy - Math.sin(cla) * radius;
-        var csz = radius * 0.12 * cnz;
-        ctx.fillCircle(cpx, cpy, csz);
-    }
-}
-
-// ── Continent map ───────────────────────────────────────────────────────
-
-function isLand(lat, lon) {
-    while (lon > 180)  lon -= 360;
-    while (lon < -180) lon += 360;
-
-    var noise = Math.sin(lat * 0.31 + 1.2) * Math.sin(lon * 0.43 + 0.7) * 4;
-
-    if (lat > -36 && lat < 38 && lon > -20 && lon < 55) {
-        var halfW = 24 + noise;
-        if (lat > 28)  halfW = 18 - (lat - 28) * 1.2 + noise;
-        if (lat < -22) halfW = 14 + (lat + 22) * 0.5 + noise;
-        var clon = 22;
-        if (halfW > 3 && Math.abs(lon - clon) < halfW) {
-            if (lat > 31 && lat < 42 && lon > 0 && lon < 32) return false;
-            return true;
-        }
-    }
-    if (lat > 0 && lat < 14 && lon > 38 && lon < 52) return true;
-    if (lat > 37 && lat < 72 && lon > -12 && lon < 42 + noise) {
-        if (lat < 42 && lon < -2) return false;
-        return true;
-    }
-    if (lat > 55 && lat < 72 && lon > 5 && lon < 32) return true;
-    if (lat > 50 && lat < 60 && lon > -10 && lon < 2) return true;
-    if (lat > 12 && lat < 38 && lon > 33 && lon < 60 + noise) {
-        if (lat < 18 && lon > 52) return false;
-        return true;
-    }
-    if (lat > 8 && lat < 35 && lon > 68 && lon < 90) {
-        var iw = clamp((35 - lat) * 0.6 + noise, 0, 20);
-        if (Math.abs(lon - 79) < iw) return true;
-    }
-    if (lat > 20 && lat < 65 && lon > 80 && lon < 135 + noise) return true;
-    if (lat > 60 && lat < 84 && lon > -58 && lon < -12) return true;
-    if (lat > -56 && lat < 14 && lon > -82 && lon < -34) {
-        var sw = 22 + noise - Math.abs(lat + 12) * 0.35;
-        if (sw > 0 && Math.abs(lon + 58) < sw) return true;
-    }
-    if (lat > 25 && lat < 72 && lon > -135 && lon < -55) {
-        var nw = 30 + noise - Math.abs(lat - 48) * 0.45;
-        if (nw > 0 && Math.abs(lon + 95) < nw) return true;
-    }
-    if (lat > -40 && lat < -12 && lon > 113 && lon < 155) return true;
-    if (lat < -68) return true;
-
-    return false;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SURFACE — Descent to the pyramids (takes over when globe fills screen)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderSurfaceLayer(ctx, w, h) {
-    // descentT starts at 38 so the surface horizon matches the globe's
-    // sky position at the handoff point (~25% of screen height).
-    var descentT = smooth(progress(time, 38, T_LAND));
-    var horizonY = lerp(h * 0.25, h * 0.5, descentT);
-
-    // ── Sky ──
-    var skyBands = 16;
-    for (var i = 0; i < skyBands; i++) {
-        var t  = i / skyBands;
-        var by = t * horizonY;
-        var bh = horizonY / skyBands + 1;
-        var sr = lerp(8,   140, t * t);
-        var sg = lerp(15,  130, t);
-        var sb = lerp(55,  185, Math.sqrt(t));
-        if (t > 0.75) {
-            var glow = (t - 0.75) / 0.25;
-            sr = lerp(sr, 200, glow * 0.4);
-            sg = lerp(sg, 170, glow * 0.3);
-            sb = lerp(sb, 130, glow * 0.1);
-        }
-        ctx.setFillStyle(hex(sr, sg, sb));
-        ctx.fillRect(0, by, w, bh);
-    }
-
-    // ── Sun in sky ──
-    var sunX = w * 0.78;
-    var sunY = horizonY * 0.22;
-    var sunR = lerp(8, 18, descentT);
-    for (var i = 4; i >= 1; i--) {
-        ctx.setFillStyle(hex(255, 220, 50, Math.round(25 / i)));
-        ctx.fillCircle(sunX, sunY, sunR * (1 + i * 0.6));
-    }
-    ctx.setFillStyle("#FFEE88");
-    ctx.fillCircle(sunX, sunY, sunR);
-
-    // ── Ground (desert — colors matched to globe's Sahara shading) ──
-    var groundH = h - horizonY;
-    var gBands  = 12;
-    for (var i = 0; i < gBands; i++) {
-        var t  = i / gBands;
-        var gy = horizonY + t * groundH;
-        var gh = groundH / gBands + 1;
-        // Start dark (matching globe's lit Sahara) and lighten toward camera
-        var gr = lerp(145, 215, t);
-        var gg = lerp(125, 180, t);
-        var gb = lerp(80,  115, t);
-        if (t < 0.2) {
-            var haze = 1 - t / 0.2;
-            gr = lerp(gr, 160, haze * 0.4);
-            gg = lerp(gg, 145, haze * 0.4);
-            gb = lerp(gb, 110, haze * 0.4);
-        }
-        ctx.setFillStyle(hex(gr, gg, gb));
-        ctx.fillRect(0, gy, w, gh);
-    }
-
-    // ── Dune ripple lines ──
-    ctx.setStrokeStyle("#BFA87040");
-    ctx.setLineWidth(1);
-    for (var i = 0; i < 8; i++) {
-        var ry  = horizonY + groundH * (0.2 + i * 0.1);
-        var amp = 2 + i * 0.5;
-        ctx.beginPath();
-        for (var x = 0; x <= w; x += 4) {
-            var dy = Math.sin(x * 0.08 + i * 2 + time * 0.3) * amp;
-            if (x === 0) ctx.moveTo(x, ry + dy);
-            else         ctx.lineTo(x, ry + dy);
-        }
-        ctx.stroke();
-    }
-
-    // ── Pyramids ──
-    drawPyramids(ctx, w, h, horizonY, descentT);
-
-    // ── Dust ──
-    if (time > T_LAND - 1) {
-        var dustIntensity = smooth(progress(time, T_LAND - 1, T_LAND + 2));
-        var dustFade      = 1 - smooth(progress(time, T_SETTLE - 2, T_SETTLE + 1));
-        drawDust(ctx, w, h, horizonY + groundH * 0.3, dustIntensity * dustFade);
-        if (dustIntensity > 0.3 && dustFade > 0.2) {
-            var hazeA = Math.sin(dustIntensity * Math.PI) * dustFade * 0.45;
-            ctx.setFillStyle(hex(210, 195, 155, Math.round(hazeA * 180)));
-            ctx.fillRect(0, horizonY, w, h - horizonY);
-        }
-    }
-}
-
-// ── Pyramids of Giza ────────────────────────────────────────────────────
-
-function drawPyramids(ctx, w, h, horizonY, approach) {
-    var groundH = h - horizonY;
-    var pyrs = [
-        { xOff: -0.13, size: 0.88 },
-        { xOff:  0.0,  size: 1.0  },
-        { xOff:  0.16, size: 0.55 },
-    ];
-    var spread = lerp(0.6, 1.0, approach);
-
-    for (var i = 0; i < pyrs.length; i++) {
-        var p   = pyrs[i];
-        var px  = w / 2 + p.xOff * w * spread;
-        var baseScale = lerp(0.4, 1.0, approach);
-        var pyrH = lerp(12, 80, approach) * p.size * baseScale;
-        var pyrW = pyrH * 1.35;
-        var baseY = horizonY + groundH * lerp(0.05, 0.35, approach) * (1 + (1 - p.size) * 0.3);
-
-        ctx.setFillStyle("#7A6545");
-        ctx.beginPath();
-        ctx.moveTo(px, baseY - pyrH);
-        ctx.lineTo(px + pyrW / 2, baseY);
-        ctx.lineTo(px, baseY);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.setFillStyle("#D4B87A");
-        ctx.beginPath();
-        ctx.moveTo(px, baseY - pyrH);
-        ctx.lineTo(px - pyrW / 2, baseY);
-        ctx.lineTo(px, baseY);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.setStrokeStyle("#C8A86090");
-        ctx.setLineWidth(1);
-        ctx.beginPath();
-        ctx.moveTo(px, baseY - pyrH);
-        ctx.lineTo(px, baseY);
-        ctx.stroke();
-
-        if (pyrH > 20) {
-            ctx.setFillStyle("#FFE8B040");
-            ctx.fillCircle(px, baseY - pyrH, 2);
-        }
-    }
-}
-
-// ── Dust particles ──────────────────────────────────────────────────────
-
-function drawDust(ctx, w, h, groundY, intensity) {
-    if (intensity <= 0.01) return;
-    var age0 = time - T_LAND;
-
-    for (var i = 0; i < DUST.length; i++) {
-        var d   = DUST[i];
-        var age = age0 - d.delay;
-        if (age < 0) continue;
-
-        var gravity = 0.25;
-        var dx = d.x * w * 0.35 + d.vx * age * w * 0.08;
-        var dy = d.vy0 * age * h * 0.12 + gravity * age * age * h * 0.04;
-        var sx = w / 2 + dx;
-        var sy = groundY + dy;
-        sy = Math.min(sy, h - 2);
-
-        var alpha = clamp(1 - age / d.life, 0, 1) * intensity;
-        if (alpha < 0.02) continue;
-
-        var shade = d.shade;
-        var cr = lerp(215, 190, shade);
-        var cg = lerp(195, 165, shade);
-        var cb = lerp(155, 120, shade);
-        var ca = Math.round(alpha * 200);
-        ctx.setFillStyle(hex(cr, cg, cb, ca));
-        var sz = d.size * (1 + age * 0.4) * intensity;
-        ctx.fillCircle(sx, sy, sz);
-    }
-}
