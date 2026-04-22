@@ -1,18 +1,18 @@
- File │ Graphics │ Help
+ File │ Graphics │ View │ Help
 ╔════════════════╗════════════════════════════╤════════════════════════════════╗
 ║ Games        ► ║╔══════════════╗           ░│    Unassigned                  ║
 ║ Saves...       ║║ Add...       ║           ░│                                ║
 ║────────────────║║──────────────║           ░│    Team alice                  ║
-║ Themes       ► ║║ cube         ║           ░│    alice                       ║
-║ Plugins      ► ║║ orbits       ║           ░│                                ║
-║ Shaders      ► ║╚══════════════╝           ░│                                ║
-║ Synths       ► ║                           ░│                                ║
-║ Fonts        ► ║                           ░│                                ║
+║ Plugins      ► ║║ cube         ║           ░│    alice                       ║
+║ Synths       ► ║║ orbits       ║           ░│                                ║
+║ Fonts        ► ║╚══════════════╝           ░│                                ║
 ║────────────────║                           ░│                                ║
 ║ Invite       ► ║                           ░│                                ║
 ║────────────────║                           ░│                                ║
 ║ Exit  (Ctrl+Q) ║                           ░│                                ║
 ╚════════════════╝                           ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
 ║                                            ░│                                ║
 ║                                            ░│                                ║
 ║                                            ░│                                ║

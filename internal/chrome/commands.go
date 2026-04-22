@@ -3,6 +3,7 @@ package chrome
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"dev-null/internal/domain"
@@ -150,6 +151,17 @@ func (m *Model) dispatchInput(text string) {
 			m.setGraphicsPref(domain.ModeBlocks)
 			m.setRenderLocal(true)
 			m.persistClientConfig()
+			return
+		// Chat size (interior rows when in-game).
+		case "/chat-size":
+			n, err := strconv.Atoi(arg)
+			if err != nil || n < 5 || n > 10 {
+				m.pluginReply("Usage: /chat-size <5-10>")
+				return
+			}
+			m.chatSize = n
+			m.persistClientConfig()
+			m.invalidateMenuCache()
 			return
 		}
 

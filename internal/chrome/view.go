@@ -261,11 +261,11 @@ func (m *Model) renderLobby(buf *render.ImageBuffer, menus []domain.MenuDef) {
 
 
 func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, game domain.Game, gameName string, phase domain.GamePhase) {
-	// Chat is always exactly 5 rows; the game viewport takes everything else.
+	// Chat takes m.chatSize rows (5..10, configurable via View > Chat size).
 	// Window interior = total - menuBar(1) - statusBar(1) - topBorder(1) - bottomBorder(1) = height - 4
-	// Interior rows: gameView + divider(1) + chat(5) + divider(1) + cmdInput(1) = gameH + 8
+	// Interior rows: gameView + divider(1) + chat(chatSize) + divider(1) + cmdInput(1) = gameH + chatSize + 3
 	interiorH := m.height - 4
-	gameH := interiorH - 8
+	gameH := interiorH - m.chatSize - 3
 	if gameH < 1 {
 		gameH = 1
 	}

@@ -1,11 +1,9 @@
- File │ Graphics │ Help
+ File │ Graphics │ View │ Help
 ╔════════════════╗════════════════════════════╤════════════════════════════════╗
 ║►Games          ║                           ░│    Unassigned                  ║
 ║ Saves...       ║                           ░│                                ║
 ║────────────────║                           ░│    Team alice                  ║
-║ Themes         ║                           ░│    alice                       ║
-║ Plugins        ║                           ░│                                ║
-║ Shaders        ║                           ░│                                ║
+║ Plugins        ║                           ░│    alice                       ║
 ║ Synths         ║                           ░│                                ║
 ║ Fonts          ║                           ░│                                ║
 ║────────────────║                           ░│                                ║
@@ -13,6 +11,8 @@
 ║────────────────║                           ░│                                ║
 ║ Exit  (Ctrl+Q) ║                           ░│                                ║
 ╚════════════════╝                           ░│                                ║
+║                                            ░│                                ║
+║                                            ░│                                ║
 ║                                            ░│                                ║
 ║                                            ░│                                ║
 ║                                            ░│                                ║

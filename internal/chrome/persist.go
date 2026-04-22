@@ -1,6 +1,7 @@
 package chrome
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,18 +33,18 @@ func (m *Model) persistClientConfig() {
 	} else if !m.IsEnhancedClient && m.renderLocalPref {
 		renderPref += "\n/render-local"
 	}
-	persistConfigFile(path, m.themeName, m.synthName, renderPref, m.pluginNames, m.shaderNames)
+	persistConfigFile(path, m.themeName, m.synthName, renderPref, m.chatSize, m.pluginNames, m.shaderNames)
 }
 
 // managedPrefixes are command prefixes managed by persistConfigFile.
 // Lines starting with any of these are stripped and re-generated.
 var managedPrefixes = []string{
-	"/theme-", "/plugin-", "/shader-", "/synth-", "/render-",
+	"/theme-", "/plugin-", "/shader-", "/synth-", "/render-", "/chat-size",
 }
 
 // persistConfigFile rewrites the config file at path: strips managed lines,
 // then prepends a fresh block reflecting the current state.
-func persistConfigFile(path, themeName, synthName, renderPref string, pluginNames, shaderNames []string) {
+func persistConfigFile(path, themeName, synthName, renderPref string, chatSize int, pluginNames, shaderNames []string) {
 	var kept []string
 	if data, err := os.ReadFile(path); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -77,6 +78,9 @@ func persistConfigFile(path, themeName, synthName, renderPref string, pluginName
 	}
 	if renderPref != "" {
 		managed = append(managed, renderPref)
+	}
+	if chatSize != 5 {
+		managed = append(managed, fmt.Sprintf("/chat-size %d", chatSize))
 	}
 	for _, name := range pluginNames {
 		managed = append(managed, "/plugin-load "+name)

@@ -126,6 +126,9 @@ type Model struct {
 	graphicsMode domain.GraphicsMode // effective display mode
 	renderLocal  bool               // effective location
 
+	// Chat size in interior rows when a game is open. Clamped to [5, 10].
+	chatSize int
+
 	// Enhanced client protocol (dev-null-client with canvas/local-render support).
 	IsEnhancedClient bool
 	SessionWriter    io.Writer // direct session writer for OSC passthrough (bypasses renderer)
@@ -299,6 +302,7 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		theme:         theme.Default(),
 		ColorProfile:  colorprofile.TrueColor,
 		graphicsPref: domain.ModeBlocks, // default: prefer Blocks (canvas as Unicode blocks)
+		chatSize:     5,                        // default; overridden by client.txt
 		synthName:     "chiptune",              // default SoundFont; overridden by client.txt
 		overlay:        widget.OverlayState{OpenMenu: -1},
 		lobbyWindow:    lobbyWindow,

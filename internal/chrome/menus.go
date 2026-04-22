@@ -1,6 +1,7 @@
 package chrome
 
 import (
+	"fmt"
 	"strings"
 
 	"dev-null/internal/domain"
@@ -27,9 +28,7 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "&Games", SubItems: m.buildGameSubItems()},
 		{Label: "&Saves...", Handler: func(_ string) { m.pushSavesDialog(0) }},
 		{Label: "---"},
-		{Label: "&Themes", SubItems: m.buildThemeSubItems()},
 		{Label: "&Plugins", SubItems: m.buildPluginSubItems()},
-		{Label: "S&haders", SubItems: m.buildShaderSubItems()},
 		{Label: "S&ynths", SubItems: m.buildSynthSubItems()},
 		{Label: "&Fonts", SubItems: m.buildFontSubItems()},
 		{Label: "---"},
@@ -94,6 +93,14 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		},
 	}
 	menus = append(menus, domain.MenuDef{Label: "&Graphics", Items: graphicsItems})
+
+	// View menu — themes, shaders, chat size.
+	viewItems := []domain.MenuItemDef{
+		{Label: "&Themes", SubItems: m.buildThemeSubItems()},
+		{Label: "&Shaders", SubItems: m.buildShaderSubItems()},
+		{Label: "&Chat size", SubItems: m.buildChatSizeSubItems()},
+	}
+	menus = append(menus, domain.MenuDef{Label: "&View", Items: viewItems})
 
 	if game != nil {
 		menus = append(menus, game.Menus()...)
@@ -236,6 +243,20 @@ func (m *Model) buildFontSubItems() []domain.MenuItemDef {
 		}
 	}
 	return localcmd.BuildFontSubItems(opts)
+}
+
+func (m *Model) buildChatSizeSubItems() []domain.MenuItemDef {
+	items := make([]domain.MenuItemDef, 0, 6)
+	for n := 5; n <= 10; n++ {
+		n := n // capture for closures
+		items = append(items, domain.MenuItemDef{
+			Label:   fmt.Sprintf("&%d rows", n),
+			Toggle:  true,
+			Checked: func() bool { return m.chatSize == n },
+			Handler: func(_ string) { m.dispatchInput(fmt.Sprintf("/chat-size %d", n)) },
+		})
+	}
+	return items
 }
 
 func (m *Model) buildInviteSubItems() []domain.MenuItemDef {
