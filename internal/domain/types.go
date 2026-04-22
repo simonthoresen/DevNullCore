@@ -187,30 +187,29 @@ const (
 	MaxPlayerNameLen = 50
 )
 
-// RenderMode controls how a player's game viewport is rendered.
-type RenderMode int
+// GraphicsMode controls how a player's game viewport is displayed.
+// Orthogonal to render location (local vs remote), which is a separate bool.
+type GraphicsMode int
 
 const (
-	// RenderModeAscii renders using the game's text-based renderAscii() function only.
-	// Always available for any game.
-	RenderModeAscii RenderMode = iota
-	// RenderModeBlocks converts canvas output to Unicode quadrant block characters
-	// (2x2 pixels per terminal cell). Requires the game to define renderCanvas.
-	RenderModeBlocks
-	// RenderModePixels renders canvas locally on the client from game JS + state.
-	// Client renders at its own window resolution. Requires enhanced client and
-	// a game with renderCanvas.
-	RenderModePixels
+	// ModeAscii renders using the game's text-based renderAscii() function.
+	ModeAscii GraphicsMode = iota
+	// ModeBlocks converts canvas output to Unicode quadrant block characters
+	// (2×2 pixels per terminal cell). Requires renderCanvas.
+	ModeBlocks
+	// ModePixels renders the canvas at full window pixel resolution.
+	// Always local (client-side). Requires enhanced client + renderCanvas.
+	ModePixels
 )
 
 // Label returns a human-readable name for the mode.
-func (m RenderMode) Label() string {
+func (m GraphicsMode) Label() string {
 	switch m {
-	case RenderModeAscii:
+	case ModeAscii:
 		return "Ascii"
-	case RenderModeBlocks:
+	case ModeBlocks:
 		return "Blocks"
-	case RenderModePixels:
+	case ModePixels:
 		return "Pixels"
 	default:
 		return "Unknown"

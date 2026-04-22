@@ -51,6 +51,10 @@ func (a *Server) programHandler(sess ssh.Session) *tea.Program {
 		if e == "DEV_NULL_CLIENT=enhanced" {
 			model.IsEnhancedClient = true
 			model.SessionWriter = sess
+			// Default for GUI clients: render locally (client-side).
+			// SSH clients default to remote. Explicit /render-local or /render-remote
+			// in client.txt overrides this via InitCommands dispatched later.
+			model.SetDefaultRenderLocal(true)
 		}
 	}
 

@@ -57,26 +57,40 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
 
 	// Graphics menu — always visible; shows current preference as radio toggles.
-	// Pixels is disabled for SSH (non-enhanced) clients since they can't render locally.
+	// Pixels requires the enhanced GUI client.
 	graphicsItems := []domain.MenuItemDef{
 		{
 			Label:   "&Ascii",
 			Toggle:  true,
-			Checked: func() bool { return m.graphicsPref == domain.RenderModeAscii },
+			Checked: func() bool { return m.graphicsPref == domain.ModeAscii },
 			Handler: func(_ string) { m.dispatchInput("/render-ascii") },
 		},
 		{
 			Label:   "&Blocks",
 			Toggle:  true,
-			Checked: func() bool { return m.graphicsPref == domain.RenderModeBlocks },
+			Checked: func() bool { return m.graphicsPref == domain.ModeBlocks },
 			Handler: func(_ string) { m.dispatchInput("/render-blocks") },
 		},
 		{
 			Label:    "&Pixels",
 			Toggle:   true,
 			Disabled: !m.IsEnhancedClient,
-			Checked:  func() bool { return m.graphicsPref == domain.RenderModePixels },
+			Checked:  func() bool { return m.graphicsPref == domain.ModePixels },
 			Handler:  func(_ string) { m.dispatchInput("/render-pixels") },
+		},
+		{Label: "---"}, // separator
+		{
+			Label:    "Render &locally",
+			Toggle:   true,
+			Disabled: !m.IsEnhancedClient,
+			Checked:  func() bool { return m.renderLocalPref },
+			Handler: func(_ string) {
+				if m.renderLocalPref {
+					m.dispatchInput("/render-remote")
+				} else {
+					m.dispatchInput("/render-local")
+				}
+			},
 		},
 	}
 	menus = append(menus, domain.MenuDef{Label: "&Graphics", Items: graphicsItems})

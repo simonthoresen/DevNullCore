@@ -17,14 +17,20 @@ func (m *Model) persistClientConfig() {
 		return
 	}
 	path := filepath.Join(home, ".dev-null", "client.txt")
-	// Serialize the graphics preference as a command.
-	// RenderModeBlocks (Blocks) is the default — omit it so new sessions get it naturally.
+	// Serialize the graphics mode as a command. Blocks is default — omit it.
 	var renderPref string
 	switch m.graphicsPref {
-	case domain.RenderModeAscii:
+	case domain.ModeAscii:
 		renderPref = "/render-ascii"
-	case domain.RenderModePixels:
+	case domain.ModePixels:
 		renderPref = "/render-pixels"
+	}
+	// Serialize the render location. Default depends on client type:
+	// GUI = local, SSH = remote. Persist only non-default.
+	if m.IsEnhancedClient && !m.renderLocalPref {
+		renderPref += "\n/render-remote"
+	} else if !m.IsEnhancedClient && m.renderLocalPref {
+		renderPref += "\n/render-local"
 	}
 	persistConfigFile(path, m.themeName, m.synthName, renderPref, m.pluginNames, m.shaderNames)
 }

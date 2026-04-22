@@ -123,17 +123,32 @@ func (m *Model) dispatchInput(text string) {
 			}
 			m.handleSynthLoad(arg)
 			return
-		// Graphics preference commands.
+		// Graphics mode commands.
 		case "/render-ascii":
-			m.setGraphicsPref(domain.RenderModeAscii)
+			m.setGraphicsPref(domain.ModeAscii)
 			m.persistClientConfig()
 			return
 		case "/render-blocks":
-			m.setGraphicsPref(domain.RenderModeBlocks)
+			m.setGraphicsPref(domain.ModeBlocks)
 			m.persistClientConfig()
 			return
 		case "/render-pixels":
-			m.setGraphicsPref(domain.RenderModePixels)
+			m.setGraphicsPref(domain.ModePixels)
+			m.persistClientConfig()
+			return
+		// Render location commands.
+		case "/render-local":
+			m.setRenderLocal(true)
+			m.persistClientConfig()
+			return
+		case "/render-remote":
+			m.setRenderLocal(false)
+			m.persistClientConfig()
+			return
+		// Legacy alias (from older client.txt files).
+		case "/render-blocks-local":
+			m.setGraphicsPref(domain.ModeBlocks)
+			m.setRenderLocal(true)
 			m.persistClientConfig()
 			return
 		}

@@ -421,11 +421,26 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 	vw := r.grid.ViewportW
 	vh := r.grid.ViewportH
 
-	// Local canvas rendering: only when the server has local mode enabled
-	// (r.renderMode == "local") and we have game JS + state loaded.
-	// Render at the actual display pixel dimensions to avoid aspect distortion
-	// (terminal cells are non-square: CellW != CellH).
-	if r.renderMode == "local" && vw > 0 && vh > 0 && r.localRenderer.IsLoaded() && r.localRenderer.HasCanvas() && r.gameStateJSON != nil {
+	canReaderLocal := vw > 0 && vh > 0 && r.localRenderer.IsLoaded() && r.localRenderer.HasCanvas() && r.gameStateJSON != nil
+
+	// Blocks-local mode: render canvas locally and convert to quadrant block
+	// characters, writing them into the cell buffer so they composite with
+	// menus/dialogs exactly like server-rendered blocks.
+	if r.renderMode == "blocks-local" && canReaderLocal {
+		img := r.localRenderer.RenderCanvasImage(r.playerID, vw*2, vh*4)
+		if img != nil {
+			buf := r.grid.ToImageBuffer()
+			render.ImageToQuadrants(img, buf, vx, vy, vw, vh)
+			r.drawImageBuffer(screen, buf, nil)
+			if r.grid.CursorVisible {
+				r.drawCursor(screen)
+			}
+			return
+		}
+	}
+
+	// Pixels mode: render canvas locally at full display pixel resolution.
+	if r.renderMode == "local" && canReaderLocal {
 		r.localCanvas = r.localRenderer.RenderCanvas(r.playerID, vw*cellW(), vh*cellH())
 	} else {
 		r.localCanvas = nil

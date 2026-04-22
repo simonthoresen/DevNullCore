@@ -585,6 +585,18 @@ renderAscii: function(buf, playerID, ox, oy, width, height) {
 
 **ANSI escape codes** still work in `statusBar()` and `commandBar()` output.
 
+**Pixel mode and `Game.state`.** In Pixels render mode, the GUI client re-executes your game JS locally and calls `renderCanvas()` each frame — but never calls `update()`. Any mutable state your renderer needs must be on `Game.state` so the server can send it to the client each tick. The engine automatically injects `Game.state._t` (cumulative elapsed seconds since `begin()`), so canvas games can always read the current time:
+
+```js
+renderCanvas: function(ctx, pid, w, h) {
+    // _t is available in both server and pixel-mode client
+    if (Game.state && Game.state._t !== undefined) time = Game.state._t;
+    // ... render using time ...
+}
+```
+
+If your game needs additional state for rendering (player positions, scores, etc.), set them on `Game.state` in `update()` and read them back in `renderCanvas()`. Module-level variables are only updated on the server — they stay at their initial values on the pixel-mode client.
+
 ---
 
 ## Sharing your game

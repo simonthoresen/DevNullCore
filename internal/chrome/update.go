@@ -140,7 +140,7 @@ func (m *Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.gameSrcSent = false
 	// Apply the stored graphics preference, degrading gracefully if the preferred
 	// mode is not available (e.g. Pixels preference on SSH → Blocks).
-	m.renderMode = m.effectiveMode(m.graphicsPref)
+	m.applyGraphicsPrefs()
 	m.assetsSent = false
 	m.pendingSoundOSC = nil
 	m.pendingMidiOSC = nil

@@ -2,7 +2,7 @@
 // One unified scene: solar system with sun, planets, moons, Earth with
 // continents, and the pyramids at Giza. A single camera flies an exciting
 // path — starting near Neptune, slingshotting around it, sweeping past
-// Saturn and Jupiter, then diving into Earth's atmosphere and landing.
+// Saturn and Jupiter, then diving into Earth and landing at the pyramids.
 //
 // Load with: /game load voyage
 //
@@ -105,8 +105,6 @@ var MOONS = [
     { p: 5, dist: 10, r: 1.8, col: "#D8C080", spd: 1.0,  a0: 2.0 },  // Titan
 ];
 
-var SCROLL_TEXT = "VOYAGE  ///  A DEV-NULL DEMO  ///  GREETINGS TO ALL PLAYERS AND CODERS  ///  FROM THE DEPTHS OF SPACE TO THE SANDS OF EGYPT  ///  THE JOURNEY IS THE DESTINATION  ///  2026  ///  ";
-
 // ═══════════════════════════════════════════════════════════════════════════
 // CAMERA PATH — Catmull-Rom spline through waypoints
 // ═══════════════════════════════════════════════════════════════════════════
@@ -125,16 +123,13 @@ function buildCameraPath() {
     // ── Neptune slingshot ───────────────────────────────────────────────
     var nep = planetPos(7, 2);
     var nLen = Math.sqrt(nep.x*nep.x + nep.y*nep.y);
-    var nd = { x: nep.x/nLen, y: nep.y/nLen };     // radial (out from sun)
-    var np = { x: -nd.y, y: nd.x };                 // perpendicular
+    var nd = { x: nep.x/nLen, y: nep.y/nLen };
+    var np = { x: -nd.y, y: nd.x };
 
-    // Start: outside Neptune, offset sideways
     camPath.push({ t: 0,  x: nep.x + nd.x*120 + np.x*80,
                           y: nep.y + nd.y*120 + np.y*80, zoom: 0.30 });
-    // Close approach
     camPath.push({ t: 4,  x: nep.x + np.x*20,
                           y: nep.y + np.y*20,             zoom: 2.0  });
-    // Slung around, heading inward
     camPath.push({ t: 7,  x: nep.x - nd.x*60 - np.x*80,
                           y: nep.y - nd.y*60 - np.y*80,  zoom: 0.50 });
 
@@ -170,7 +165,6 @@ function buildCameraPath() {
     camPath.push({ t: 27, x: e27.x * 1.3, y: e27.y * 1.3, zoom: 3.0  });
     var e29 = planetPos(2, 29);
     camPath.push({ t: 29, x: e29.x,       y: e29.y,        zoom: 5.0  });
-    // Phantom point (for Catmull-Rom tangent beyond last real waypoint)
     var e31 = planetPos(2, 31);
     camPath.push({ t: 31, x: e31.x,       y: e31.y,        zoom: 10.0 });
 }
@@ -207,7 +201,6 @@ function getPathState(t) {
 }
 
 function getCameraState(t) {
-    // After Earth approach: lock onto Earth with exponential zoom
     if (t >= 30) {
         var earth = planetPos(2, t);
         var zoomT = smooth(progress(t, 29, T_LAND));
@@ -217,7 +210,6 @@ function getCameraState(t) {
 
     var ps = getPathState(t);
 
-    // Blend from path to Earth tracking (t=27 → 30)
     if (t > 27) {
         var bt    = smooth(progress(t, 27, 30));
         var earth = planetPos(2, t);
@@ -268,6 +260,12 @@ var Game = {
 
     // ── Single unified renderer ─────────────────────────────────────────
     renderCanvas: function(ctx, pid, w, h) {
+        // In pixel mode the client never calls update(), so sync time from
+        // Game.state._t which the engine injects automatically each frame.
+        if (Game.state && Game.state._t !== undefined) time = Game.state._t;
+        // Lazy-build camera path (client doesn't call begin())
+        if (camPath.length === 0) buildCameraPath();
+
         ctx.setFillStyle("#000011");
         ctx.fillRect(0, 0, w, h);
 
@@ -276,7 +274,7 @@ var Game = {
         var cx    = w / 2;
         var cy    = h / 2;
 
-        // Earth's projected state (used for globe/surface decisions)
+        // Earth's projected state
         var earthA   = time * PLANETS[2].spd + PLANETS[2].a0;
         var earthWX  = Math.cos(earthA) * PLANETS[2].orbit;
         var earthWY  = Math.sin(earthA) * PLANETS[2].orbit;
@@ -284,7 +282,24 @@ var Game = {
         var earthSY  = cy + (earthWY - cam.y) * scale;
         var earthSR  = PLANETS[2].r * scale;
         var relR     = earthSR / w;
-        var useGlobe = earthSR > 8;
+
+        // ── Globe shift: push center down to reveal sky above the limb ──
+        // As relR grows past 0.5, the globe gradually moves down so that
+        // its top edge descends into the screen, creating a visible sky
+        // band above it. By relR=1.0 the sky occupies the top ~25%.
+        if (relR > 0.5) {
+            var shiftT = smooth(clamp((relR - 0.5) / 0.5, 0, 1));
+            earthSY = lerp(earthSY, earthSR + h * 0.25, shiftT);
+        }
+
+        // ── Atmospheric sky (behind the globe) ─────────────────────────
+        // Rendered before the globe so the globe covers the ground portion.
+        // Visible as a crescent above the globe's shifted top edge.
+        if (relR > 0.5) {
+            var globeTop = earthSY - earthSR;
+            var skyFade = smooth(clamp((relR - 0.5) / 0.3, 0, 1));
+            renderAtmosphericSky(ctx, w, globeTop, skyFade);
+        }
 
         // ── Stars ───────────────────────────────────────────────────────
         renderStarfield(ctx, w, h, cx, cy, cam.x, cam.y, scale);
@@ -301,14 +316,14 @@ var Game = {
         // ── Sun ────────────────────────────────────────────────────────
         renderSun(ctx, w, h, cx, cy, cam.x, cam.y, scale);
 
-        // ── Planets + moons ────────────────────────────────────────────
-        renderPlanets(ctx, w, h, cx, cy, cam.x, cam.y, scale, useGlobe);
+        // ── Planets + moons (Earth always handled separately) ──────────
+        renderPlanets(ctx, w, h, cx, cy, cam.x, cam.y, scale);
 
-        // ── Detailed Earth globe (replaces simple circle when close) ───
-        if (useGlobe && relR < 1.05) {
+        // ── Earth: always as detailed globe ────────────────────────────
+        if (earthSR > 0.5 && relR < 1.0) {
             drawGlobe(ctx, earthSX, earthSY, earthSR, w, h);
             // Atmosphere rim glow
-            if (earthSR > 20 && relR < 0.7) {
+            if (earthSR > 10 && relR < 0.7) {
                 for (var i = 3; i >= 1; i--) {
                     var gr = earthSR + i * Math.max(2, earthSR * 0.03);
                     ctx.setFillStyle(hex(80, 130, 255, Math.round(30 / i)));
@@ -319,23 +334,15 @@ var Game = {
             }
         }
 
-        // ── Atmospheric entry glow ─────────────────────────────────────
-        if (relR > 0.6 && relR < 1.5) {
-            var entryT = clamp((relR - 0.6) / 0.9, 0, 1);
-            var glow = Math.sin(entryT * Math.PI);
-            if (glow > 0.01) {
-                ctx.setFillStyle(hex(220, 160, 80, Math.round(glow * 250)));
-                ctx.fillRect(0, 0, w, h);
-            }
+        // ── Earth's Moon (at shifted position) ─────────────────────────
+        if (earthSR > 1) {
+            renderMoonsFor(ctx, 2, earthSX, earthSY, scale, w, h);
         }
 
         // ── Surface (when globe fills the screen) ──────────────────────
-        if (relR > 1.05) {
+        if (relR >= 1.0) {
             renderSurfaceLayer(ctx, w, h);
         }
-
-        // ── Copper bar ─────────────────────────────────────────────────
-        renderCopperBar(ctx, w, h);
 
         // ── Fade in from black ─────────────────────────────────────────
         if (time < 2) {
@@ -361,53 +368,53 @@ var Game = {
 function updateMusic() {
     if (midiCue < 1 && time > 1) {
         midiCue = 1;
-        midiProgram(0, 89);           // Pad 2 (Warm)
-        midiNote(0, 36, 35, 54000);   // C2 — deep drone (plays whole demo)
-        midiNote(0, 48, 30, 54000);   // C3
-        midiNote(0, 55, 25, 54000);   // G3
+        midiProgram(0, 89);
+        midiNote(0, 36, 35, 54000);
+        midiNote(0, 48, 30, 54000);
+        midiNote(0, 55, 25, 54000);
     }
     if (midiCue < 2 && time > 4) {
         midiCue = 2;
-        midiProgram(1, 91);           // Pad 4 (Choir)
-        midiNote(1, 60, 22, 20000);   // C4 — Neptune slingshot swell
-        midiNote(1, 67, 18, 20000);   // G4
+        midiProgram(1, 91);
+        midiNote(1, 60, 22, 20000);
+        midiNote(1, 67, 18, 20000);
     }
     if (midiCue < 3 && time > 11) {
         midiCue = 3;
-        midiProgram(2, 90);           // Pad 3 (Polysynth)
-        midiNote(2, 62, 28, 8000);    // D4 — Saturn shimmer
-        midiNote(2, 69, 24, 8000);    // A4
+        midiProgram(2, 90);
+        midiNote(2, 62, 28, 8000);
+        midiNote(2, 69, 24, 8000);
     }
     if (midiCue < 4 && time > 18) {
         midiCue = 4;
-        midiNote(1, 64, 28, 10000);   // E4 — Jupiter grandeur
-        midiNote(1, 72, 24, 10000);   // C5
+        midiNote(1, 64, 28, 10000);
+        midiNote(1, 72, 24, 10000);
     }
     if (midiCue < 5 && time > 24) {
         midiCue = 5;
-        midiNote(2, 67, 30, 8000);    // G4 — crossing inner system
-        midiNote(2, 71, 26, 8000);    // B4 — tension builds
+        midiNote(2, 67, 30, 8000);
+        midiNote(2, 71, 26, 8000);
     }
     if (midiCue < 6 && time > 32) {
         midiCue = 6;
-        midiProgram(3, 92);           // Pad 5 (Bowed)
-        midiNote(3, 48, 45, 10000);   // C3 — Earth approach dramatic
-        midiNote(3, 55, 40, 10000);   // G3
-        midiNote(3, 60, 38, 10000);   // C4
+        midiProgram(3, 92);
+        midiNote(3, 48, 45, 10000);
+        midiNote(3, 55, 40, 10000);
+        midiNote(3, 60, 38, 10000);
     }
     if (midiCue < 7 && time > T_LAND) {
         midiCue = 7;
-        midiProgram(4, 47);           // Timpani
-        midiNote(4, 36, 70, 2000);    // C2 — landing impact
-        midiNote(4, 41, 55, 1500);    // F2
+        midiProgram(4, 47);
+        midiNote(4, 36, 70, 2000);
+        midiNote(4, 41, 55, 1500);
     }
     if (midiCue < 8 && time > T_SETTLE + 1) {
         midiCue = 8;
-        midiProgram(5, 88);           // Pad 1 (New Age)
-        midiNote(5, 60, 55, 6000);    // C4 — resolution
-        midiNote(5, 64, 50, 6000);    // E4
-        midiNote(5, 67, 50, 6000);    // G4
-        midiNote(5, 72, 45, 6000);    // C5
+        midiProgram(5, 88);
+        midiNote(5, 60, 55, 6000);
+        midiNote(5, 64, 50, 6000);
+        midiNote(5, 67, 50, 6000);
+        midiNote(5, 72, 45, 6000);
     }
 }
 
@@ -426,6 +433,31 @@ function phaseLabel() {
     if (time < T_LAND)   return "Descending to Giza";
     if (time < T_SETTLE) return "Landing...";
     return "Voyage Complete";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ATMOSPHERIC SKY (gradient above the globe's limb)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderAtmosphericSky(ctx, w, globeTop, blend) {
+    if (globeTop < 1) return;
+    var bands = Math.min(16, Math.max(2, Math.round(globeTop / 8)));
+    for (var i = 0; i < bands; i++) {
+        var t  = i / bands;
+        var by = t * globeTop;
+        var bh = globeTop / bands + 1;
+        var sr = lerp(8, 140, t * t);
+        var sg = lerp(15, 130, t);
+        var sb = lerp(55, 185, Math.sqrt(t));
+        if (t > 0.75) {
+            var glow = (t - 0.75) / 0.25;
+            sr = lerp(sr, 200, glow * 0.4);
+            sg = lerp(sg, 170, glow * 0.3);
+            sb = lerp(sb, 130, glow * 0.1);
+        }
+        ctx.setFillStyle(hex(sr, sg, sb, Math.round(blend * 255)));
+        ctx.fillRect(0, by, w, bh);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -511,11 +543,12 @@ function renderSun(ctx, w, h, cx, cy, camX, camY, scale) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PLANETS + MOONS (Earth skipped when globe renderer takes over)
+// PLANETS + MOONS (Earth always handled separately by the globe renderer)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function renderPlanets(ctx, w, h, cx, cy, camX, camY, scale, skipEarth) {
+function renderPlanets(ctx, w, h, cx, cy, camX, camY, scale) {
     for (var i = 0; i < PLANETS.length; i++) {
+        if (i === 2) continue; // Earth rendered by drawGlobe
         var p     = PLANETS[i];
         var angle = time * p.spd + p.a0;
         var pwx   = Math.cos(angle) * p.orbit;
@@ -524,25 +557,15 @@ function renderPlanets(ctx, w, h, cx, cy, camX, camY, scale, skipEarth) {
         var psy   = cy + (pwy - camY) * scale;
         var pr    = p.r * scale;
 
-        // Skip tiny or off-screen
         if (pr < 0.4) continue;
         if (psx < -pr * 4 || psx > w + pr * 4) continue;
         if (psy < -pr * 4 || psy > h + pr * 4) continue;
 
-        // Earth: skip when globe renderer handles it
-        if (i === 2 && skipEarth) {
-            renderMoonsFor(ctx, i, psx, psy, scale, w, h);
-            continue;
-        }
-
-        // Glow
         ctx.setFillStyle(p.col + "30");
         ctx.fillCircle(psx, psy, Math.max(pr * 1.8, 2));
-        // Body
         ctx.setFillStyle(p.col);
         ctx.fillCircle(psx, psy, Math.max(pr * 0.65, 1));
 
-        // Saturn ring
         if (p.ring && pr > 2) {
             ctx.setStrokeStyle("#C8A060C0");
             ctx.setLineWidth(Math.max(1, pr * 0.12));
@@ -551,7 +574,6 @@ function renderPlanets(ctx, w, h, cx, cy, camX, camY, scale, skipEarth) {
             ctx.stroke();
         }
 
-        // Moons
         renderMoonsFor(ctx, i, psx, psy, scale, w, h);
     }
 }
@@ -575,7 +597,7 @@ function renderMoonsFor(ctx, planetIdx, parentSX, parentSY, scale, w, h) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GLOBE RENDERING (detailed Earth)
+// GLOBE RENDERING (detailed Earth — used at ALL zoom levels)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function drawGlobe(ctx, cx, cy, radius, w, h) {
@@ -591,7 +613,8 @@ function drawGlobe(ctx, cx, cy, radius, w, h) {
     ctx.setFillStyle("#2255AA30");
     ctx.fillCircle(cx - radius * 0.15, cy - radius * 0.15, radius * 0.75);
 
-    var step = Math.max(1, Math.ceil(radius / 55));
+    // Adaptive step capped at 6 for quality at high zoom
+    var step = Math.max(1, Math.min(Math.ceil(radius / 55), 6));
     var r2   = radius * radius;
     var rotLon = 25;
 
@@ -696,14 +719,14 @@ function isLand(lat, lon) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SURFACE — Descent to the pyramids
+// SURFACE — Descent to the pyramids (takes over when globe fills screen)
 // ═══════════════════════════════════════════════════════════════════════════
 
 function renderSurfaceLayer(ctx, w, h) {
-    var barH     = Math.max(3, Math.round(h * 0.05));
-    var usableH  = h - barH;
-    var descentT = smooth(progress(time, 35, T_LAND));
-    var horizonY = lerp(usableH * 0.3, usableH * 0.5, descentT);
+    // descentT starts at 38 so the surface horizon matches the globe's
+    // sky position at the handoff point (~25% of screen height).
+    var descentT = smooth(progress(time, 38, T_LAND));
+    var horizonY = lerp(h * 0.25, h * 0.5, descentT);
 
     // ── Sky ──
     var skyBands = 16;
@@ -711,14 +734,14 @@ function renderSurfaceLayer(ctx, w, h) {
         var t  = i / skyBands;
         var by = t * horizonY;
         var bh = horizonY / skyBands + 1;
-        var sr = lerp(8,   160, t * t);
-        var sg = lerp(12,  140, t);
-        var sb = lerp(50,  200, Math.sqrt(t));
+        var sr = lerp(8,   140, t * t);
+        var sg = lerp(15,  130, t);
+        var sb = lerp(55,  185, Math.sqrt(t));
         if (t > 0.75) {
             var glow = (t - 0.75) / 0.25;
-            sr = lerp(sr, 240, glow * 0.55);
-            sg = lerp(sg, 190, glow * 0.35);
-            sb = lerp(sb, 140, glow * 0.15);
+            sr = lerp(sr, 200, glow * 0.4);
+            sg = lerp(sg, 170, glow * 0.3);
+            sb = lerp(sb, 130, glow * 0.1);
         }
         ctx.setFillStyle(hex(sr, sg, sb));
         ctx.fillRect(0, by, w, bh);
@@ -735,21 +758,22 @@ function renderSurfaceLayer(ctx, w, h) {
     ctx.setFillStyle("#FFEE88");
     ctx.fillCircle(sunX, sunY, sunR);
 
-    // ── Ground (desert) ──
-    var groundH = usableH - horizonY;
+    // ── Ground (desert — colors matched to globe's Sahara shading) ──
+    var groundH = h - horizonY;
     var gBands  = 12;
     for (var i = 0; i < gBands; i++) {
         var t  = i / gBands;
         var gy = horizonY + t * groundH;
         var gh = groundH / gBands + 1;
-        var gr = lerp(205, 215, t);
-        var gg = lerp(190, 175, t);
-        var gb = lerp(165, 110, t);
-        if (t < 0.25) {
-            var haze = 1 - t / 0.25;
-            gr = lerp(gr, 195, haze * 0.5);
-            gg = lerp(gg, 185, haze * 0.5);
-            gb = lerp(gb, 175, haze * 0.5);
+        // Start dark (matching globe's lit Sahara) and lighten toward camera
+        var gr = lerp(145, 215, t);
+        var gg = lerp(125, 180, t);
+        var gb = lerp(80,  115, t);
+        if (t < 0.2) {
+            var haze = 1 - t / 0.2;
+            gr = lerp(gr, 160, haze * 0.4);
+            gg = lerp(gg, 145, haze * 0.4);
+            gb = lerp(gb, 110, haze * 0.4);
         }
         ctx.setFillStyle(hex(gr, gg, gb));
         ctx.fillRect(0, gy, w, gh);
@@ -771,25 +795,18 @@ function renderSurfaceLayer(ctx, w, h) {
     }
 
     // ── Pyramids ──
-    drawPyramids(ctx, w, usableH, horizonY, descentT);
+    drawPyramids(ctx, w, h, horizonY, descentT);
 
     // ── Dust ──
     if (time > T_LAND - 1) {
         var dustIntensity = smooth(progress(time, T_LAND - 1, T_LAND + 2));
         var dustFade      = 1 - smooth(progress(time, T_SETTLE - 2, T_SETTLE + 1));
-        drawDust(ctx, w, usableH, horizonY + groundH * 0.3, dustIntensity * dustFade);
+        drawDust(ctx, w, h, horizonY + groundH * 0.3, dustIntensity * dustFade);
         if (dustIntensity > 0.3 && dustFade > 0.2) {
             var hazeA = Math.sin(dustIntensity * Math.PI) * dustFade * 0.45;
             ctx.setFillStyle(hex(210, 195, 155, Math.round(hazeA * 180)));
-            ctx.fillRect(0, horizonY, w, usableH - horizonY);
+            ctx.fillRect(0, horizonY, w, h - horizonY);
         }
-    }
-
-    // ── "VOYAGE COMPLETE" ──
-    if (time > T_SETTLE + 1) {
-        var textAlpha = smooth(progress(time, T_SETTLE + 1, T_SETTLE + 3));
-        ctx.setFillStyle(hex(255, 255, 255, Math.round(textAlpha * 240)));
-        ctx.fillText("V O Y A G E   C O M P L E T E", w / 2 - 60, horizonY * 0.4);
     }
 }
 
@@ -872,29 +889,4 @@ function drawDust(ctx, w, h, groundY, intensity) {
         var sz = d.size * (1 + age * 0.4) * intensity;
         ctx.fillCircle(sx, sy, sz);
     }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// COPPER BAR (Amiga demo homage)
-// ═══════════════════════════════════════════════════════════════════════════
-
-function renderCopperBar(ctx, w, h) {
-    var barH = Math.max(3, Math.round(h * 0.05));
-    var barY = h - barH;
-
-    for (var i = 0; i < barH; i++) {
-        var t    = Math.sin(i / (barH - 1 || 1) * Math.PI);
-        var wave = Math.sin(time * 2.5 + i * 0.4) * 0.15;
-        var cr   = lerp(15,  100, t + wave);
-        var cg   = lerp(8,   50,  t);
-        var cb   = lerp(50,  190, t + wave * 0.5);
-        ctx.setFillStyle(hex(cr, cg, cb));
-        ctx.fillRect(0, barY + i, w, 1);
-    }
-
-    var charW   = Math.max(4, Math.round(w / 50));
-    var totalW  = SCROLL_TEXT.length * charW;
-    var scrollX = w - ((time * 55) % (totalW + w));
-    ctx.setFillStyle("#FFFFFFD0");
-    ctx.fillText(SCROLL_TEXT, scrollX, barY + barH - 1);
 }

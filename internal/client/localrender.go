@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"image"
 	"log"
 	"sync"
 
@@ -165,10 +166,8 @@ func (lr *LocalRenderer) RenderCells(playerID string, width, height int) *render
 	return buf
 }
 
-// RenderCanvas calls Game.renderCanvas() locally and returns an Ebitengine image.
-func (lr *LocalRenderer) RenderCanvas(playerID string, pixelW, pixelH int) *ebiten.Image {
-	lr.mu.Lock()
-	defer lr.mu.Unlock()
+// renderCanvasRaw calls Game.renderCanvas() locally and returns the raw RGBA image.
+func (lr *LocalRenderer) renderCanvasRaw(playerID string, pixelW, pixelH int) *image.RGBA {
 	if !lr.loaded || lr.canvasFn == nil {
 		return nil
 	}
@@ -189,7 +188,26 @@ func (lr *LocalRenderer) RenderCanvas(playerID string, pixelW, pixelH int) *ebit
 			lr.vm.ToValue(pixelH))
 	}()
 
-	return ebiten.NewImageFromImage(canvas.ToRGBA())
+	return canvas.ToRGBA()
+}
+
+// RenderCanvas calls Game.renderCanvas() locally and returns an Ebitengine image.
+func (lr *LocalRenderer) RenderCanvas(playerID string, pixelW, pixelH int) *ebiten.Image {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	img := lr.renderCanvasRaw(playerID, pixelW, pixelH)
+	if img == nil {
+		return nil
+	}
+	return ebiten.NewImageFromImage(img)
+}
+
+// RenderCanvasImage calls Game.renderCanvas() locally and returns a raw RGBA image
+// (for quadrant block conversion in blocks-local mode).
+func (lr *LocalRenderer) RenderCanvasImage(playerID string, pixelW, pixelH int) *image.RGBA {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	return lr.renderCanvasRaw(playerID, pixelW, pixelH)
 }
 
 // newLocalJSBuffer creates a JS-friendly buffer wrapper (same API as server-side).

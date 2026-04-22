@@ -177,25 +177,31 @@ Other mutexes (`programsMu`, `sessionsMu`, `consoleProgramMu`, `commandRegistry.
 
 ## Rendering Model
 
-Game rendering is controlled by the player's graphics preference (Ascii/Blocks/Pixels), set via the always-visible Graphics menu. The effective mode degrades gracefully based on connection type and game capability:
+Game rendering has two orthogonal settings, both controlled via the always-visible Graphics menu:
 
-| Preference | Connection | Game type | Effective mode |
-|---|---|---|---|
-| Ascii | any | any | Ascii (game's `renderAscii()`) |
-| Blocks | SSH or GUI | canvas game | Blocks (canvas→Unicode quadrant blocks, server-side) |
-| Blocks | SSH or GUI | string-only | Ascii (fallback) |
-| Pixels | GUI client | canvas game | Pixels (client-side local rendering) |
-| Pixels | SSH | canvas game | Blocks (fallback — Pixels requires enhanced client) |
+**Graphics mode** (`domain.GraphicsMode`): how the viewport is displayed.
 
-**Pixels** (`RenderModePixels`): sends game JS source + state JSON each frame; client renders the canvas locally at its own window pixel resolution. Requires enhanced client (`DEV_NULL_CLIENT=enhanced`). Pixels option is disabled (greyed out) in the Graphics menu for SSH clients.
+| Mode | Requires | Description |
+|---|---|---|
+| **Ascii** (`ModeAscii`) | — | Game's text-based `renderAscii()` |
+| **Blocks** (`ModeBlocks`) | `renderCanvas` | Canvas→Unicode quadrant blocks (▖▗▘▙) |
+| **Pixels** (`ModePixels`) | `renderCanvas` + GUI client | Canvas at full window pixel resolution |
 
-**Blocks** (`RenderModeBlocks`): server calls `RenderCanvasImage()` and converts to Unicode quadrant block characters (▖▗▘▙). Works on any terminal.
+**Render location** (`renderLocal` bool): where the JS runs.
 
-**Ascii** (`RenderModeAscii`): always uses the game's text-based `renderAscii()` hook, even if `renderCanvas` is available.
+| | Remote (server) | Local (client) |
+|---|---|---|
+| Ascii | SSH + GUI | — |
+| Blocks | SSH + GUI | GUI only (**default for GUI**) |
+| Pixels | — | GUI only (always local) |
+
+SSH clients are always remote. GUI clients default to local. The "Render locally" checkbox in the Graphics menu toggles location (disabled for SSH). Pixels is always local; if forced remote it degrades to Blocks. Degradation chain: Pixels → Blocks → Ascii.
+
+**Local rendering and `Game.state`**: Local modes re-execute game JS on the client. The client never calls `update()` — only `renderCanvas()`. The engine auto-injects `Game.state._t` (elapsed seconds since `begin()`) after each `Update()`, so canvas games always have the current time. Games that need additional render state must populate `Game.state` in `update()` — module-level variables are only updated on the server.
 
 **No charmap/spritesheet system** — removed. Games that want custom graphics use canvas rendering.
 
-The Graphics menu is always visible in the menu bar (lobby and playing views) for all clients. Preference is persisted to `~/.dev-null/client.txt` as `/render-ascii` or `/render-pixels`; Blocks (the default) is not written.
+Preferences are persisted to `~/.dev-null/client.txt` as `/render-ascii`, `/render-pixels` (Blocks is default, omitted), and `/render-remote` or `/render-local` (only if non-default for the client type).
 
 ## Render Tests — Golden Files
 

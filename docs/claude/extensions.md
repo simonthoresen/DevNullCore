@@ -115,20 +115,22 @@ var Game = {
 
 **Canvas scale:** Admin sets the scaling factor with `/canvas scale <n>` (pixels per cell). `/canvas info` shows current scale, pixel dimensions, and estimated bandwidth per user. `/canvas off` disables canvas rendering. Scale is stored in `CentralState.CanvasScale`. Canvas dimensions = viewport cells x scale. The `/canvas` command shows bandwidth estimates at the console's viewport size.
 
-**Render modes:** Each player has a per-player `renderMode` (type `domain.RenderMode`) selectable from the **Graphics** menu. Four modes exist:
+**Render modes:** Two orthogonal per-player settings, both in the **Graphics** menu:
 
-| Mode | Description | Requirements |
-|------|-------------|-------------|
-| **Text** | Standard cell-based `game.Render()` only | Always available |
-| **Quadrant** | Canvas → Unicode quadrant block chars (U+2580–U+259F), 2×2 pixels per cell | Game defines `renderCanvas` |
-| **Canvas** | Server renders canvas → PNG frames streamed via OSC | Game defines `renderCanvas` + enhanced client + canvasScale > 0 |
-| **Canvas HD** | Client renders canvas locally from game JS + state JSON | Same as Canvas |
+1. **Graphics mode** (`domain.GraphicsMode`): Ascii, Blocks, Pixels
+2. **Render location** (`renderLocal` bool): local (client-side JS) or remote (server-side)
 
-On game load, `bestRenderMode()` auto-selects the highest-fidelity mode (Canvas HD > Canvas > Quadrant > Text). Modes not supported by the client or game are shown disabled in the Graphics menu. The quadrant renderer (`internal/render/quadrant.go`) partitions each 2×2 pixel block into optimal fg/bg color groups using exhaustive 2-means clustering.
+| Mode | Remote | Local (GUI only) |
+|------|--------|-------------------|
+| **Ascii** | `renderAscii()` on server | — |
+| **Blocks** | Canvas → quadrant blocks on server | Canvas → quadrant blocks on client (**GUI default**) |
+| **Pixels** | — | Canvas at full pixel resolution (always local) |
 
-**Canvas HD** sends game JS source files and state deltas via OSC; the client runs the game in its own goja VM and renders canvas at display-pixel resolution (no compression artifacts, scales to any resolution). **Canvas** streams server-rendered PNG frames — higher bandwidth but works without client-side JS execution. Both modes fill the viewport with `render.CanvasCell` placeholder cells that the client treats as transparent; menus/dialogs that overlap the viewport replace placeholders with real cells, rendering on top of the canvas.
+Degradation: Pixels → Blocks → Ascii. SSH is always remote. The quadrant renderer (`internal/render/quadrant.go`) partitions each 2×2 pixel block into optimal fg/bg color groups using exhaustive 2-means clustering.
 
-Per-player state: `Model.renderMode` enum + `Model.oscModeSent` flag. Client-side: `renderer.go` checks `renderMode == "local"` to decide whether to use the local JS renderer or the server-sent canvas frame.
+**Local rendering** sends game JS source files and `Game.state` deltas via OSC; the client runs the game in its own goja VM. In Pixels mode the canvas renders at display-pixel resolution; in Blocks mode the client converts canvas to quadrant block characters. Both local modes fill the viewport with `render.CanvasCell` placeholder cells; menus/dialogs that overlap replace placeholders with real cells, rendering on top.
+
+Per-player state: `Model.graphicsMode` + `Model.renderLocal` + `Model.oscModeSent` flag. Client-side: `renderer.go` checks `renderMode` string (`"local"`, `"blocks-local"`, `"remote"`) to choose rendering path.
 
 | Package | Role |
 |---------|------|

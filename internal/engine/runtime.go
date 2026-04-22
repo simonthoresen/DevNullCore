@@ -113,6 +113,8 @@ type Runtime struct {
 	showDialogFn func(playerID string, d domain.DialogRequest) // injected by server
 
 	isFolderGame bool // true when the game was loaded from <name>/main.js (not a flat .js file)
+
+	elapsedTime float64 // cumulative game time in seconds, injected into Game.state._t
 }
 
 // LoadGame loads and executes a game script (.js), extracts the Game
@@ -183,6 +185,7 @@ func (r *Runtime) Begin() {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.elapsedTime = 0
 	defer r.recoverJS("Begin")
 	defer traceCall(r.vm, "Begin")()
 	cancel := Watchdog(r.vm, "Begin")
@@ -323,7 +326,38 @@ func (r *Runtime) Update(dt float64) {
 	defer traceCall(r.vm, "Update")()
 	cancel := Watchdog(r.vm, "Update")
 	defer cancel()
+	r.elapsedTime += dt
 	_, _ = r.updateFn(goja.Undefined(), r.vm.ToValue(dt))
+
+	// Auto-inject _t (elapsed game time) into Game.state so the pixel-mode
+	// client always has the current time, even if the game doesn't set it.
+	r.injectStateTime()
+}
+
+// injectStateTime sets Game.state._t to the cumulative elapsed time.
+// If Game.state is nil/undefined, it creates { _t: ... }; otherwise it
+// merges _t into the existing object. Must be called with r.mu held.
+func (r *Runtime) injectStateTime() {
+	gameVal := r.vm.Get("Game")
+	if gameVal == nil || goja.IsUndefined(gameVal) || goja.IsNull(gameVal) {
+		return
+	}
+	gameObj := gameVal.ToObject(r.vm)
+	if gameObj == nil {
+		return
+	}
+	stateVal := gameObj.Get("state")
+	if stateVal == nil || goja.IsUndefined(stateVal) || goja.IsNull(stateVal) {
+		// Game.state not set — create it with just _t
+		obj := r.vm.NewObject()
+		obj.Set("_t", r.elapsedTime)
+		gameObj.Set("state", obj)
+		return
+	}
+	stateObj := stateVal.ToObject(r.vm)
+	if stateObj != nil {
+		stateObj.Set("_t", r.elapsedTime)
+	}
 }
 
 func (r *Runtime) RenderAscii(buf *render.ImageBuffer, playerID string, x, y, width, height int) {
@@ -465,6 +499,7 @@ func (r *Runtime) Resume(sessionState any) {
 	if r.resumeFn != nil {
 		r.mu.Lock()
 		defer r.mu.Unlock()
+		r.elapsedTime = 0
 		defer r.recoverJS("Resume")
 		defer traceCall(r.vm, "Resume")()
 		cancel := Watchdog(r.vm, "Resume")

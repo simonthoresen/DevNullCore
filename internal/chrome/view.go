@@ -91,13 +91,15 @@ func (m *Model) View() tea.View {
 	// Enhanced client OSC protocol: send game source, state, and viewport bounds.
 	// OSC sequences are written directly to the session, bypassing Bubble Tea's cell renderer
 	// which would consume them as styled string content instead of passing them through.
-	isCanvasHD := m.renderMode == domain.RenderModePixels
+	isLocal := m.renderLocal
 	if m.SessionWriter != nil && m.IsEnhancedClient && m.inActiveGame && game != nil {
 		var oscData string
 		// Send local/remote mode OSC once on game load or when mode changes.
 		if !m.oscModeSent {
-			if isCanvasHD {
+			if m.graphicsMode == domain.ModePixels {
 				oscData += render.EncodeModeOSC("local")
+			} else if m.renderLocal && m.graphicsMode == domain.ModeBlocks {
+				oscData += render.EncodeModeOSC("blocks-local")
 			} else {
 				oscData += render.EncodeModeOSC("remote")
 			}
@@ -105,7 +107,7 @@ func (m *Model) View() tea.View {
 		}
 
 		// Send game source files once for Canvas HD (client-side rendering).
-		if isCanvasHD && !m.gameSrcSent {
+		if isLocal && !m.gameSrcSent {
 			for _, sf := range game.GameSource() {
 				oscData += render.EncodeGameSourceOSC(sf.Name, sf.Content)
 			}
@@ -141,7 +143,7 @@ func (m *Model) View() tea.View {
 
 			// Send Game.state if it changed since last frame (for Canvas HD).
 			// Marshal to JSON first, hash it cheaply, only gzip+encode if changed.
-			if isCanvasHD && phase == domain.PhasePlaying {
+			if isLocal && phase == domain.PhasePlaying {
 				var stateObj any
 				if srt, ok := game.(engine.ScriptRuntime); ok {
 					stateObj = srt.State()
@@ -325,7 +327,7 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 
 	// Blocks mode: render canvas as Unicode quadrant block characters
 	// (2x2 pixels per cell, doubling effective resolution).
-	if m.renderMode == domain.RenderModeBlocks && phase == domain.PhasePlaying {
+	if m.graphicsMode == domain.ModeBlocks && !m.renderLocal && phase == domain.PhasePlaying {
 		inner := m.playingGameView.RenderFn
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
 			if inner != nil {
@@ -371,10 +373,9 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 		inner := m.playingGameView.RenderFn
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
 			m.viewportX, m.viewportY, m.viewportW, m.viewportH = x, y, w, h
-			if m.renderMode == domain.RenderModePixels && phase == domain.PhasePlaying {
-				// Pixels mode: fill viewport with placeholder cells. The client
-				// treats these as transparent, showing the locally-rendered canvas through.
-				// Menus/dialogs that overlap replace these with real cells.
+			if m.renderLocal && phase == domain.PhasePlaying {
+				// Local mode (Pixels or Blocks-local): fill viewport with placeholder
+				// cells. The client renders locally and composites these placeholders.
 				gbuf.Fill(x, y, w, h, render.CanvasCell, nil, nil, render.AttrNone)
 			} else {
 				inner(gbuf, x, y, w, h)
