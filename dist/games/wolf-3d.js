@@ -160,6 +160,33 @@ function teamColor(idx) {
     return TEAM_COLORS[idx % TEAM_COLORS.length];
 }
 
+function refreshTeamData() {
+    var t = teams();
+    if (t && t.length) teamData = t;
+    while (teamKills.length < teamData.length) teamKills.push(0);
+}
+
+function findPlayerTeam(pid) {
+    for (var i = 0; i < teamData.length; i++) {
+        var tp = teamData[i].players;
+        for (var j = 0; j < tp.length; j++) {
+            if (tp[j].id === pid) return { idx: i, name: tp[j].name };
+        }
+    }
+    return null;
+}
+
+// Ensure a connected player has a live player record. Used from begin(),
+// onPlayerJoin, and defensively from the renderer if teams() arrived late.
+function ensureSpawned(pid) {
+    if (players[pid]) return players[pid];
+    refreshTeamData();
+    var info = findPlayerTeam(pid);
+    if (!info) return null;
+    spawnPlayer(pid, info.name, info.idx, true);
+    return players[pid] || null;
+}
+
 function spawnPlayer(pid, pname, teamIdx, firstSpawn) {
     var cell = randomSpawnCell(null);
     var facing = Math.floor(Math.random() * 8);
@@ -410,7 +437,7 @@ function hexByte(v) {
 function rgb(r, g, b) { return "#" + hexByte(r) + hexByte(g) + hexByte(b); }
 
 function renderScene(ctx, playerID, w, h) {
-    var p = players[playerID];
+    var p = players[playerID] || ensureSpawned(playerID);
     if (!p) { renderSpectator(ctx, w, h); return; }
 
     var eyeX = p.gx + 0.5, eyeZ = p.gz + 0.5, eyeY = 0.5;
@@ -807,19 +834,30 @@ Game = {
         players = {};
         lasers = [];
         winChecked = false;
-        teamData = teams();
+        teamData = teams() || [];
         teamKills = [];
         for (var i = 0; i < teamData.length; i++) teamKills.push(0);
+        var spawned = 0;
         for (var ti = 0; ti < teamData.length; ti++) {
-            for (var j = 0; j < teamData[ti].players.length; j++) {
-                var tp = teamData[ti].players[j];
+            var tps = teamData[ti].players || [];
+            for (var j = 0; j < tps.length; j++) {
+                var tp = tps[j];
                 spawnPlayer(tp.id, tp.name, ti, true);
+                spawned++;
             }
         }
+        log("wolf-3d begin: teams=" + teamData.length + " players_spawned=" + spawned);
         // MIDI setup: channel 9 is the GM drum channel on most SoundFonts.
         // Program doesn't matter on ch9, but set it anyway so voices pick
         // something percussive/noisy.
         midiProgram(9, 0);
+    },
+
+    onPlayerJoin: function (playerID, playerName) {
+        refreshTeamData();
+        if (!ensureSpawned(playerID)) {
+            log("wolf-3d: onPlayerJoin " + playerID + " has no team; skipping spawn");
+        }
     },
 
     update: function (dt) {
@@ -828,7 +866,7 @@ Game = {
     },
 
     onInput: function (playerID, key) {
-        var p = players[playerID];
+        var p = players[playerID] || ensureSpawned(playerID);
         if (!p) return;
         handleInput(p, key);
     },
@@ -852,7 +890,7 @@ Game = {
     },
 
     statusBar: function (playerID) {
-        var p = players[playerID];
+        var p = players[playerID] || ensureSpawned(playerID);
         if (!p) return "Wolf-3D";
         var tn = (teamData[p.teamIdx] && teamData[p.teamIdx].name) || "?";
         var scores = [];
