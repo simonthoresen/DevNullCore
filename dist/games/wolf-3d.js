@@ -815,7 +815,7 @@ function renderAsciiMap(buf, playerID, ox, oy, width, height) {
 
 Game = {
     gameName: "Wolf-3D",
-    teamRange: { min: 2, max: 6 },
+    teamRange: { min: 1, max: 6 },
 
     load: function (savedState) {
         if (!mapGenerated) {
