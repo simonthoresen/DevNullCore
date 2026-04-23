@@ -93,7 +93,8 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/display/input.go` | Ebitengine key/mouse → `tea.Msg` translation |
 | `internal/chrome/model.go` | Per-player TUI model: struct, constructor, Init, Update |
 | `internal/chrome/view.go` | Per-player rendering: lobby, playing, starting, ending |
-| `internal/chrome/input.go` | Key/mouse handling: lobby, game, team editing |
+| `internal/chrome/input.go` | Key/mouse handling: router glue, phase-action focus target, team panel clicks |
+| `internal/input/router.go` | Pure-function input router: Action enum, Mode enum, EnterConsumer/EscConsumer |
 | `internal/chrome/commands.go` | Per-player command dispatch: /plugin, /theme, /shader |
 | `internal/chrome/menus.go` | Menu tree construction, sub-menu builders, font tag injection |
 | `internal/console/console.go` | Server console TUI: model, view, log filtering |
@@ -135,6 +136,32 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `dist/start-client.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts dev-null-client.exe |
 | `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
 | `.github/workflows/release.yml` | CI: builds binaries, publishes rolling `latest` on main push, versioned releases on `v*` tags |
+
+## Input Routing
+
+All keyboard input flows through `internal/input/router.go`. The router is a pure function `Route(key, mode, focused) → Action` consumed by both `internal/chrome` (per-player) and `internal/console` (server console) — one code path, one source of truth.
+
+**Framework-reserved keys** (games never see these via `onInput`):
+
+| Key           | Action                                                     | Widget opt-in          |
+|---------------|------------------------------------------------------------|------------------------|
+| `ctrl+c/d`    | Quit                                                       | Never                  |
+| `esc`         | Focused widget consumes if `WantsEsc()`, else activate menu | `input.EscConsumer`    |
+| `enter`       | Focused widget consumes if `WantsEnter()`, else focus chat | `input.EnterConsumer`  |
+| `pgup/pgdown` | Scroll chat                                                | Never                  |
+| `tab/shift+tab` | Cycle focus                                              | `TabWanter` (existing) |
+
+**Two-step Esc/Enter contract.** A focused widget may claim Esc/Enter by implementing the consumer interface. `CommandInput`/`TextInput.WantsEsc()` returns true only when focused *with a non-empty draft*, so: first Esc clears the draft, second Esc activates the menu. Same shape for Enter: focused command-input submits; empty/unfocused → framework takes Enter to focus chat.
+
+**Three modes.** Dialog > Menu > Desktop (top-down priority). Dialog and Menu are modal — the router sends everything there. On Desktop the router asks the focused widget first, then falls back to the framework action.
+
+**No F10.** Menu activation is Esc from Desktop, or Alt+X (menu shortcut) via `overlay.HandleDesktopShortcut` (called before the router dispatches).
+
+**Phase buttons (Starting/Ending).** The `phaseReadyButton` / `phaseContinueButton` are the effective focus target during their phases (they live as standalone fields, not in a Window hierarchy). Enter → button.OnPress → `ReadyUp` / `AcknowledgeGameOver`. No phase-specific branches in the dispatcher.
+
+**GameView as focus container.** When a game's `Layout` returns a `WidgetNode` tree with focusable children, the reconciled `GameWindow` is attached to `GameView.Inner`. Tab/Shift+Tab cycle inside the inner tree; when they wrap, `GameView` signals `WantTab`/`WantBackTab` and focus pops out to the command input. `currentFocus()` in chrome descends into `GameView.FocusedChild()` so `WantsEnter`/`WantsEsc` are consulted on the actual leaf widget (a game's focused TextInput can claim Enter and keep it out of the chat-focus path).
+
+**Team rename is a modal dialog**, not an inline edit mode — pushed via `overlay.PushDialog` with `InputPrompt` + `InputValue`. Esc closes it via the dialog layer.
 
 ## UI Rule — No Bespoke Rendering
 
