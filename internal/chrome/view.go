@@ -407,7 +407,9 @@ func (m *Model) renderStartingScreen(buf *render.ImageBuffer, name string, x, y,
 		if col < x {
 			col = x
 		}
-		buf.WriteString(col, row, line, nil, nil, render.AttrNone)
+		// Inherit the theme bg/fg that the Window's fill just painted —
+		// writing with explicit nil colors produces black-on-black.
+		buf.WriteStringInherit(col, row, line)
 		row++
 	}
 	row++ // blank after title
@@ -416,7 +418,7 @@ func (m *Model) renderStartingScreen(buf *render.ImageBuffer, name string, x, y,
 		if col < x {
 			col = x
 		}
-		buf.WriteString(col, row, status, nil, nil, render.AttrNone)
+		buf.WriteStringInherit(col, row, status)
 		row++
 	}
 	row++ // blank before button
