@@ -175,6 +175,7 @@ func NewModel(api ServerAPI, playerID string) *Model {
 	lobbyChatView := &widget.TextView{
 		BottomAlign: true,
 		Scrollable:  true,
+		NoFocus:     true, // chrome catches PgUp/PgDn; focus here would be a dead stop
 	}
 	lobbyTeamPanel := &widget.TeamPanel{}
 	lobbyInputModel := new(textinput.Model)
@@ -224,7 +225,7 @@ func NewModel(api ServerAPI, playerID string) *Model {
 
 	playingGameView := &widget.GameView{}
 	playingGameView.SetFocusable(true)
-	playingChatView := &widget.TextView{BottomAlign: true, Scrollable: true}
+	playingChatView := &widget.TextView{BottomAlign: true, Scrollable: true, NoFocus: true}
 	playingWindow := &widget.Window{
 		FocusIdx: 0, // gameview focused by default
 		Children: []widget.GridChild{

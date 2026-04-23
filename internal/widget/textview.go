@@ -17,6 +17,14 @@ type TextView struct {
 	ScrollOffset int
 	height       int
 
+	// NoFocus opts the view out of the Tab-focus cycle. Use for the
+	// chrome chat panel and the console log panel: the owning window
+	// catches PgUp/PgDn and routes them to the view regardless of focus,
+	// so a Tab stop on a read-only view would be a pointless extra hop.
+	// Other scrollable TextViews (e.g. game-provided widgets) leave this
+	// false and remain focusable, so Tab+arrow/PgUp still works.
+	NoFocus bool
+
 	// WantTab/WantBackTab are set by Update when tab should cycle focus.
 	WantTab     bool
 	WantBackTab bool
@@ -24,11 +32,7 @@ type TextView struct {
 
 func (v *TextView) TabWant() (bool, bool) { return v.WantTab, v.WantBackTab }
 
-// Focusable returns false: TextView is never a Tab-focus target. PgUp/PgDn
-// are routed to the view by the chrome/console input layer regardless of
-// focus, and mouse-wheel events bypass focus entirely, so keyboard focus
-// on a read-only view has no purpose.
-func (v *TextView) Focusable() bool { return false }
+func (v *TextView) Focusable() bool { return v.Scrollable && !v.NoFocus }
 func (v *TextView) MinSize() (int, int) {
 	// Always return 1×1. TextView fills whatever space the layout gives it;
 	// returning content dimensions would force the containing column to be

@@ -132,7 +132,7 @@ func NewModel(api ServerAPI, cancel context.CancelFunc, profile colorprofile.Pro
 	input.Placeholder = ""
 	input.CharLimit = 256
 	input.SetWidth(78)
-	logView := &widget.TextView{BottomAlign: true, Scrollable: true}
+	logView := &widget.TextView{BottomAlign: true, Scrollable: true, NoFocus: true}
 	inputCtrl := &widget.CommandInput{TextInput: widget.TextInput{Model: input}}
 
 	window := &widget.Window{
