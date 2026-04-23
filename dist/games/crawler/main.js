@@ -374,7 +374,7 @@ function attackMonster(p, mon, idx) {
             p.atk += 1;
             p.def += 1;
             addMsg(p.id, "LEVEL UP! You are now level " + p.level + "!");
-            chat(p.name + " reached level " + p.level + "!");
+            Game._ctx.chat(p.name + " reached level " + p.level + "!");
         }
 
         _s.monsters.splice(idx, 1);
@@ -411,7 +411,7 @@ function monsterAI(mon) {
             nearest.hp = 0;
             nearest.dead = true;
             addMsg(nearest.id, "You have been slain by " + mon.name + "!");
-            chat(nearest.name + " was slain by " + mon.name + "!");
+            Game._ctx.chat(nearest.name + " was slain by " + mon.name + "!");
         }
         return;
     }
@@ -523,7 +523,7 @@ function descendFloor() {
             addMsg(p.id, "You descend to floor " + _s.floor + ".");
         }
     }
-    chat("The party descends to floor " + _s.floor + "!");
+    Game._ctx.chat("The party descends to floor " + _s.floor + "!");
 }
 
 function renderDeathScreen(buf, p, ox, oy, w, h) {

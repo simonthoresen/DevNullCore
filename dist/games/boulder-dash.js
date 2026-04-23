@@ -470,10 +470,10 @@ function amoebaGrow(){
     if(_s.amoebaList.length>AMOEBA_MAX){
         for(var ka=0;ka<_s.amoebaList.length;ka++) _s.grid[_s.amoebaList[ka].y][_s.amoebaList[ka].x]=BOULDER;
         _s.amoebaList=[];
-        chat("Amoeba too large - turned to boulders!");
+        Game._ctx.chat("Amoeba too large - turned to boulders!");
     } else if(!grew && _s.amoebaList.length>0){
         for(var kb=0;kb<_s.amoebaList.length;kb++) _s.grid[_s.amoebaList[kb].y][_s.amoebaList[kb].x]=DIAMOND;
-        chat("Amoeba suffocated - turned to diamonds!");
+        Game._ctx.chat("Amoeba suffocated - turned to diamonds!");
         _s.amoebaList=[];
     }
 }
@@ -486,7 +486,7 @@ function openExit(){
     for(var y=0;y<_s.CAVE_H;y++)
         for(var x=0;x<_s.CAVE_W;x++)
             if(_s.grid[y][x]===EXIT_C) _s.grid[y][x]=EXIT_O;
-    chat("Exit open! Get to the X!");
+    Game._ctx.chat("Exit open! Get to the X!");
 }
 
 function triggerDeath(playerID){
@@ -496,9 +496,9 @@ function triggerDeath(playerID){
     p.lives--;
     if(p.lives>0){
         p.respawnTimer=RESPAWN_TIME;
-        chatPlayer(playerID,"Crushed! Respawning in "+Math.ceil(RESPAWN_TIME)+"s ("+p.lives+" lives left)");
+        Game._ctx.chatPlayer(playerID,"Crushed! Respawning in "+Math.ceil(RESPAWN_TIME)+"s ("+p.lives+" lives left)");
     } else {
-        chatPlayer(playerID,"No lives left! You are now spectating.");
+        Game._ctx.chatPlayer(playerID,"No lives left! You are now spectating.");
     }
 }
 
@@ -549,7 +549,7 @@ function checkCaveWon(){
     for(var id in _s.pls){
         if(_s.pls[id].exited){
             _s.wonDelay=CAVE_WIN_DELAY;
-            chat("Cave "+_s.caveName+" cleared! Next cave in "+Math.ceil(CAVE_WIN_DELAY)+"s...");
+            Game._ctx.chat("Cave "+_s.caveName+" cleared! Next cave in "+Math.ceil(CAVE_WIN_DELAY)+"s...");
             return;
         }
     }
