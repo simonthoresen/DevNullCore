@@ -24,7 +24,11 @@ type TextView struct {
 
 func (v *TextView) TabWant() (bool, bool) { return v.WantTab, v.WantBackTab }
 
-func (v *TextView) Focusable() bool     { return v.Scrollable }
+// Focusable returns false: TextView is never a Tab-focus target. PgUp/PgDn
+// are routed to the view by the chrome/console input layer regardless of
+// focus, and mouse-wheel events bypass focus entirely, so keyboard focus
+// on a read-only view has no purpose.
+func (v *TextView) Focusable() bool { return false }
 func (v *TextView) MinSize() (int, int) {
 	// Always return 1×1. TextView fills whatever space the layout gives it;
 	// returning content dimensions would force the containing column to be
