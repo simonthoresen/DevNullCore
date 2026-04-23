@@ -50,3 +50,4 @@ go.work.sum
 .DS_Store
 Thumbs.db
 dist/client-debug.log
+/tmp-gamespike/
