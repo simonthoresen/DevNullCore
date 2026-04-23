@@ -100,12 +100,6 @@ func (m *Model) scrollChat(dir int) {
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
-	// Team-rename legacy bypass (converted to a proper dialog in the next
-	// commit). Captures all keys for the inline rename text input.
-	if m.teamEditing {
-		return m.handleTeamEditKey(msg)
-	}
-
 	// Rebuild menus once per key so overlays reflect current state.
 	m.menuCache = nil
 
@@ -189,28 +183,33 @@ func (m *Model) routeToFocused(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, win.HandleUpdate(msg)
 }
 
-func (m *Model) handleTeamEditKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "enter":
-		name := strings.TrimSpace(m.teamEditInput.Value())
-		if name != "" {
-			idx := m.api.State().PlayerTeamIndex(m.playerID)
-			if m.api.State().RenameTeam(idx, name) {
+// showTeamRenameDialog pushes a modal dialog for renaming the current
+// player's team. Submitting with a non-empty name calls RenameTeam.
+func (m *Model) showTeamRenameDialog() {
+	idx := m.api.State().PlayerTeamIndex(m.playerID)
+	teams := m.api.State().GetTeams()
+	if idx < 0 || idx >= len(teams) {
+		return
+	}
+	m.overlay.PushDialog(domain.DialogRequest{
+		Title:       "Rename Team",
+		InputPrompt: "Name",
+		InputValue:  teams[idx].Name,
+		Buttons:     []string{"OK", "Cancel"},
+		OnInputClose: func(btn, value string) {
+			if btn != "OK" {
+				return
+			}
+			value = strings.TrimSpace(value)
+			if value == "" {
+				return
+			}
+			tidx := m.api.State().PlayerTeamIndex(m.playerID)
+			if m.api.State().RenameTeam(tidx, value) {
 				m.api.BroadcastMsg(domain.TeamUpdatedMsg{})
 			}
-		}
-		m.teamEditing = false
-		m.teamEditInput.Blur()
-		return m, nil
-	case "esc":
-		m.teamEditing = false
-		m.teamEditInput.Blur()
-		return m, nil
-	default:
-		var cmd tea.Cmd
-		m.teamEditInput, cmd = m.teamEditInput.Update(msg)
-		return m, cmd
-	}
+		},
+	})
 }
 
 // handleTeamPanelClick maps a click position (relative to content area)
@@ -262,11 +261,8 @@ func (m *Model) handleTeamPanelClick(panelX, contentY int) string {
 					m.api.State().NextTeamColor(i, 1)
 					m.api.BroadcastMsg(domain.TeamUpdatedMsg{})
 				} else {
-					// Clicked on team name — enter rename mode.
-					m.teamEditing = true
-					m.teamEditInput.SetValue(team.Name)
-					m.teamEditInput.Focus()
-					m.teamEditInput.CursorEnd()
+					// Clicked on team name — open the rename dialog.
+					m.showTeamRenameDialog()
 				}
 			} else if myIdx != i {
 				m.api.State().MovePlayerToTeam(m.playerID, i)

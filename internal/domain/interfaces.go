@@ -87,8 +87,10 @@ type DialogRequest struct {
 
 	// Input support — when InputPrompt is non-empty, the dialog shows a single-line
 	// text input field above the buttons. OnInputClose receives the button label
-	// and the current input value.
+	// and the current input value. InputValue seeds the field with an initial
+	// value (e.g. the current team name when renaming).
 	InputPrompt  string
+	InputValue   string
 	OnInputClose func(button string, value string) // called instead of OnClose when InputPrompt is set
 }
 

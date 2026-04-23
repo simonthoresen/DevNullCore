@@ -20,10 +20,6 @@ type TeamPanel struct {
 	PlayerID   string
 	GetPlayer  func(id string) *domain.Player
 
-	// Edit state — managed by chrome key handlers.
-	Editing   bool
-	EditValue string // current edit buffer (set by chrome)
-
 	// Whether the [+ Create Team] button should show.
 	ShowCreate bool
 
@@ -170,9 +166,6 @@ func (tp *TeamPanel) Render(buf *render.ImageBuffer, x, y, width, height int, fo
 		buf.SetChar(x+2, y+row, ' ', fg, teamColor, render.AttrNone)
 
 		teamName := team.Name
-		if tp.Editing && i == tp.MyTeamIdx {
-			teamName = tp.EditValue
-		}
 		buf.WriteString(x+4, y+row, TruncateStr(teamName, width-4), fg, bg, attr)
 		row++
 

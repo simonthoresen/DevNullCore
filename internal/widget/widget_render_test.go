@@ -183,25 +183,8 @@ func TestTeamPanelRender(t *testing.T) {
 	}
 }
 
-func TestTeamPanelRenderEditing(t *testing.T) {
-	tp := &TeamPanel{
-		Teams: []domain.Team{
-			{Name: "Red", Color: "#ff0000", Players: []string{"p1"}},
-		},
-		MyTeamIdx: 0,
-		Editing:   true,
-		EditValue: "Blue Team",
-		GetPlayer: func(id string) *domain.Player {
-			return &domain.Player{ID: id, Name: id}
-		},
-	}
-	buf := render.NewImageBuffer(30, 10)
-	tp.Render(buf, 0, 0, 30, 10, true, testLayer())
-	stripped := stripANSI(buf.ToString(colorprofile.TrueColor))
-	if !strings.Contains(stripped, "Blue Team") {
-		t.Errorf("expected edit value 'Blue Team', got %q", stripped)
-	}
-}
+// Team rename is handled via a modal dialog now (see TestRenameDialogFlow
+// in chrome integration tests). TeamPanel no longer has inline edit state.
 
 func TestTeamPanelRenderWithCreate(t *testing.T) {
 	tp := &TeamPanel{

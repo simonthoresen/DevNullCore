@@ -147,6 +147,10 @@ func (o *OverlayState) buildDialogWindow(d domain.DialogRequest) *dialogEntry {
 		tiModel.Prompt = " " + d.InputPrompt + " "
 		tiModel.Placeholder = ""
 		tiModel.CharLimit = 256
+		if d.InputValue != "" {
+			tiModel.SetValue(d.InputValue)
+			tiModel.CursorEnd()
+		}
 		ti := &TextInput{Model: tiModel}
 		entry.input = ti
 		children = append(children, GridChild{

@@ -2,14 +2,12 @@ package chrome
 
 import (
 	"fmt"
-	"image/color"
 	"io"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 
 	"dev-null/internal/domain"
@@ -55,26 +53,6 @@ type ServerAPI interface {
 // lobbyTeamPanelW is the fixed width of the team panel in the lobby.
 const lobbyTeamPanelW = 32
 
-// SetInputStyle applies matching background/foreground to all textinput sub-styles
-// and switches to the real terminal cursor (not the virtual cursor), with blink
-// disabled so the cursor shows as a steady block.
-func SetInputStyle(input *textinput.Model, bg, fg color.Color) {
-	base := lipgloss.NewStyle().Background(bg).Foreground(fg)
-	s := input.Styles()
-	s.Focused.Prompt = base
-	s.Focused.Text = base
-	s.Focused.Placeholder = base.Faint(true)
-	s.Blurred.Prompt = base
-	s.Blurred.Text = base
-	s.Blurred.Placeholder = base.Faint(true)
-	s.Cursor.Color = fg
-	s.Cursor.Blink = false
-	input.SetStyles(s)
-	input.SetVirtualCursor(false)
-}
-
-
-
 // Model is the Bubble Tea model for a player's chrome (lobby, game viewport, etc.).
 type Model struct {
 	api      ServerAPI
@@ -93,10 +71,6 @@ type Model struct {
 	tabPrefix     string
 	tabCandidates []string
 	tabIndex      int
-
-	// Lobby team panel state
-	teamEditing   bool // true when renaming a team
-	teamEditInput textinput.Model
 
 	// Game-over countdown tracking
 	gameOverStart time.Time
@@ -197,12 +171,6 @@ type Model struct {
 }
 
 func NewModel(api ServerAPI, playerID string) *Model {
-	teamInput := textinput.New()
-	teamInput.Prompt = ""
-	teamInput.CharLimit = 20
-	teamInput.SetWidth(20)
-	teamInput.SetVirtualCursor(false)
-
 	// Lobby NC controls.
 	lobbyChatView := &widget.TextView{
 		BottomAlign: true,
@@ -318,7 +286,6 @@ func NewModel(api ServerAPI, playerID string) *Model {
 	m := Model{
 		api:           api,
 		playerID:      playerID,
-		teamEditInput: teamInput,
 		theme:         theme.Default(),
 		ColorProfile:  colorprofile.TrueColor,
 		graphicsPref: domain.ModeBlocks, // default: prefer Blocks (canvas as Unicode blocks)
@@ -386,16 +353,7 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		m.api.State().NextTeamColor(idx, direction)
 		m.api.BroadcastMsg(domain.TeamUpdatedMsg{})
 	}
-	lobbyTeamPanel.OnStartRename = func() {
-		idx := m.api.State().PlayerTeamIndex(m.playerID)
-		teams := m.api.State().GetTeams()
-		if idx >= 0 && idx < len(teams) {
-			m.teamEditing = true
-			m.teamEditInput.SetValue(teams[idx].Name)
-			m.teamEditInput.Focus()
-			m.teamEditInput.CursorEnd()
-		}
-	}
+	lobbyTeamPanel.OnStartRename = m.showTeamRenameDialog
 	lobbyTeamPanel.IsSoleMember = func() bool {
 		return m.api.State().IsSoleMemberOfTeam(m.playerID)
 	}

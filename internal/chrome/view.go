@@ -37,10 +37,6 @@ func (m *Model) View() tea.View {
 	phase := m.api.State().GamePhase
 	m.api.State().RUnlock()
 
-	if (!m.inActiveGame || phase == domain.PhaseNone) && m.teamEditing {
-		SetInputStyle(&m.teamEditInput, m.theme.LayerAt(0).InputBg, m.theme.LayerAt(0).InputFg)
-	}
-
 	// Build menus once per frame — passed to sub-views and overlay rendering.
 	menus := m.cachedMenus()
 
@@ -197,30 +193,6 @@ func (m *Model) View() tea.View {
 			}
 		}
 	}
-	if isLobby && m.teamEditing {
-		if cursor := m.teamEditInput.Cursor(); cursor != nil {
-			// Position cursor on the team name row in the right panel.
-			// The team panel is at col 2 in the NCWindow grid. After grid layout,
-			// its X position is computed. We calculate the Y row within the panel.
-			teams := m.api.State().GetTeams()
-			unassigned := m.api.State().UnassignedPlayers()
-			idx := m.api.State().PlayerTeamIndex(m.playerID)
-			row := 1 + len(unassigned) // "Unassigned" header + player rows
-			for i := 0; i < idx && i < len(teams); i++ {
-				row += 1 + 1 + len(teams[i].Players) // blank + team header + members
-			}
-			row += 1 // blank before current team
-			// NCWindow starts at y=1 (after menu bar), no top border, so content starts at y=1.
-			cursor.Position.Y = 1 + row
-			// Team panel X: window left border (1) + chat width + divider (1) + swatch (3) + space (1)
-			// Use the grid's computed position if available.
-			if len(m.lobbyWindow.Children) > 2 {
-				cx, _, _, _ := m.lobbyWindow.ChildRect(2) // team panel is child index 2
-				cursor.Position.X += cx + 4              // +4 for " XX " (space + swatch + space before name)
-			}
-			view.Cursor = cursor
-		}
-	}
 	return view
 }
 
@@ -241,10 +213,6 @@ func (m *Model) renderLobby(buf *render.ImageBuffer, menus []domain.MenuDef) {
 	m.lobbyTeamPanel.MyTeamIdx = m.api.State().PlayerTeamIndex(m.playerID)
 	m.lobbyTeamPanel.PlayerID = m.playerID
 	m.lobbyTeamPanel.GetPlayer = m.api.State().GetPlayer
-	m.lobbyTeamPanel.Editing = m.teamEditing
-	if m.teamEditing {
-		m.lobbyTeamPanel.EditValue = m.teamEditInput.Value()
-	}
 	m.lobbyTeamPanel.ShowCreate = !m.api.State().IsSoleMemberOfTeam(m.playerID)
 
 	// Update status bar.
