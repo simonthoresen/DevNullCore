@@ -513,24 +513,37 @@ func (r *Runtime) resolveMe(playerID string) goja.Value {
 		}
 		return me
 	}
-	// Default: look up state.players[pid].
+	// Default: if state.players exists, look up state.players[pid] (and
+	// return undefined when the player hasn't been registered yet, so
+	// chrome can draw the not-ready splash). If state.players doesn't
+	// exist at all, the game doesn't track per-player state — return a
+	// minimal {id: pid} so screensavers and solo games don't need to
+	// provide a resolveMe hook.
 	stateObj := state.ToObject(r.vm)
 	if stateObj == nil {
-		return goja.Undefined()
+		return r.minimalMe(playerID)
 	}
 	players := stateObj.Get("players")
 	if players == nil || goja.IsUndefined(players) || goja.IsNull(players) {
-		return goja.Undefined()
+		return r.minimalMe(playerID)
 	}
 	playersObj := players.ToObject(r.vm)
 	if playersObj == nil {
-		return goja.Undefined()
+		return r.minimalMe(playerID)
 	}
 	me := playersObj.Get(playerID)
 	if me == nil || goja.IsUndefined(me) || goja.IsNull(me) {
 		return goja.Undefined()
 	}
 	return me
+}
+
+// minimalMe returns {id: playerID} — the default me for games that don't
+// track per-player state in state.players.
+func (r *Runtime) minimalMe(playerID string) goja.Value {
+	obj := r.vm.NewObject()
+	obj.Set("id", playerID)
+	return obj
 }
 
 func (r *Runtime) Layout(playerID string, width, height int) *domain.WidgetNode {

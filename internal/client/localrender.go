@@ -379,21 +379,28 @@ func (lr *LocalRenderer) resolveMe(playerID string) goja.Value {
 	}
 	stateObj := state.ToObject(lr.vm)
 	if stateObj == nil {
-		return goja.Undefined()
+		return lr.minimalMe(playerID)
 	}
 	players := stateObj.Get("players")
 	if players == nil || goja.IsUndefined(players) || goja.IsNull(players) {
-		return goja.Undefined()
+		return lr.minimalMe(playerID)
 	}
 	playersObj := players.ToObject(lr.vm)
 	if playersObj == nil {
-		return goja.Undefined()
+		return lr.minimalMe(playerID)
 	}
 	me := playersObj.Get(playerID)
 	if me == nil || goja.IsUndefined(me) || goja.IsNull(me) {
 		return goja.Undefined()
 	}
 	return me
+}
+
+// minimalMe returns {id: playerID}, matching the server's default.
+func (lr *LocalRenderer) minimalMe(playerID string) goja.Value {
+	obj := lr.vm.NewObject()
+	obj.Set("id", playerID)
+	return obj
 }
 
 // RenderCanvas calls Game.renderCanvas() locally and returns an Ebitengine image.
