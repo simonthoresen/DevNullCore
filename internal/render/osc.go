@@ -60,6 +60,13 @@ func EncodeModeOSC(mode string) string {
 	return "\x1b]ns;mode;" + mode + "\x07"
 }
 
+// EncodePlayerIDOSC returns an OSC sequence telling the client which ID the
+// server assigned to this session. Games keyed by player ID (e.g. most
+// multiplayer games) need this to look up their own entry in Game.state.
+func EncodePlayerIDOSC(pid string) string {
+	return "\x1b]ns;playerid;" + pid + "\x07"
+}
+
 // EncodeAssetManifestOSC returns an OSC sequence announcing the total number of
 // game asset files about to be sent. The client uses this for loading progress.
 func EncodeAssetManifestOSC(count int) string {

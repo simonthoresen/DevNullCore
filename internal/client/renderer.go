@@ -147,6 +147,12 @@ func (r *ClientRenderer) readLoop() {
 				r.renderMode = r.grid.RenderMode
 				r.grid.RenderMode = ""
 			}
+			// Server-assigned session ID — overrides the --player default
+			// that we bootstrapped with, so games can look up s.players[pid].
+			if r.grid.PlayerID != "" {
+				r.playerID = r.grid.PlayerID
+				r.grid.PlayerID = ""
+			}
 			// Asset manifest — resets progress tracking and clears old assets/sounds.
 			if r.grid.AssetManifestTotal > 0 {
 				r.assetTotal = r.grid.AssetManifestTotal

@@ -98,6 +98,9 @@ func (m *Model) View() tea.View {
 			} else {
 				oscData += render.EncodeModeOSC("remote")
 			}
+			// Tell the client which ID the server keyed it as, so local
+			// rendering can look up Game.state.players[pid] correctly.
+			oscData += render.EncodePlayerIDOSC(m.playerID)
 			m.oscModeSent = true
 		}
 

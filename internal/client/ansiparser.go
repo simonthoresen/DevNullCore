@@ -62,6 +62,11 @@ type TerminalGrid struct {
 	// Render mode from ns;mode OSC ("local" or "remote").
 	RenderMode string
 
+	// Server-assigned player ID from ns;playerid OSC. The client defaults
+	// this to the --player flag, but games key state by the SSH session ID
+	// the server hands out — we replace the default once it arrives.
+	PlayerID string
+
 	// Asset loading (from ns;asset-manifest and ns;asset OSC).
 	AssetManifestTotal int
 	AssetFiles         []GameAsset
@@ -786,6 +791,8 @@ func (g *TerminalGrid) handleOSC(payload string) {
 			}
 		case "mode":
 			g.RenderMode = data
+		case "playerid":
+			g.PlayerID = data
 		case "viewport":
 			parts := strings.Split(data, ",")
 			if len(parts) == 4 {
