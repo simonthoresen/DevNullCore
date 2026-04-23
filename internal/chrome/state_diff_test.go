@@ -136,6 +136,41 @@ func TestEncodeStateBroadcast_RemovedKeyBecomesNull(t *testing.T) {
 	}
 }
 
+func TestEncodeStateBroadcast_ClockOnlyPatchIsSuppressed(t *testing.T) {
+	m := &Model{}
+	state := map[string]any{
+		"_t":      0.0,
+		"players": map[string]any{"p1": map[string]any{"x": 1.0}},
+	}
+	_ = m.encodeStateBroadcast(state) // baseline
+
+	// Bump only the clock — should produce no broadcast.
+	state["_t"] = 0.1
+	if osc := m.encodeStateBroadcast(state); osc != "" {
+		t.Fatalf("clock-only change should be suppressed, got %q", osc)
+	}
+	state["_t"] = 0.2
+	if osc := m.encodeStateBroadcast(state); osc != "" {
+		t.Fatalf("repeated clock-only change should still be suppressed, got %q", osc)
+	}
+
+	// Now change a real key. The patch must include both that key AND the
+	// current _t (so the client can re-snap and detect drift).
+	state["_t"] = 0.3
+	state["players"] = map[string]any{"p1": map[string]any{"x": 2.0}}
+	osc := m.encodeStateBroadcast(state)
+	if osc == "" {
+		t.Fatal("expected patch when a non-clock key changes")
+	}
+	patch := decodeOSC(t, osc, "state-patch")
+	if _, ok := patch["players"]; !ok {
+		t.Errorf("changed key 'players' missing: %v", patch)
+	}
+	if _, ok := patch["_t"]; !ok {
+		t.Errorf("expected _t to ride along when other keys change: %v", patch)
+	}
+}
+
 func TestEncodeStateBroadcast_NonMapStateRoundtrips(t *testing.T) {
 	m := &Model{}
 	// Some games might stash state as a scalar/array at the top level; the

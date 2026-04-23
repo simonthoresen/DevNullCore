@@ -14,6 +14,13 @@ import (
 // each subsequent broadcast sends only the top-level keys whose marshaled
 // bytes differ from the last sent value (plus null entries for removed keys).
 //
+// As a special case, a patch whose only changed key is `_t` (the framework's
+// monotonic game-clock) is suppressed. The client extrapolates `_t` locally
+// between snapshots from its own wall clock, so a tick-rate stream of
+// clock-only patches would just burn bandwidth. We deliberately do NOT update
+// lastSentKeys[_t] when suppressing — that way the next real state change
+// re-includes the current `_t` so the client can re-snap and detect drift.
+//
 // Empty return means "nothing changed since last frame" — no bytes are sent.
 func (m *Model) encodeStateBroadcast(stateObj any) string {
 	// Marshal each top-level key independently so we can diff them in isolation.
@@ -55,6 +62,13 @@ func (m *Model) encodeStateBroadcast(stateObj any) string {
 		return ""
 	}
 
+	// Suppress clock-only patches — client extrapolates _t between snapshots.
+	if len(patch) == 1 {
+		if _, only := patch["_t"]; only {
+			return ""
+		}
+	}
+
 	data, err := json.Marshal(patch)
 	if err != nil {
 		return ""
@@ -63,6 +77,8 @@ func (m *Model) encodeStateBroadcast(stateObj any) string {
 	if osc == "" {
 		return ""
 	}
+	// Keep lastSentKeys[_t] in sync with what we actually transmitted, so the
+	// next non-clock change starts from the freshly-acked baseline.
 	m.lastSentKeys = currKeys
 	return osc
 }
