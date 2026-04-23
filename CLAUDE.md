@@ -226,7 +226,7 @@ Game rendering has two orthogonal settings, both controlled via the always-visib
 | Blocks | SSH + GUI | GUI only (**default for GUI**) |
 | Pixels | — | GUI only (always local) |
 
-SSH clients are always remote. GUI clients default to local. The "Render locally" checkbox in the Graphics menu toggles location (disabled for SSH). Pixels is always local; if forced remote it degrades to Blocks. Degradation chain: Pixels → Blocks → Ascii.
+SSH clients are always remote. GUI clients default to local. The "Render locally" checkbox in the Graphics menu toggles location (disabled for SSH) and is the master switch: Pixels requires it. If the user prefers Pixels but has Render locally off, the mode degrades to Blocks. Degradation chain: Pixels → Blocks → Ascii.
 
 **Local rendering and `Game.state`**: Local modes re-execute game JS on the client. The client never calls `update()` — only `renderCanvas()`. The engine auto-injects `Game.state._t` (elapsed seconds since `begin()`) after each `Update()`, so canvas games always have the current time. Games that need additional render state must populate `Game.state` in `update()` — module-level variables are only updated on the server.
 

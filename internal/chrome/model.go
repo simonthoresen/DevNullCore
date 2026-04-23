@@ -406,10 +406,11 @@ func (m *Model) resizeViewports() {
 
 // applyGraphicsPrefs computes the effective graphicsMode and renderLocal from
 // the user's preferences and current capabilities. Handles degradation:
-//   - Pixels requires enhanced client + canvas; degrades to Blocks
-//   - Blocks requires canvas; degrades to Ascii
-//   - Local requires enhanced client; forced false for SSH
-//   - Pixels is always local
+//   - Local requires enhanced client; forced false for SSH.
+//   - Pixels requires enhanced client + canvas + local rendering.
+//     If any is missing it degrades to Blocks — the Render locally
+//     checkbox is the master switch.
+//   - Blocks requires canvas; degrades to Ascii.
 func (m *Model) applyGraphicsPrefs() {
 	m.api.State().RLock()
 	game := m.api.State().ActiveGame
@@ -419,30 +420,36 @@ func (m *Model) applyGraphicsPrefs() {
 	mode := m.graphicsPref
 	local := m.renderLocalPref
 
-	// Pixels requires enhanced client + canvas.
-	if mode == domain.ModePixels && !(m.IsEnhancedClient && hasCanvas) {
+	// Local requires enhanced client; force off for SSH. Do this first so
+	// the Pixels degradation below sees the effective local flag.
+	if local && !m.IsEnhancedClient {
+		local = false
+	}
+	// Pixels requires enhanced client + canvas + local rendering.
+	if mode == domain.ModePixels && !(m.IsEnhancedClient && hasCanvas && local) {
 		mode = domain.ModeBlocks
 	}
 	// Blocks requires canvas.
 	if mode == domain.ModeBlocks && !hasCanvas {
 		mode = domain.ModeAscii
 	}
-	// Pixels is always local.
-	if mode == domain.ModePixels {
-		local = true
-	}
-	// Local requires enhanced client.
-	if local && !m.IsEnhancedClient {
-		local = false
-	}
 
 	wasLocal := m.renderLocal
+	wasMode := m.graphicsMode
 	m.graphicsMode = mode
 	m.renderLocal = local
 
-	// Reset OSC state when switching between local and remote.
-	if wasLocal != local {
+	// Re-send the mode OSC whenever the effective mode or local flag
+	// changes — the client branches on it to pick its rendering path.
+	// Without this the client stays in whatever mode the last OSC set,
+	// so e.g. Blocks→Pixels with local already on would silently keep
+	// showing blocks.
+	if wasLocal != local || wasMode != mode {
 		m.oscModeSent = false
+	}
+	// Game source needs to reach the client before local rendering can
+	// run. Re-send when transitioning into local mode.
+	if !wasLocal && local {
 		m.gameSrcSent = false
 		m.lastStateHash = 0
 	}
