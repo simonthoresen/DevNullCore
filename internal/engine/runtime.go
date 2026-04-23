@@ -588,9 +588,17 @@ func (r *Runtime) GameOverResults() []domain.GameResult {
 	return r.gameOverResults
 }
 
-// State returns the current value of the JS Game.state property.
+// State returns the current value of the JS Game.state property, with
+// framework-injected read-only keys (currently: teams) overlaid on top so
+// clients receiving this state through the OSC sync get them for free.
 // Used by the framework for OSC push to local renderers. Returns nil if
 // Game.state is not set.
+//
+// The overlay is done on the exported Go value, not on the live JS object,
+// so the game's own reads of Game.state (during update/render on the
+// server) are unaffected. Games that author a key named "teams" in their
+// own state will lose it here — that's the contract for framework-reserved
+// keys and documented in game-contract-v2.md.
 func (r *Runtime) State() any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -606,7 +614,20 @@ func (r *Runtime) State() any {
 	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
 		return nil
 	}
-	return v.Export()
+	exported := v.Export()
+	if m, ok := exported.(map[string]any); ok && r.cachedTeams != nil {
+		// Copy, then overlay. We don't mutate the exported map in place
+		// because goja's Export may return a live-ish view in some versions,
+		// and we'd rather be defensive than debug a spooky aliasing bug
+		// later.
+		out := make(map[string]any, len(m)+1)
+		for k, val := range m {
+			out[k] = val
+		}
+		out["teams"] = r.cachedTeams
+		return out
+	}
+	return exported
 }
 
 // GameSource returns all JS source files for client-side replication.
