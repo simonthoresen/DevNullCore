@@ -111,18 +111,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Rebuild menus once per key so overlays reflect current state.
 	m.menuCache = nil
 
-	mode := m.currentMode()
-
-	// On Desktop, check for menu shortcuts (global hotkeys and Alt+X menu
-	// openers) BEFORE invoking the router. These always take precedence
-	// over focused-widget input.
-	if mode == input.ModeDesktop {
-		if m.overlay.HandleDesktopShortcut(key, m.cachedMenus(), m.playerID) {
-			return m, nil
-		}
-	}
-
-	action := input.Route(key, mode, m.currentFocus())
+	action := input.Route(key, m.currentMode(), m.currentFocus())
 
 	switch action {
 	case input.ActionQuit:

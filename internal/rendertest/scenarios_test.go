@@ -105,7 +105,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_help_menu_open",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"alt+h"},
+		chromeKeys:    []string{"esc", "h"},
 		noIntegration: true,
 	},
 	{
@@ -113,7 +113,7 @@ var scenarios = []renderScenario{
 		name:          "lobby_about_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"alt+h", "enter"},
+		chromeKeys:    []string{"esc", "h", "enter"},
 		noIntegration: true,
 	},
 
@@ -172,15 +172,16 @@ var scenarios = []renderScenario{
 		name:          "chrome_disconnect_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"alt+f", "down", "down", "down", "down", "down", "down", "down", "down", "enter"},
+		chromeKeys:    []string{"esc", "f", "down", "down", "down", "down", "down", "down", "down", "down", "enter"},
 		noIntegration: true,
 	},
 	{
-		// Ctrl+Q triggers the shutdown confirmation dialog in the console.
+		// Esc → F → X: navigate the console's File menu to Exit, which
+		// opens the shutdown confirmation dialog.
 		name:          "console_shutdown_dialog",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		consoleKeys:   []string{"ctrl+q"},
+		consoleKeys:   []string{"esc", "f", "x"},
 		noIntegration: true,
 	},
 
@@ -190,7 +191,7 @@ var scenarios = []renderScenario{
 		name:          "games_dialog_empty",
 		playerID:      "alice",
 		setup:         func(st *state.CentralState) {},
-		chromeKeys:    []string{"alt+f", "enter"},
+		chromeKeys:    []string{"esc", "f", "enter"},
 		noIntegration: true,
 	},
 	{
@@ -213,7 +214,7 @@ var scenarios = []renderScenario{
 				{Name: "Blue"},
 			}
 		},
-		chromeKeys:    []string{"alt+f", "enter"},
+		chromeKeys:    []string{"esc", "f", "enter"},
 		noIntegration: true,
 	},
 	{

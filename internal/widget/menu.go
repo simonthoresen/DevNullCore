@@ -50,18 +50,6 @@ func ItemShortcut(it domain.MenuItemDef) rune {
 	return r
 }
 
-// HotkeyDisplay converts a key binding string (e.g. "ctrl+c") to a display
-// string (e.g. "(Ctrl+C)").
-func HotkeyDisplay(key string) string {
-	parts := strings.Split(key, "+")
-	for i, p := range parts {
-		if len(p) > 0 {
-			parts[i] = strings.ToUpper(p[:1]) + p[1:]
-		}
-	}
-	return "(" + strings.Join(parts, "+") + ")"
-}
-
 // TruncateStyled truncates a styled string to the given visual width.
 func TruncateStyled(text string, width int) string {
 	if width <= 0 {
@@ -157,53 +145,18 @@ func (o *OverlayState) IsActive() bool {
 // HandleKey routes a key press to the menu state machine. It assumes the
 // overlay is currently in Menu mode (bar focused or dropdown/submenu open).
 // The input router routes keys here via ActionRouteToMenu.
+//
+// Menu navigation inside this mode: arrow keys move the cursor, Enter
+// activates, Esc pops one level, and typing the ampersand-letter of a
+// menu (at the bar) or item (in the dropdown) jumps directly to it.
+// There are no global Ctrl/Alt chord shortcuts — every action must be
+// reached through the menu so games can freely use Ctrl/Alt keys.
 func (o *OverlayState) HandleKey(key string, menus []domain.MenuDef, playerID string) bool {
-	// Global hotkeys: a menu item may bind a Hotkey (e.g. "ctrl+s"). These
-	// fire even inside menu mode so the user can activate an item directly.
-	for _, m := range menus {
-		for _, it := range m.Items {
-			if it.Hotkey != "" && it.Hotkey == key && !it.Disabled && it.Handler != nil {
-				o.closeMenus()
-				it.Handler(playerID)
-				return true
-			}
-		}
-	}
-
 	if o.OpenMenu >= 0 && len(o.SubMenus) > 0 {
 		return o.handleMenuKey(key, menus, playerID)
 	}
 	if o.MenuFocused {
 		return o.handleMenuBarKey(key, menus)
-	}
-	return false
-}
-
-// HandleDesktopShortcut checks for key bindings that open the menu from
-// Desktop mode: Alt+X opens a menu by its ampersand-shortcut, and any
-// menu-item Hotkey fires its handler directly. Returns true if the key
-// was consumed.
-func (o *OverlayState) HandleDesktopShortcut(key string, menus []domain.MenuDef, playerID string) bool {
-	// Global hotkeys first.
-	for _, m := range menus {
-		for _, it := range m.Items {
-			if it.Hotkey != "" && it.Hotkey == key && !it.Disabled && it.Handler != nil {
-				it.Handler(playerID)
-				return true
-			}
-		}
-	}
-	// Alt+letter opens a menu by its shortcut (e.g. Alt+F → "&File").
-	if strings.HasPrefix(key, "alt+") && len(key) == 5 {
-		letter := rune(key[4])
-		for i, m := range menus {
-			if MenuShortcut(m) == letter {
-				o.MenuFocused = true
-				o.MenuCursor = i
-				o.openDropdownMenu(menus, i)
-				return true
-			}
-		}
 	}
 	return false
 }
@@ -405,9 +358,6 @@ func dropdownInnerWidth(items []domain.MenuItemDef) int {
 		}
 		clean, _ := StripAmpersand(it.Label)
 		w := len(clean)
-		if it.Hotkey != "" {
-			w += 2 + len(HotkeyDisplay(it.Hotkey))
-		}
 		if HasSubMenu(it) {
 			w += 2
 		}

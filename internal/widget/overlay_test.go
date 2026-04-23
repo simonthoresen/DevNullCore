@@ -27,13 +27,6 @@ func TestMenuShortcut(t *testing.T) {
 	}
 }
 
-func TestHotkeyDisplayFunc(t *testing.T) {
-	d := HotkeyDisplay("ctrl+c")
-	if d != "(Ctrl+C)" {
-		t.Errorf("expected '(Ctrl+C)', got %q", d)
-	}
-}
-
 func TestOverlayMenuNavigation(t *testing.T) {
 	o := OverlayState{OpenMenu: -1}
 	menus := []domain.MenuDef{
@@ -72,41 +65,11 @@ func TestOverlayMenuNavigation(t *testing.T) {
 	}
 }
 
-func TestOverlayHotkey(t *testing.T) {
-	o := OverlayState{OpenMenu: -1}
-	triggered := false
-	menus := []domain.MenuDef{
-		{Label: "&File", Items: []domain.MenuItemDef{
-			{Label: "&Quit", Hotkey: "ctrl+q", Handler: func(_ string) { triggered = true }},
-		}},
-	}
-
-	if !o.HandleKey("ctrl+q", menus, "") {
-		t.Error("hotkey should be consumed")
-	}
-	if !triggered {
-		t.Error("expected hotkey handler to fire")
-	}
-}
-
-func TestOverlayAltActivation(t *testing.T) {
-	o := OverlayState{OpenMenu: -1}
-	menus := []domain.MenuDef{
-		{Label: "&File", Items: []domain.MenuItemDef{{Label: "Item"}}},
-		{Label: "&Edit", Items: []domain.MenuItemDef{{Label: "Item"}}},
-	}
-
-	// Desktop shortcut: Alt+E opens the Edit menu directly.
-	if !o.HandleDesktopShortcut("alt+e", menus, "") {
-		t.Error("expected Alt+E to be consumed by desktop shortcut")
-	}
-	if o.OpenMenu != 1 {
-		t.Errorf("expected Alt+E to open Edit menu (index 1), got %d", o.OpenMenu)
-	}
-	if !o.MenuFocused {
-		t.Error("expected menuFocused after Alt+E")
-	}
-}
+// Ctrl/Alt menu shortcuts were removed so games can freely use the
+// modifier keyspace. Menu items must be reached by navigating via Esc →
+// menu bar → ampersand-letter shortcut inside the menu mode; tests for
+// those flows live in TestOverlayMenuNavigation and the render golden
+// scenarios.
 
 func TestOverlayDialogStack(t *testing.T) {
 	o := OverlayState{OpenMenu: -1}

@@ -34,7 +34,6 @@ type CommandContext struct {
 // A Label consisting entirely of "-" characters renders as a separator line.
 type MenuItemDef struct {
 	Label    string
-	Hotkey   string                // e.g. "ctrl+c" — displayed right-aligned, globally bound
 	Disabled bool
 	Toggle   bool                  // if true, this is a toggle item with a checkmark column
 	Checked  func() bool           // returns current toggle state (nil = not a toggle)

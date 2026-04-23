@@ -327,16 +327,7 @@ func (m *Model) currentFocus() any {
 // delegates to the shared input.Route and executes the returned Action.
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
-	mode := m.currentMode()
-
-	// Desktop: check menu shortcuts (Alt+X and global hotkeys) first.
-	if mode == input.ModeDesktop {
-		if m.overlay.HandleDesktopShortcut(key, m.consoleMenus(), "") {
-			return m, nil
-		}
-	}
-
-	action := input.Route(key, mode, m.currentFocus())
+	action := input.Route(key, m.currentMode(), m.currentFocus())
 	switch action {
 	case input.ActionQuit:
 		if m.cancel != nil {
@@ -383,8 +374,8 @@ func (m *Model) consoleMenus() []domain.MenuDef {
 		{
 			Label: "&File",
 			Items: []domain.MenuItemDef{
-				{Label: "&Games", SubItems: m.buildGameSubItems()},
-				{Label: "&Saves...", Handler: func(_ string) { m.pushSavesDialog(0) }},
+				{Label: "&Start game", SubItems: m.buildGameSubItems()},
+				{Label: "&Load game", Handler: func(_ string) { m.pushSavesDialog(0) }},
 				{Label: "---"},
 				{Label: "&Themes", SubItems: m.buildThemeSubItems()},
 				{Label: "&Plugins", SubItems: m.buildPluginSubItems()},
@@ -394,7 +385,7 @@ func (m *Model) consoleMenus() []domain.MenuDef {
 				{Label: "---"},
 				{Label: "&Invite", SubItems: m.buildInviteSubItems()},
 				{Label: "---"},
-				{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(_ string) {
+				{Label: "E&xit", Handler: func(_ string) {
 					m.overlay.PushDialog(domain.DialogRequest{
 						Title:   "Exit",
 						Body:    "Disconnect all players and shut down the server?",

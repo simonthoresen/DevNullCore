@@ -25,8 +25,8 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	}
 
 	fileItems := []domain.MenuItemDef{
-		{Label: "&Games", SubItems: m.buildGameSubItems()},
-		{Label: "&Saves...", Handler: func(_ string) { m.pushSavesDialog(0) }},
+		{Label: "&Start game", SubItems: m.buildGameSubItems()},
+		{Label: "&Load game", Handler: func(_ string) { m.pushSavesDialog(0) }},
 		{Label: "---"},
 		{Label: "&Plugins", SubItems: m.buildPluginSubItems()},
 		{Label: "S&ynths", SubItems: m.buildSynthSubItems()},
@@ -34,7 +34,7 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 		{Label: "---"},
 		{Label: "&Invite", SubItems: m.buildInviteSubItems()},
 		{Label: "---"},
-		{Label: "E&xit", Hotkey: "ctrl+q", Handler: func(playerID string) {
+		{Label: "E&xit", Handler: func(playerID string) {
 			m.overlay.PushDialog(domain.DialogRequest{
 				Title:   "Exit",
 				Body:    "Disconnect from the server?",

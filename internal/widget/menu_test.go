@@ -165,23 +165,6 @@ func TestRenderDropdownWithSeparator(t *testing.T) {
 	}
 }
 
-func TestRenderDropdownWithHotkey(t *testing.T) {
-	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, SubMenus: []subMenuState{{Cursor: 0}}}
-	menus := []domain.MenuDef{
-		{Label: "&File", Items: []domain.MenuItemDef{
-			{Label: "&Quit", Hotkey: "ctrl+q"},
-		}},
-	}
-	pal := testTheme().LayerAt(1)
-	dd := o.RenderDropdown(menus, 0, pal).Content
-	s := newScreen(dd)
-
-	// Should show hotkey display.
-	if !strings.Contains(s.lines[1], "(Ctrl+Q)") {
-		t.Errorf("expected '(Ctrl+Q)' in item, got %q", s.lines[1])
-	}
-}
-
 func TestRenderDropdownWithToggles(t *testing.T) {
 	o := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, SubMenus: []subMenuState{{Cursor: 0}}}
 	menus := []domain.MenuDef{

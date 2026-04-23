@@ -115,9 +115,6 @@ func renderMenuDropdown(
 		}
 		clean, _ := StripAmpersand(it.Label)
 		w := len(clean)
-		if it.Hotkey != "" {
-			w += 2 + len(HotkeyDisplay(it.Hotkey))
-		}
 		if HasSubMenu(it) {
 			w += 2 // " ►"
 		}
@@ -252,14 +249,10 @@ func renderMenuDropdown(
 			col++
 		}
 
-		// Right-aligned suffix: hotkey or sub-menu arrow.
-		suffix := ""
+		// Right-aligned suffix: sub-menu arrow (Hotkey shortcuts removed —
+		// games need the Ctrl/Alt keyspace).
 		if HasSubMenu(it) {
-			suffix = "►"
-		} else if it.Hotkey != "" {
-			suffix = HotkeyDisplay(it.Hotkey)
-		}
-		if suffix != "" {
+			suffix := "►"
 			suffixStart := totalW - 1 - scrollW - 1 - len([]rune(suffix))
 			sc := suffixStart
 			sfg := rowFg
@@ -412,9 +405,6 @@ func (o *OverlayState) RenderDropdown(menus []domain.MenuDef, ncBarRow int, laye
 		if !IsSeparator(it) {
 			clean, _ := StripAmpersand(it.Label)
 			w := len(clean)
-			if it.Hotkey != "" {
-				w += 2 + len(HotkeyDisplay(it.Hotkey))
-			}
 			if HasSubMenu(it) {
 				w += 2 // " ►"
 			}
@@ -461,12 +451,11 @@ func (o *OverlayState) RenderDropdown(menus []domain.MenuDef, ncBarRow int, laye
 
 		clean, _ := StripAmpersand(it.Label)
 
-		// Right-aligned suffix: sub-menu arrow or hotkey.
+		// Right-aligned suffix: sub-menu arrow (Hotkey shortcuts removed —
+		// games need the Ctrl/Alt keyspace).
 		suffix := ""
 		if HasSubMenu(it) {
 			suffix = " ►"
-		} else if it.Hotkey != "" {
-			suffix = "  " + HotkeyDisplay(it.Hotkey)
 		}
 		pad := strings.Repeat(" ", max(0, innerW-2-checkW-len(clean)-len(suffix)))
 		var inner string
