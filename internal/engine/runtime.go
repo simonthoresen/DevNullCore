@@ -114,6 +114,16 @@ type Runtime struct {
 	isFolderGame bool // true when the game was loaded from <name>/main.js (not a flat .js file)
 
 	elapsedTime float64 // cumulative game time in seconds, injected into Game.state._gameTime
+
+	// Canvas reuse: keyed by playerID so each player's canvas is reused across
+	// frames without resize thrashing. Runtime.mu serializes all renders, so
+	// the map needs no additional locking.
+	canvasCache map[string]canvasEntry
+}
+
+type canvasEntry struct {
+	canvas *JSCanvas
+	w, h   int
 }
 
 // LoadGame loads and executes a game script (.js), extracts the Game
@@ -133,6 +143,7 @@ func LoadGame(path string, logFn func(string), chatCh chan domain.Message, clock
 		clock:        clock,
 		dataDir:      dataDir,
 		isFolderGame: filepath.Base(path) == "main.js",
+		canvasCache:  map[string]canvasEntry{},
 	}
 
 	// Record the main source file.
@@ -568,6 +579,7 @@ func (r *Runtime) Unload() any {
 	}
 
 	r.vm.Interrupt("game unloaded")
+	r.canvasCache = map[string]canvasEntry{}
 	return result
 }
 
@@ -654,7 +666,7 @@ func (r *Runtime) RenderCanvas(playerID string, width, height int) []byte {
 	cancel := Watchdog(r.vm, "RenderCanvas")
 	defer cancel()
 
-	canvas := NewJSCanvas(width, height, 1.0)
+	canvas := r.getCanvas(playerID, width, height)
 	canvasObj := canvas.ToJSObject(r.vm)
 	if err := r.invokeRenderCanvasFn(playerID, canvasObj, width, canvas.height); err != nil {
 		slog.Error("JS RenderCanvas error", "error", err)
@@ -680,13 +692,26 @@ func (r *Runtime) RenderCanvasImage(playerID string, width, height int) *image.R
 	cancel := Watchdog(r.vm, "RenderCanvasImage")
 	defer cancel()
 
-	canvas := NewJSCanvas(width, height, 1.0)
+	canvas := r.getCanvas(playerID, width, height)
 	canvasObj := canvas.ToJSObject(r.vm)
 	if err := r.invokeRenderCanvasFn(playerID, canvasObj, width, canvas.height); err != nil {
 		slog.Error("JS RenderCanvasImage error", "error", err)
 		return nil
 	}
 	return canvas.ToRGBA()
+}
+
+// getCanvas returns the cached canvas for the given player and dimensions.
+// If dimensions match the cached entry the canvas is renewed in-place; otherwise
+// a new canvas is created and stored. Must be called with r.mu held.
+func (r *Runtime) getCanvas(playerID string, w, h int) *JSCanvas {
+	if e, ok := r.canvasCache[playerID]; ok && e.w == w && e.h == h {
+		e.canvas.Renew()
+		return e.canvas
+	}
+	c := NewJSCanvas(w, h, 1.0)
+	r.canvasCache[playerID] = canvasEntry{canvas: c, w: w, h: h}
+	return c
 }
 
 // invokeRenderCanvasFn calls the game's renderCanvas(state, me, canvas) with

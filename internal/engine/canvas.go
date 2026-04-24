@@ -19,8 +19,9 @@ import (
 // Gradients returned from createRadialGradient/createLinearGradient are
 // keyed by a per-canvas opaque id string; setFillStyle/setStrokeStyle
 // inspect their argument to decide whether it is a color string or a
-// gradient handle. The canvas is recreated each frame, so the registry
-// does not outlive a render pass.
+// gradient handle. Call Renew() to reset the canvas for a new frame without
+// reallocating the pixel or depth buffers; create a new canvas only when
+// dimensions change.
 type JSCanvas struct {
 	dc          *gg.Context
 	width       int
@@ -44,6 +45,26 @@ func NewJSCanvas(width, height int, scaleY float64) *JSCanvas {
 		dc.Scale(1.0, scaleY)
 	}
 	return &JSCanvas{dc: dc, width: width, height: logicalH, gradients: map[string]gg.Pattern{}}
+}
+
+// Renew resets the canvas for a new frame without reallocating the pixel or
+// depth buffers. The pixel buffer is zeroed in-place; a new gg.Context is
+// created wrapping the same *image.RGBA (cheap: only the freetype rasterizer
+// cell-index is allocated, ~height×8 bytes). The depth buffer is cleared
+// in-place via ClearDepth. The gradient registry is reset.
+//
+// Dimensions must not change between calls; create a new JSCanvas when w/h differ.
+func (c *JSCanvas) Renew() {
+	img := c.dc.Image().(*image.RGBA)
+	for i := range img.Pix {
+		img.Pix[i] = 0
+	}
+	c.dc = gg.NewContextForRGBA(img)
+	if c.raster != nil {
+		c.raster.ClearDepth()
+	}
+	c.gradients = map[string]gg.Pattern{}
+	c.gradCounter = 0
 }
 
 // parseCanvasHexColor parses a "#rgb", "#rgba", "#rrggbb", or "#rrggbbaa"

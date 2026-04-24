@@ -39,11 +39,17 @@ type LocalRenderer struct {
 	// Local clock extrapolation. The renderer reads serverGameTime as
 	// "what the server said _gameTime was at snapAt", and at render time
 	// publishes (serverGameTime + wall-elapsed) onto Game.state._gameTime.
-	clockKnown      bool
-	serverGameTime  float64
-	snapAt          time.Time
-	now             func() time.Time           // overridable for tests
-	driftLogger     func(driftSec float64)     // called when |drift| > threshold
+	clockKnown     bool
+	serverGameTime float64
+	snapAt         time.Time
+	now            func() time.Time       // overridable for tests
+	driftLogger    func(driftSec float64) // called when |drift| > threshold
+
+	// Canvas reuse: avoid per-frame allocation of the RGBA pixel buffer and
+	// depth buffer. Renewed in-place when dimensions match; replaced on resize.
+	canvasCache  *engine.JSCanvas
+	canvasCacheW int
+	canvasCacheH int
 }
 
 // NewLocalRenderer creates a renderer ready to receive game source and state.
@@ -80,6 +86,7 @@ func (lr *LocalRenderer) LoadGame(files []GameSrcFile) {
 	lr.renderAsciiFn = nil
 	lr.canvasFn = nil
 	lr.resolveMeFn = nil
+	lr.canvasCache = nil // invalidate: new game may use different canvas dimensions
 
 	// Only load-time-safe globals are bound client-side. figlet is pure;
 	// include is a no-op because the server already pre-expanded includes
@@ -339,7 +346,14 @@ func (lr *LocalRenderer) renderCanvasRaw(playerID string, pixelW, pixelH int) *i
 		return nil
 	}
 
-	canvas := engine.NewJSCanvas(pixelW, pixelH, 1.0)
+	if lr.canvasCache != nil && lr.canvasCacheW == pixelW && lr.canvasCacheH == pixelH {
+		lr.canvasCache.Renew()
+	} else {
+		lr.canvasCache = engine.NewJSCanvas(pixelW, pixelH, 1.0)
+		lr.canvasCacheW = pixelW
+		lr.canvasCacheH = pixelH
+	}
+	canvas := lr.canvasCache
 	ctx := canvas.ToJSObject(lr.vm)
 
 	lr.injectLocalGameTime()
