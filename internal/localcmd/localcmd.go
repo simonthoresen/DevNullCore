@@ -232,3 +232,9 @@ func moveShader(name string, delta int, shaders []domain.Shader, names []string,
 	output(fmt.Sprintf("Shader '%s' moved to position %d.", name, newIdx+1))
 	return shaders, names, true
 }
+
+// ParseCommand splits "/cmd-name arg1 arg2" into ("/cmd-name", "arg1 arg2").
+func ParseCommand(text string) (string, string) {
+	cmd, arg, _ := strings.Cut(strings.TrimSpace(text), " ")
+	return cmd, strings.TrimSpace(arg)
+}

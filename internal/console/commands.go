@@ -64,7 +64,7 @@ func (m *Model) submitInput(text string) {
 		return
 	}
 
-	cmd, arg := parseCommand(text)
+	cmd, arg := localcmd.ParseCommand(text)
 
 	// Local commands (per-console, not in server registry).
 	switch cmd {
@@ -204,16 +204,6 @@ func (m *Model) dispatchPluginReply(text string) {
 		return
 	}
 	m.api.BroadcastChat(domain.Message{Author: "admin", Text: text, IsFromPlugin: true})
-}
-
-// parseCommand splits "/cmd-name arg1 arg2" into ("/cmd-name", "arg1 arg2").
-func parseCommand(text string) (string, string) {
-	text = strings.TrimSpace(text)
-	idx := strings.IndexByte(text, ' ')
-	if idx < 0 {
-		return text, ""
-	}
-	return text[:idx], strings.TrimSpace(text[idx+1:])
 }
 
 // parseLogLevel converts a level name to a slog.Level.

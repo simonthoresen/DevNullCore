@@ -16,7 +16,7 @@ func (m *Model) dispatchInput(text string) {
 		return
 	}
 	if strings.HasPrefix(text, "/") {
-		cmd, arg := parseCommand(text)
+		cmd, arg := localcmd.ParseCommand(text)
 
 		// Local commands (per-player, not in server registry).
 		switch cmd {
@@ -289,12 +289,3 @@ func (m *Model) handleSynthLoad(name string) {
 	m.pluginReply("SoundFont: " + name)
 }
 
-// parseCommand splits "/cmd-name arg1 arg2" into ("/cmd-name", "arg1 arg2").
-func parseCommand(text string) (string, string) {
-	text = strings.TrimSpace(text)
-	idx := strings.IndexByte(text, ' ')
-	if idx < 0 {
-		return text, ""
-	}
-	return text[:idx], strings.TrimSpace(text[idx+1:])
-}
