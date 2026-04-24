@@ -2,6 +2,8 @@
 
 This document explains how to write games for dev-null. Games are plain JavaScript files (ES5-compatible, no modules). Drop your file in `dist/games/`, or share it via URL — no build step required.
 
+The contract is summarized in one page at [`docs/claude/game-contract.md`](docs/claude/game-contract.md); this file is the longer tutorial.
+
 ---
 
 ## Quick orientation
@@ -11,6 +13,10 @@ This document explains how to write games for dev-null. Games are plain JavaScri
 | **Game** | One active at a time; owns the viewport, status bar, and command bar |
 | **Lobby** | The state when no game is loaded; only chat is visible |
 | **Viewport** | The rectangular region your game renders into (below the game status bar, above chat) |
+| **`state`** | The single gameplay object. Passed as a parameter to every hook; the framework marshals and transports it. |
+| **`ctx`** | The server-only side-effects handle (chat, sound, MIDI, gameOver, …). Never passed to render. |
+| **`me`** | The player that a render or UI call is "for". Framework-resolved; render receives the resolved object, not an ID string. |
+| **`events`** | The flat, ordered per-tick event list passed to `update`. Inputs, joins, leaves, commands, and the always-present `tick` event arrive here. |
 
 ---
 
@@ -65,307 +71,216 @@ The zip is extracted to `dist/games/mygame/` and then loaded normally.
 
 ## Writing a game
 
-A game file must define a global `Game` object. `load` and `renderAscii` are required; all other hooks are optional.
+A game file must define a global `Game` object. `init` and at least one of `renderAscii`/`renderCanvas` are required; every other hook is optional.
 
 ```js
 var Game = {
 
-    // --- Core hooks ---
+    // --- Properties ---
 
-    // Called once per server tick with the time elapsed since the last update
-    // in seconds. Put all game logic here — movement, timers, collision
-    // detection, gameOver() calls. This is called exactly once per tick
-    // regardless of how many players are connected. Use dt for all timing.
-    update: function(dt) {},
-
-    // Called when a player disconnects mid-game.
-    onPlayerLeave: function(playerID) {},
-
-    // Called every time a player presses a key while in game mode (not while chatting).
-    // key is a string: "up", "down", "left", "right", "enter", "esc", "space",
-    // "a"–"z", "A"–"Z", "0"–"9", "ctrl+c", "ctrl+z", "f1"–"f12", etc.
-    onInput: function(playerID, key) {},
-
-    // Renders the game viewport into buf at position (ox, oy) with dimensions width × height.
-    // buf is an ImageBuffer — call buf.setChar(x, y, ch, fg, bg), buf.writeString(x, y, text, fg, bg),
-    // buf.fill(x, y, w, h, ch, fg, bg) to write pixels directly. Colors are "#RRGGBB" strings or null.
-    // Coordinates are relative to the buffer region (0,0 = top-left of the game viewport).
-    // Called per player on every render tick. Must be pure rendering — no game state mutation.
-    // Used when the player's graphics preference is Ascii, or as fallback when canvas is unavailable.
-    renderAscii: function(buf, playerID, ox, oy, width, height) {
-        buf.writeString(0, 0, "Hello!", "#FFFFFF", null);
-    },
-
-    // Returns a declarative widget tree describing the game window.
-    // If defined, the framework renders real themed NC panels/labels instead of
-    // using the raw renderAscii() output. Games can embed {type: "gameview"} nodes to
-    // include the raw renderAscii() output within the layout. If layout returns null
-    // or is not defined, the framework falls back to renderAscii(). See "Widget Tree Layout" below.
-    layout: function(playerID, width, height) {
-        return {
-            type: 'hsplit',
-            children: [
-                { type: 'gameview', weight: 1 },           // raw renderAscii() here
-                { type: 'panel', title: 'Info', width: 20, // NC panel on the right
-                  children: [{ type: 'label', text: 'Score: 42' }] }
-            ]
-        };
-    },
-
-    // Returns the text for the game status bar (1 row, below the menu bar).
-    // Keep content shorter than width.
-    statusBar: function(playerID) {
-        return "HP: 100  Score: 0";
-    },
-
-    // Returns the idle hint shown in the command bar (above the framework status bar).
-    // Example: "[↑↓←→] Move  [Enter] Chat"
-    // Return "" to show the default hint.
-    commandBar: function(playerID) {
-        return "";
-    },
-
-    // --- Properties (all optional) ---
-
-    // Display name shown in the menu bar and splash screen. If omitted, the filename stem is used.
+    // Display name shown in the menu bar. If omitted, the filename stem is used.
     gameName: "My Awesome Game",
 
-    // Supported team count range. The framework blocks loading if the lobby has
-    // fewer or more teams. Zero means no constraint on that end.
+    // Supported team count range. The framework blocks loading outside the range.
     // Omit to allow any number of teams.
     teamRange: { min: 2, max: 4 },
 
-    // --- Lifecycle ---
+    // --- Lifecycle (server-only, receive ctx) ---
 
-    // Called on game load with persisted state (or null on first run). Mandatory.
-    // teams() global is available. Use savedState to restore previous session.
-    load: function(savedState) {
-        if (savedState) {
-            // restore previous state
-            score = savedState.score;
+    // Called once on game load. Returns the initial state object; the framework
+    // installs it as Game.state. Mandatory. Teams are NOT yet assembled here —
+    // state.teams is first valid in begin().
+    init: function(ctx) {
+        return { players: {}, score: 0, elapsed: 0 };
+    },
+
+    // Called after teams are assembled and the starting screen closes. Use this
+    // to spawn per-team records, seed initial positions, etc. state.teams is
+    // valid here and every tick after.
+    begin: function(state, ctx) {
+        var t = state.teams || [];
+        // ... spawn players from teams ...
+    },
+
+    // Called once per server tick. Drains every event queued since the last
+    // tick and runs all gameplay logic. This is the ONLY place state is
+    // meant to mutate.
+    update: function(state, dt, events, ctx) {
+        state.elapsed += dt;
+        for (var i = 0; i < events.length; i++) {
+            var e = events[i];
+            if (e.type === "input")  { /* handle input */ }
+            if (e.type === "join")   { /* add player to state */ }
+            if (e.type === "leave")  { /* remove player */ }
+            if (e.type === "tick")   { /* exactly one per update */ }
+            if (e.type === "command"){ /* custom slash command */ }
         }
     },
 
-    // Called at starting→playing transition. Set up real-time game state here. Optional.
-    begin: function() {
-        // game begins — teams() available
+    // Called when the game transitions to game-over, before the results
+    // screen is shown. Optional cleanup site.
+    end: function(state, ctx) { },
+
+    // --- Render (pure, no ctx) ---
+
+    // Renders the game viewport as characters. Runs on the server for SSH
+    // clients and on the GUI client itself for local ascii/blocks rendering.
+    // NEVER receives ctx; side-effecty calls throw a TypeError.
+    renderAscii: function(state, me, cells) {
+        cells.writeString(0, 0, "Hello, " + me.name, "#FFFFFF", null);
     },
 
-    // Called when the game signals game-over, before the ending screen is shown. Optional.
-    // Use this for cleanup, final score calculations, etc.
-    end: function() {
-        // optional cleanup
+    // Renders the viewport as pixels. Runs client-side when the player is in
+    // Blocks or Pixels mode. Also never receives ctx.
+    renderCanvas: function(state, me, canvas) {
+        canvas.fillRect(0, 0, canvas.width, canvas.height, "#000");
     },
 
-    // Called on game-over, /game unload, AND after suspend() during /game suspend.
-    // Return PERSISTENT state (high scores, unlocks) — saved to dist/state/<game>.json
-    // and passed back via load(persistentState) on the next fresh load or resume.
-    unload: function() {
-        return { highScore: highScore };
+    // --- Optional chrome (pure, no ctx) ---
+
+    statusBar:  function(state, me) { return "HP: 100  Score: " + state.score; },
+    commandBar: function(state, me) { return "[↑↓←→] Move  [Enter] Chat"; },
+
+    // --- Optional: custom me resolution ---
+
+    // By default the framework sets me = state.players[playerID]. Games that
+    // store players under a different key provide this hint. Returning null
+    // makes the framework draw a "connecting…" splash and skip render.
+    resolveMe: function(state, playerID) {
+        return state.entities[playerID] || null;
     },
 
-    // Called on /game suspend BEFORE unload(). Return SESSION state (current board,
-    // score in progress) to store in the suspend save file.
-    // Return undefined/null if the game has no meaningful mid-session state.
-    suspend: function() {
-        return { score: score, board: board };
-    },
+    // --- Optional persistence (see "State persistence") ---
 
-    // Called INSTEAD OF begin() when restoring from a suspend save.
-    // sessionState is the value previously returned by suspend().
-    // If not defined, falls back to begin() — old games without this hook still work.
-    resume: function(sessionState) {
-        if (sessionState) {
-            score = sessionState.score;
-            board = sessionState.board;
-        }
-    }
+    unload:  function()             { return { /* persistent data */ }; },
+    suspend: function()             { return { /* session snapshot */ }; },
+    resume:  function(sessionState) { /* restore from suspend() */ }
 };
 ```
 
 ### Minimal working example
 
 ```js
-var players = {};
-
 var Game = {
-    onPlayerJoin: function(playerID, playerName) {
-        players[playerID] = { name: playerName, x: 10, y: 5 };
+    gameName: "Dots",
+    teamRange: { min: 1, max: 4 },
+
+    init: function(ctx) {
+        return { players: {} };
     },
 
-    onPlayerLeave: function(playerID) {
-        delete players[playerID];
-    },
-
-    onInput: function(playerID, key) {
-        var p = players[playerID];
-        if (!p) return;
-        if (key === "up")    p.y = Math.max(0, p.y - 1);
-        if (key === "down")  p.y++;
-        if (key === "left")  p.x = Math.max(0, p.x - 1);
-        if (key === "right") p.x++;
-    },
-
-    renderAscii: function(buf, playerID, ox, oy, width, height) {
-        for (var y = 0; y < height; y++) {
-            for (var x = 0; x < width; x++) {
-                var ch = ".";
-                for (var id in players) {
-                    if (players[id].x === x && players[id].y === y) {
-                        ch = (id === playerID) ? "@" : "O";
-                        break;
-                    }
-                }
-                buf.setChar(x, y, ch, null, null);
+    begin: function(state, ctx) {
+        var t = state.teams || [];
+        for (var i = 0; i < t.length; i++) {
+            for (var j = 0; j < t[i].players.length; j++) {
+                var p = t[i].players[j];
+                state.players[p.id] = { id: p.id, name: p.name, x: 10, y: 5 };
             }
         }
     },
 
-    // The framework renders the starting screen (figlet game name) and the
-    // ending screen (figlet "GAME OVER" + ranked results). Games don't provide
-    // their own.
-
-    statusBar: function(playerID) {
-        var p = players[playerID];
-        var n = Object.keys(players).length;
-        return p ? "pos: (" + p.x + "," + p.y + ")  players: " + n : "";
+    update: function(state, dt, events, ctx) {
+        for (var i = 0; i < events.length; i++) {
+            var e = events[i];
+            if (e.type === "leave") { delete state.players[e.playerID]; continue; }
+            if (e.type !== "input") continue;
+            var p = state.players[e.playerID];
+            if (!p) continue;
+            if (e.key === "up")    p.y = Math.max(0, p.y - 1);
+            if (e.key === "down")  p.y++;
+            if (e.key === "left")  p.x = Math.max(0, p.x - 1);
+            if (e.key === "right") p.x++;
+        }
     },
 
-    commandBar: function(playerID) {
-        return "[↑↓←→] Move  [Enter] Chat";
+    renderAscii: function(state, me, cells) {
+        for (var y = 0; y < cells.height; y++) {
+            for (var x = 0; x < cells.width; x++) {
+                var ch = ".";
+                for (var id in state.players) {
+                    var p = state.players[id];
+                    if (p.x === x && p.y === y) {
+                        ch = (id === me.id) ? "@" : "O";
+                        break;
+                    }
+                }
+                cells.setChar(x, y, ch, null, null);
+            }
+        }
+    },
+
+    statusBar: function(state, me) {
+        var p = state.players[me.id];
+        return p ? "pos: (" + p.x + "," + p.y + ")" : "";
     }
 };
 ```
 
-### Registering game commands
-
-Call `registerCommand` at the top level of your script (not inside Game hooks). The command becomes available as `/commandname` to all players as long as the game is loaded.
-
-```js
-registerCommand({
-    name: "score",
-    description: "Show your score",
-    adminOnly: false,       // optional; defaults to false
-    firstArgIsPlayer: false, // optional; tab-completes first arg against player names
-    handler: function(playerID, isAdmin, args) {
-        // args is an array of strings (the words after /score)
-        // use chat() or chatPlayer() to reply — ctx.Reply is not available in JS
-        chatPlayer(playerID, "Your score: " + getScore(playerID));
-    }
-});
-```
+The framework renders the starting screen (figlet game name) and the ending screen (figlet "GAME OVER" + ranked results). Games don't provide their own.
 
 ---
 
-## Global functions
+## `ctx` — server-only capabilities
 
-These are available in games.
+`ctx` is the handle that gives server-side hooks (`init`, `begin`, `update`, `end`) access to side-effecty framework features. **Render hooks never receive `ctx`** — calling any method on it from render throws a TypeError. That's deliberate: it prevents impurity in render paths from silently diverging between the server and the locally-rendering client.
 
-| Function | Description |
-|----------|-------------|
-| `log(message)` | Writes to the server log panel (never shown to players). Useful for debugging. |
-| `chat(message)` | Broadcasts a system chat message to all players. `author` will be empty (renders as `[system] message`). |
-| `chatPlayer(playerID, message)` | Sends a private message to one player. |
-| `teams()` | Returns an array of `{ name, color, players: [{id, name}, ...] }`. During a game, returns the game teams snapshot. |
-| `figlet(text)` | Renders `text` as ASCII art using the built-in `"standard"` font. Returns a multi-line string. |
-| `figlet(text, font)` | Same, using the named font. Built-in fonts: `"standard"`, `"larry3d"`. Falls back to `"standard"` for unknown fonts. |
-| `registerCommand(spec)` | Registers a slash command. See below. |
-| `addMenu(label, items)` | Adds a top-level menu to the NC action bar. Call at the top level of your script. `label` is the menu title. `items` is an array of menu item objects; see below. |
-| `messageBox(playerID, opts)` | Shows a modal dialog to a specific player. `opts` is `{ title, message, buttons, onClose }`. See below. |
-| `gameOver()` | Signals that the game has ended. Transitions to the ending screen. |
-| `gameOver(results)` | Same as above, with ranked results displayed on the ending screen. `results` is an array of `{ name, result }` in ranked order. `name` is the display name (player or team). `result` is a freeform string (e.g. `"4200 pts"`, `"1st"`, `"DNF"`). |
-| `now()` | Returns the server time as epoch milliseconds (same as `Date.now()` but uses the framework's central clock, which is mockable in tests). Available in both games and plugins. |
-| `include(name)` | Evaluates another `.js` file from the same directory as the game file. Used for multi-file games in `games/<name>/` folders. The `.js` extension is added automatically if omitted. Each file is only included once (idempotent). Path traversal (`..`) is rejected. |
-| `playSound(filename, opts)` | Plays an audio file on graphical clients. File must be a game asset (.ogg, .mp3, .wav). Options: `{ loop: true }` for looping, `{ alt: "text" }` for chat fallback text on non-graphical clients. |
-| `stopSound(filename)` | Stops playback of the named audio file. Call with no arguments or empty string to stop all sounds. |
-| `midiNote(channel, note, velocity, durationMs)` | Plays a MIDI note on all graphical clients. Channel 0-15, note 0-127, velocity 0-127. Duration in ms (0 = NoteOn only, no auto-off). Requires a SoundFont on the client (`/synth` command). |
-| `midiNotePlayer(playerID, ch, note, vel, dur)` | Same as `midiNote` but only for one player. |
-| `midiProgram(channel, program)` | Changes the instrument on a MIDI channel for all players. Program 0-127 (General MIDI). |
-| `midiProgramPlayer(playerID, ch, program)` | Same as `midiProgram` but only for one player. |
-| `midiCC(channel, controller, value)` | Sends a MIDI Control Change. Common controllers: 7=volume, 10=pan, 64=sustain. |
+| Method | Purpose |
+|---|---|
+| `ctx.log(msg)` | Write to the server log panel (debug). |
+| `ctx.chat(msg)` | Broadcast a system chat message. |
+| `ctx.chatPlayer(pid, msg)` | Direct-message one player. |
+| `ctx.playSound(file, opts)` | Play an audio asset. Options: `{ loop: true, alt: "text" }`. |
+| `ctx.stopSound(file)` | Stop playback. Call with no argument to stop all sounds. |
+| `ctx.midiNote(ch, note, vel, durMs)` | Broadcast a MIDI note. Duration 0 = NoteOn only. |
+| `ctx.midiNotePlayer(pid, ch, note, vel, durMs)` | Direct-to-one-player MIDI note. |
+| `ctx.midiProgram(ch, program)` | Change the instrument on a MIDI channel (GM 0-127). |
+| `ctx.midiProgramPlayer(pid, ch, program)` | Per-player program change. |
+| `ctx.midiCC(ch, controller, value)` | Send a MIDI Control Change (7=volume, 10=pan, 64=sustain). |
+| `ctx.teams()` | Snapshot of current teams (read-only; `state.teams` is the usual way to read). |
+| `ctx.gameOver(results)` | Signal end-of-game. `results` is a ranked array of `{ name, result }`. |
+| `ctx.showDialog(pid, opts)` | Open a modal dialog on one client. See "Dialogs" below. |
+| `ctx.registerCommand(spec)` | Register a slash-command handler. See "Custom commands". |
+| `ctx.now()` | Server time as epoch milliseconds (from the framework's mockable central clock). |
 
-### `registerCommand(spec)`
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | yes | Command name without the `/` |
-| `description` | string | no | Shown in `/help` |
-| `adminOnly` | bool | no | If true, non-admins cannot use it |
-| `firstArgIsPlayer` | bool | no | Tab-completes first argument against player names |
-| `handler` | function(playerID, isAdmin, args) | yes | Called when the command runs |
-
-The handler signature:
-- `playerID` — the player who ran the command (empty string = server console)
-- `isAdmin` — whether the caller is an admin
-- `args` — array of string arguments after the command name
-
-Use `chatPlayer(playerID, text)` to reply privately to the caller.
-
----
-
-### `addMenu(label, items)`
-
-Registers a top-level entry in the NC-style action bar. Call at the **top level** of your script (not inside a hook). The menu persists for the lifetime of the game.
+### Dialogs
 
 ```js
-addMenu("&Game", [
-    { label: "&New Game", onClick: function(playerID) { /* ... */ } },
-    { label: "---" },  // separator
-    { label: "&High Scores", onClick: function(playerID) {
-        messageBox(playerID, {
-            title: "High Scores",
-            message: "1. Alice  4200\n2. Bob    3100",
-            buttons: ["OK"]
-        });
-    }}
-]);
-```
-
-**Item fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `label` | string | Display text. Prefix a character with `&` to mark it as the keyboard shortcut (e.g. `"&Save"` → **S** is the shortcut, rendered highlighted). A label of `"---"` (or any all-dashes string) renders as a separator line. |
-| `disabled` | bool | Optional. If true, the item is shown greyed out and cannot be selected. |
-| `onClick` | function(playerID) | Called when the item is activated. `playerID` is the player who selected it. |
-
-**Keyboard shortcuts:** Use `&` in labels to designate shortcut keys (e.g. `"&File"`, `"&Save"`). The shortcut character is rendered highlighted. `Alt+letter` opens a menu directly. When the bar is focused, pressing the letter key opens the matching menu. Inside a dropdown, pressing the letter activates the matching item.
-
-**Navigation:** Press `F10` or `Alt+letter` to activate the action bar. `Left`/`Right` move between menu titles. `Down` or `Enter` opens the dropdown. Inside a dropdown: `Up`/`Down` navigate items, `Enter` or shortcut letter selects, `Esc` closes back to the bar. `F10` or `Esc` at the bar level deactivates.
-
----
-
-### `messageBox(playerID, opts)`
-
-Shows a modal dialog to the specified player. The dialog overlays the current view and intercepts all keyboard input until dismissed.
-
-```js
-messageBox(playerID, {
+ctx.showDialog(playerID, {
     title: "Confirm",
-    message: "Are you sure you want to restart?",
+    message: "Restart the game?",
     buttons: ["Yes", "No"],
     onClose: function(button) {
-        if (button === "Yes") {
-            // restart game
-        }
+        if (button === "Yes") { /* … */ }
     }
 });
 ```
-
-**`opts` fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `title` | string | Dialog title bar text. |
 | `message` | string | Body text. `\n` creates line breaks. |
-| `buttons` | array | Button labels. Defaults to `["OK"]` if omitted. |
-| `onClose` | function(button) | Called with the label of the button pressed, or `""` if the dialog was dismissed with `Esc`. |
+| `buttons` | array | Button labels. Defaults to `["OK"]`. |
+| `onClose` | function(button) | Called with the label pressed, or `""` if dismissed with Esc. |
 
-**Navigation:** `Tab` or `Left`/`Right` cycle through buttons. `Enter` or `Space` activates the focused button. `Esc` calls `onClose("")`.
+Navigation: Tab / Left / Right cycle buttons. Enter or Space activates. Esc calls `onClose("")`.
 
 ---
 
-## Key strings for `onInput`
+## `events` — per-tick input
+
+`update(state, dt, events, ctx)` receives every event that happened since the previous tick as a flat, ordered array. Each event is a plain object with a `type`:
+
+```js
+{ type: "input",   playerID, key }                 // player pressed a key in game mode
+{ type: "join",    playerID, playerName }          // player joined the running game
+{ type: "leave",   playerID }                      // player disconnected
+{ type: "tick" }                                   // always present exactly once per update
+{ type: "command", playerID, name, args }          // registered via ctx.registerCommand
+```
+
+Iterate the list in order. One `update` call per tick; events since the previous tick arrive batched.
+
+### Key strings for `input` events
 
 Keys are passed as Bubble Tea key strings. Common values:
 
@@ -374,7 +289,7 @@ Keys are passed as Bubble Tea key strings. Common values:
 | Arrow keys | `"up"` `"down"` `"left"` `"right"` |
 | Enter | `"enter"` |
 | Escape | `"esc"` |
-| Space | `" "` |
+| Space | `" "` (or `"space"`) |
 | Backspace | `"backspace"` |
 | Tab | `"tab"` |
 | Page Up/Down | `"pgup"` `"pgdown"` |
@@ -384,7 +299,146 @@ Keys are passed as Bubble Tea key strings. Common values:
 | Digits | `"0"` … `"9"` |
 | Ctrl combos | `"ctrl+a"` … `"ctrl+z"` |
 
-> `onInput` is only called when the player is in game mode (not when they're typing a chat message). Players enter chat mode by pressing Enter and return to game mode by pressing Escape or submitting.
+> `input` events are only delivered while the player is in game mode (not chatting). Players enter chat mode by pressing Enter in the command bar; they return to game mode by submitting or pressing Esc.
+
+---
+
+## `me` and `resolveMe`
+
+Render and UI hooks never see a raw `playerID` string — they receive a resolved `me` object. By default the framework sets `me = state.players[playerID]`. If the game keeps per-player data under a different key, define `resolveMe`:
+
+```js
+Game.resolveMe = function(state, playerID) {
+    var teamIdx = state.playerTeams[playerID];
+    return { id: playerID, teamIdx: teamIdx, camera: state.cameras[teamIdx] };
+};
+```
+
+If `resolveMe` returns null, the framework draws a "connecting…" splash into the viewport and does not invoke render. That keeps games out of the awkward "mid-join with no `me` yet" state.
+
+---
+
+## `cells` — the ASCII render surface
+
+`cells` is the object passed to `renderAscii(state, me, cells)`. It's a view into the player's current viewport; attributes it carries:
+
+| Member | Description |
+|--------|-------------|
+| `cells.width` / `cells.height` | Dimensions of the game viewport (in characters). |
+| `cells.setChar(x, y, ch, fg, bg, attr?)` | Set one character. `fg`/`bg` are `"#RRGGBB"` or `null` (default). `attr` is a bitmask (see below). |
+| `cells.writeString(x, y, text, fg, bg, attr?)` | Write text starting at (x, y). |
+| `cells.fill(x, y, w, h, ch, fg, bg, attr?)` | Fill a rectangle with a character. |
+| `cells.paintANSI(x, y, w, ansiText)` | Paint a pre-formatted ANSI string into a single row. |
+| `cells.log(msg)` | Debug log. Kept narrow so it's the one impure escape hatch allowed from render. |
+
+### Attribute constants
+
+Constants live on the `cells` object so they only exist inside render:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `cells.ATTR_NONE` | 0 | No attributes |
+| `cells.ATTR_BOLD` | 1 | Bold text |
+| `cells.ATTR_FAINT` | 2 | Dim/faint text |
+| `cells.ATTR_ITALIC` | 4 | Italic text |
+| `cells.ATTR_UNDERLINE` | 8 | Underlined text |
+| `cells.ATTR_REVERSE` | 16 | Reverse video |
+
+```js
+renderAscii: function(state, me, cells) {
+    cells.writeString(0, 0, "Hello, " + me.name, "#00FF00", null);
+    cells.setChar(5, 2, "@", "#FFFF00", "#000080", cells.ATTR_BOLD);
+}
+```
+
+Coordinates are relative to the viewport (0,0 = top-left).
+
+---
+
+## `canvas` — the pixel render surface
+
+`canvas` is the object passed to `renderCanvas(state, me, canvas)`. It exposes a Canvas2D-like surface plus a 3D triangle rasterizer.
+
+| Area | Members |
+|------|---------|
+| **Dimensions** | `canvas.width`, `canvas.height` (logical pixels) |
+| **State** | `canvas.save()`, `canvas.restore()` |
+| **Transforms** | `canvas.translate(x, y)`, `canvas.rotate(angle)` |
+| **Paint style** | `canvas.setFillStyle(color_or_gradient)`, `canvas.setStrokeStyle(…)` — accepts either a `#rgb(a)?`/`#rrggbb(aa)?` string or a gradient handle. |
+| **2D fill** | `canvas.fillRect(x, y, w, h)`, `canvas.fillCircle(x, y, r)`, `canvas.fillText(text, x, y)` |
+| **Paths** | `canvas.beginPath()`, `canvas.moveTo(x, y)`, `canvas.lineTo(x, y)`, `canvas.stroke()`, `canvas.closePath()` |
+| **Gradients** | `canvas.createLinearGradient(x0, y0, x1, y1)`, `canvas.createRadialGradient(x0, y0, r0, x1, y1, r1)` → handle with `addColorStop(offset, color)` |
+| **3D** | `canvas.fillTriangle3D(v0, v1, v2, [c0, c1, c2])`, `canvas.fillTriangle3DFlat(v0, v1, v2, color)`, `canvas.fillTriangle3DLit(v0, v1, v2, n0, n1, n2, lightDir, baseColor, ambient)`, `canvas.clearDepth()` |
+| **Debug** | `canvas.log(msg)` — the render-path escape hatch |
+| **Constants** | `canvas.PI`, `canvas.TAU` |
+
+3D vertex parameters are `[x, y, z]` arrays. The depth buffer is shared across all `fillTriangle3D*` calls and is not automatically cleared between frames — call `canvas.clearDepth()` at the start of each 3D pass.
+
+---
+
+## Custom slash commands
+
+Register commands from any server-only hook (typically `init`):
+
+```js
+Game = {
+    init: function(ctx) {
+        ctx.registerCommand({
+            name: "score",
+            description: "Show your score",
+            adminOnly: false,
+            firstArgIsPlayer: false,
+            handler: function(playerID, isAdmin, args) {
+                ctx.chatPlayer(playerID, "Your score: " + lookupScore(playerID));
+            }
+        });
+        return { /* initial state */ };
+    }
+};
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Command name without the `/` |
+| `description` | string | no | Shown in `/help` |
+| `adminOnly` | bool | no | If true, non-admins cannot run it |
+| `firstArgIsPlayer` | bool | no | Tab-completes first argument against player names |
+| `handler` | function(playerID, isAdmin, args) | yes | Called when the command runs |
+
+Handler args:
+- `playerID` — the player who ran the command (empty string = server console)
+- `isAdmin` — whether the caller is an admin
+- `args` — array of string arguments after the command name
+
+When a command fires, it also appears in `update`'s event stream as `{ type: "command", playerID, name, args }` so games can keep command routing in one place.
+
+---
+
+## Framework-injected state
+
+The framework populates these keys on `state` each tick. Games may read them but must not write — the framework overwrites them after `update` returns.
+
+| Key | Shape | Notes |
+|-----|-------|-------|
+| `state.teams` | `[{ name, color, players: [{ id, name }] }]` | Valid from `begin()` onward. |
+| `state._gameTime` | seconds since `begin()` | Always present after the game starts. |
+
+`_gameTime` is the **contract clock**. The client extrapolates it locally between server snapshots from its own wall clock, so games that derive motion from `state._gameTime` get smooth render-fps animation even though the server only ticks at ~10 Hz. Whenever a non-clock state change arrives, the snapshot's `_gameTime` is treated as authoritative and the local clock is snapped to it.
+
+Games that derive render state from time should read it from `state._gameTime` — never from `ctx.now()` or wall-clock — so motion stays smooth at the client's render fps regardless of the server's tick rate.
+
+---
+
+## Global functions
+
+Only two free functions live at module scope in games:
+
+| Function | Description |
+|----------|-------------|
+| `figlet(text, font?)` | Renders `text` as ASCII art. Built-in fonts: `"standard"` (default), `"larry3d"`. Unknown fonts fall back to `"standard"`. |
+| `include(name)` | Evaluates another `.js` file from the same directory. The `.js` extension is added if omitted. Idempotent. Path traversal (`..`) is rejected. |
+
+Everything side-effecty (log, chat, midi, gameOver, …) lives on `ctx` and is therefore unreachable from render.
 
 ---
 
@@ -394,25 +448,24 @@ Keys are passed as Bubble Tea key strings. Common values:
 LOBBY (teams panel + chat)
   │  /game load <name>
   ▼
-SPLASH (game splash or default, up to 10s — admin presses Enter to start early)
+STARTING (framework splash, up to 10s — admin presses Enter to start early)
   │  admin presses Enter or 10s timeout
   ▼
 PLAYING (game viewport + chat)
-  │  JS calls gameOver()
+  │  ctx.gameOver() called from update
   ▼
-GAME OVER (framework results screen, up to 15s)
-  │  all players press Enter or 15s timeout
-  ▼
-LOBBY (game unloaded, back to teams + chat)
+LOBBY (chat history preserved, ranked results posted as a system message)
 ```
 
-- **Load**: Framework snapshots teams for the game (lobby stays independent), loads saved state, calls `init(savedState)`. `teams()` returns game teams.
-- **Splash screen**: If `renderSplash(buf, playerID, x, y, w, h)` is defined and returns true, that custom rendering is used. Otherwise, the framework renders the game name in figlet ASCII art centered in the viewport. The admin can press Enter to skip, or it auto-starts after 10s.
-- **Splash→Playing**: Framework calls `start()`. Game sets up its playing state.
-- **Playing**: Normal game mode — `update(dt)` is called once per tick, then `renderAscii()`/`renderCanvas()`/`layout()`, `onInput()`, `statusBar()`, `commandBar()` are called per player.
-- **Game over**: Triggered when JS calls `gameOver(results, state)`. The framework renders a "GAME OVER" screen with the ranked results list. Players press Enter to acknowledge; after 15 seconds the game unloads automatically.
-- **Late joiners**: Players connecting during a game see the lobby and can chat. Lobby teams are independent — players can organize for the next round.
-- **Reconnect**: If a player disconnects mid-game and reconnects with the same name, they rejoin the game automatically. Game teams persist through disconnects.
+- **Load**: Framework snapshots teams, calls `init(ctx)`, installs the return value as `Game.state`. On resume, `init` is still called (for initial state), then `resume(sessionState)` runs in place of `begin`.
+- **Starting**: Framework renders the game name in figlet ASCII art centered in the viewport. The admin can press Enter to skip, or it auto-starts after 10s.
+- **Starting → Playing**: Framework injects `state.teams`, calls `begin(state, ctx)`.
+- **Playing**: `update(state, dt, events, ctx)` runs once per tick, followed by `renderAscii`/`renderCanvas`/`layout`/`statusBar`/`commandBar` per player.
+- **Game over**: Triggered when JS calls `ctx.gameOver(results)`. The framework posts the ranked results to chat as a system message and unloads the game. Chat history persists.
+- **Late joiners**: Players connecting during a game see the lobby and can chat. Lobby teams are independent — players can organize for the next round. The `join` event is delivered to the next `update` call.
+- **Reconnect**: If a player disconnects mid-game and reconnects with the same name, they rejoin automatically. Game teams persist through disconnects.
+
+---
 
 ## Teams
 
@@ -422,16 +475,22 @@ The first player in a team is the team leader:
 - **Enter** — rename the team
 - **Left/Right** — cycle the team color
 
-Games access teams via the `teams()` global:
+Games read teams via `state.teams` (preferred) or `ctx.teams()`:
+
 ```js
-teams()  // [{name, color, players: [{id, name}, ...]}, ...]
+// In any server-only hook:
+state.teams  // [{ name, color, players: [{ id, name }, …] }, …]
 ```
 
 Games can declare a `teamRange` property to enforce a valid team count:
+
 ```js
 Game.teamRange = { min: 2, max: 4 };
 ```
+
 The framework blocks loading if the lobby has too few or too many teams.
+
+---
 
 ## State persistence
 
@@ -440,163 +499,117 @@ Games use two separate hooks to persist different kinds of data:
 | Hook | Returns | Stored in | Called when |
 |------|---------|-----------|-------------|
 | `unload()` | **Persistent state** (high scores, unlocks) | `dist/state/<gameName>.json` | Game-over, `/game unload`, AND after `suspend()` during `/game suspend` |
-| `suspend()` | **Session state** (board, current score) | suspend save file | `/game suspend` only |
+| `suspend()` | **Session state** (mid-game snapshot) | suspend save file | `/game suspend` only |
 
-**Persistent state** survives across all sessions and is received via `load(persistentState)` on every fresh load and resume. Return it from `unload()`.
+Both hooks take no parameters; read from `Game.state` directly.
 
-**Session state** is a mid-game snapshot stored in the suspend save file. It is received via `resume(sessionState)` when restoring from that save. Return it from `suspend()`.
+> **Status note.** The current v2 contract writes `unload()`'s return value to disk but does not yet feed it back on the next load — the runtime's `Load` drops the saved-state parameter. Cross-session persistence is effectively a no-op in v2 until that plumbing is reconnected. Treat `unload()` as forward-looking: emit the right shape now so persistence works when the read path lands.
+
+**Session state** is a mid-game snapshot stored in the suspend save file. It is received via `resume(sessionState)` when restoring from that save. This path works today.
 
 ```js
 var Game = {
-    state: { score: 0, highScore: 0 },
-
-    // load: called with persistent state on EVERY load (fresh and resume).
-    load: function(saved) {
-        if (saved) Game.state.highScore = saved.highScore || 0;
+    init: function(ctx) {
+        return { score: 0, highScore: 0 };
     },
 
-    begin: function() {
-        Game.state.score = 0; // fresh start — not called on resume
-    },
-
-    // unload: returns PERSISTENT state. Called on game-over, /game unload,
-    // AND after suspend() during /game suspend.
     unload: function() {
-        if (Game.state.score > Game.state.highScore)
-            Game.state.highScore = Game.state.score;
         return { highScore: Game.state.highScore };
     },
 
-    // suspend: returns SESSION state (mid-game snapshot).
-    // Called before unload() during /game suspend.
     suspend: function() {
         return { score: Game.state.score, board: Game.state.board };
     },
 
-    // resume: called instead of begin() when restoring from a suspend save.
-    // Falls back to begin() if this hook is not defined.
-    resume: function(saved) {
-        if (saved) {
-            Game.state.score = saved.score;
-            Game.state.board = saved.board;
+    resume: function(sessionState) {
+        if (sessionState) {
+            Game.state.score = sessionState.score;
+            Game.state.board = sessionState.board;
         }
-    },
+    }
 };
 ```
 
-## Suspend/resume
+### Suspend / resume
 
 Any playing game can be suspended — no opt-in flag is required.
 
 **Commands**:
 - `/game suspend [saveName]` — suspends the active game. Auto-generates a timestamp name if omitted.
 - `/game resume <gameName/saveName>` — resumes a saved session. Tab-completes against existing saves.
-- **File → Saves...** — lists all saves; Load (chrome admin) or Remove (console).
+- **File → Saves…** — lists all saves; Load (chrome admin) or Remove (console).
 
 **Save location**: `dist/state/saves/<gameName>/<saveName>.json`
 
-**Lifecycle on suspend**:
-1. `suspend()` — session snapshot stored in the save file (board state, current score, etc.)
-2. `unload()` — persistent state saved immediately to `dist/state/<gameName>.json` (high scores are not lost even if the save is later deleted)
+**On suspend**:
+1. `suspend()` runs, session snapshot stored in the save file.
+2. `unload()` runs, persistent state saved to `dist/state/<gameName>.json`.
 
-**Lifecycle on resume**:
-1. `load(persistentState)` — persistent state (high scores) loaded first, same as a fresh load
-2. `resume(sessionState)` — session state restored; called **instead of** `begin()`
-   - If `resume` is not defined, falls back to `begin()` (game starts fresh but keeps persistent state)
+**On resume**:
+1. `init(ctx)` runs (same as a fresh load).
+2. `resume(sessionState)` runs in place of `begin`, with the session snapshot.
+3. If `resume` is not defined, the framework falls back to `begin` (game starts fresh but module-level `var`s retain the persistent data you stashed there).
 
-**Backward compatibility**: Games without `suspend()` return nil session state — on resume, `resume(null)` falls back to `begin()`, starting fresh while preserving persistent state. Games that don't define `resume()` also fall back to `begin()`.
+---
 
 ## Layout and sizing
 
 **Lobby:**
 ```
-┌────────────────────────┬───────────┐
-│ menu bar (full width)               │  ← framework: server name, players, uptime
-├────────────────────────┬───────────┤
-│ chat (70% width)       │ teams     │
-│                        │ panel     │
-│                        │ (30%)     │
-├────────────────────────┴───────────┤
-│ input row (full width)              │  ← text input / team controls
+┌─────────────────────────────────────┐
+│ menu bar (full width)               │
+├─────────────────────────┬───────────┤
+│ chat (~70%)             │ teams     │
+│                         │ panel     │
+├─────────────────────────┴───────────┤
+│ input row (full width)              │
 ├─────────────────────────────────────┤
-│ status bar (full width)             │  ← framework: server time (always present)
+│ status bar (full width)             │
 └─────────────────────────────────────┘
 ```
 
-**In-game (playing):**
+**In-game:**
 ```
-┌────────────────────────────────────┐
-│ menu bar (1 row)                   │  ← framework: game name
-├────────────────────────────────────┤
-│ status bar (1 row)                 │  ← Game.statusBar(playerID)
-├────────────────────────────────────┤
-│                                    │
-│ game viewport (width × height)     │  ← Game.render(buf, playerID, ox, oy, w, h)
-│                                    │
-├────────────────────────────────────┤
-│ chat (5–10 rows, per View menu)    │
-├────────────────────────────────────┤
-│ command bar (1 row)                │  ← Game.commandBar() when idle; text input on Enter
-├────────────────────────────────────┤
-│ status bar (1 row)                 │  ← framework: server time (always present)
-└────────────────────────────────────┘
+┌─────────────────────────────────────┐
+│ menu bar (1 row — gameName)         │
+├─────────────────────────────────────┤
+│ status bar (1 row — Game.statusBar) │
+├─────────────────────────────────────┤
+│                                     │
+│ game viewport (cells.width × .height)
+│                                     │
+├─────────────────────────────────────┤
+│ chat (5–10 rows, per View menu)     │
+├─────────────────────────────────────┤
+│ command bar (1 row — Game.commandBar)
+├─────────────────────────────────────┤
+│ status bar (1 row — server time)    │
+└─────────────────────────────────────┘
 ```
 
-- `width` = full terminal width
-- `height` = terminal height minus 7 rows of chrome (menu bar, window borders, two dividers, command bar, status bar) minus the chat size (default 5, configurable 5–10 via View > Chat size)
-- Return exactly `height` newline-separated rows from `renderAscii()`. Fewer rows are padded; more are clipped.
+- `cells.width` = full terminal width
+- `cells.height` = terminal height minus 7 rows of chrome (menu bar, window borders, two dividers, command bar, status bar) minus the chat size (default 5, configurable 5–10 via View > Chat size)
 - The menu bar is full width — `gameName` can use it entirely.
 
 ---
 
-## Tips
+## Render modes and `state`
 
-**State is global and shared.** All players see the result of the same `Game` object — there is no per-player instance. Design your state with this in mind (`var players = {}`).
+Each player chooses a render mode (Ascii, Blocks, Pixels) and a render location (Remote, Local). Blocks and Pixels require `renderCanvas`. Local modes re-execute the game's JS on the GUI client and call only `renderCanvas` (or `renderAscii`) — never `update`. Everything your renderer needs must therefore be on `state`, because that's the only thing transported to the client each tick.
 
-**`renderAscii()` is called per player per tick.** Keep it fast and side-effect-free — no game state mutation. Put all game logic in `update(dt)` instead.
+Module-level `var`s are not shared: they're initialized once on each VM (server and client) and only the server's `update` runs against its copy. The client re-executes the game file once on load, then holds its VM idle except for render calls.
 
-**`update(dt)` is called once per tick.** The `dt` argument is seconds since the last update. All game logic — movement, timers, collision, gameOver() calls — belongs here. Always use `dt` for timing (accumulate elapsed time, count down timers by subtracting `dt`) — never count ticks.
+Rule of thumb: if a value affects what `renderAscii`/`renderCanvas` draws, put it on `state` inside `update`. If it's pure bookkeeping (caches, private maps, one-time constants), module scope is fine.
 
-**Rendering is character-based.** Each character is one cell wide. For box-drawing or emoji that span multiple columns, count display width carefully — the framework does not reflow.
+### Render tips
 
-**ImageBuffer API.** The `buf` parameter in `renderAscii()` supports these methods:
+**`renderAscii`/`renderCanvas` is called per player per tick.** Keep it fast and side-effect-free. Don't mutate state from render.
 
-| Method | Description |
-|--------|-------------|
-| `buf.setChar(x, y, ch, fg, bg)` | Set one character. `fg`/`bg` are `"#RRGGBB"` or `null` (default). |
-| `buf.writeString(x, y, text, fg, bg)` | Write plain text starting at (x, y). |
-| `buf.fill(x, y, w, h, ch, fg, bg)` | Fill a rectangle with a character. |
-| `buf.width` / `buf.height` | Dimensions of the game viewport. |
+**`update(state, dt, events, ctx)` is called once per tick.** All gameplay logic belongs here. Always use `dt` for timing (accumulate elapsed seconds, count down timers by subtracting `dt`) — never count ticks; tick rate is configurable.
 
-All methods accept an optional trailing `attr` parameter (bitmask): `ATTR_BOLD`, `ATTR_FAINT`, `ATTR_ITALIC`, `ATTR_UNDERLINE`, `ATTR_REVERSE`. Coordinates are relative to the viewport (0,0 = top-left).
+**Use `state._gameTime` for time-based render.** Never call `ctx.now()` from render (you can't — ctx isn't there) and avoid wall-clock in general. `state._gameTime` is the one clock that extrapolates smoothly on the client.
 
-```js
-renderAscii: function(buf, playerID, ox, oy, width, height) {
-    buf.writeString(0, 0, "Hello, " + playerID, "#00FF00", null);
-    buf.setChar(5, 2, "@", "#FFFF00", "#000080", ATTR_BOLD);
-}
-```
-
-**ANSI escape codes** still work in `statusBar()` and `commandBar()` output.
-
-**Pixel mode and `Game.state`.** In Pixels render mode, the GUI client re-executes your game JS locally and calls `renderCanvas()` each frame — but never calls `update()`. Any mutable state your renderer needs must be on `Game.state` so the server can send it to the client each tick. The engine automatically injects `Game.state._gameTime` (cumulative elapsed seconds since `begin()`), so canvas games can always read the current time:
-
-```js
-renderCanvas: function(ctx, pid, w, h) {
-    // _gameTime is available in both server and pixel-mode client
-    if (Game.state && Game.state._gameTime !== undefined) time = Game.state._gameTime;
-    // ... render using time ...
-}
-```
-
-The client extrapolates `_gameTime` between server snapshots from its own
-wall clock, so games that derive everything from `_gameTime` get smooth
-motion at the client's render fps even though the server only ticks at
-~10 Hz. Whenever a non-clock state change arrives, the snapshot's
-`_gameTime` is treated as authoritative and the local clock is snapped
-to it.
-
-If your game needs additional state for rendering (player positions, scores, etc.), set them on `Game.state` in `update()` and read them back in `renderCanvas()`. Module-level variables are only updated on the server — they stay at their initial values on the pixel-mode client.
+**Rendering is character-based in Ascii/Blocks modes.** Each character is one cell wide. For emoji or box-drawing that spans multiple columns, count display width carefully — the framework does not reflow.
 
 ---
 
@@ -612,15 +625,17 @@ GitHub blob URLs are automatically converted to raw download URLs. The file is c
 
 ---
 
-## Widget Tree Layout (`layout`)
+## Widget tree layout (`layout`)
 
-If your game defines `layout(playerID, width, height)`, it should return a tree of widget nodes. The framework renders these as real themed NC-style panels with proper borders, respecting the player's current theme. This is optional — games that only define `renderAscii()` work unchanged.
+If your game defines `layout(playerID, width, height)`, it should return a tree of widget nodes. The framework renders these as real themed NC-style panels with proper borders, respecting the player's current theme. This is optional — games that only define `renderAscii` or `renderCanvas` work unchanged.
+
+> **Note.** The layout hook is the one contract surface that still uses the pre-v2 signature `(playerID, width, height)` rather than `(state, me)`. Games that need `state`/`me` inside layout can read them via `Game.state` and resolve the player themselves. Two shipped games (`crawler`, `holdem`) declare `layout(state, me)` and silently fall back to `renderAscii` because the args don't match — aligning the runtime call with the rest of the v2 contract is a tracked follow-up.
 
 ### Node types
 
 | Type | Description | Key properties |
 |------|-------------|----------------|
-| `gameview` | Renders the raw `renderAscii()` output in this region | (none — calls `renderAscii(buf, playerID, x, y, w, h)` with the computed sub-area) |
+| `gameview` | Renders the raw `renderAscii`/`renderCanvas` output in this region | (none — calls the game's render with a sub-area) |
 | `panel` | Bordered NC panel with optional title | `title`, `children` |
 | `label` | Single line of text | `text`, `align` (`"left"`, `"center"`, `"right"`) |
 | `hsplit` | Horizontal split — children placed side by side | `children` |
@@ -639,39 +654,38 @@ Every node can have:
 
 ```js
 layout: function(playerID, width, height) {
+    var state = Game.state;
+    var me = state.players[playerID];
     return {
         type: 'hsplit',
         children: [
             {
                 type: 'vsplit', weight: 1,
                 children: [
-                    { type: 'gameview', weight: 1 },              // raw renderAscii() in the main area
-                    { type: 'panel', title: 'Stats', height: 5,   // NC panel at bottom
+                    { type: 'gameview', weight: 1 },
+                    { type: 'panel', title: 'Stats', height: 5,
                       children: [
-                          { type: 'label', text: 'HP: ' + hp + '/' + maxHp },
-                          { type: 'label', text: 'Score: ' + score }
+                          { type: 'label', text: 'HP: ' + me.hp },
+                          { type: 'label', text: 'Score: ' + state.score }
                       ] }
                 ]
             },
             {
-                type: 'panel', title: 'Players', width: 25,       // NC panel on the right
-                children: [{
-                    type: 'table',
-                    rows: playerRows
-                }]
+                type: 'panel', title: 'Players', width: 25,
+                children: [{ type: 'table', rows: buildPlayerRows(state) }]
             }
         ]
     };
 }
 ```
 
-This renders the raw game view in the top-left, a stats panel below it, and a players panel on the right — all using the framework's themed NC borders. Existing games that don't define `layout` are unaffected.
+Renders the raw game view in the top-left, a stats panel below it, and a players panel on the right — all using the framework's themed NC borders.
 
 ---
 
 ## Shaders (post-processing)
 
-Shaders are per-player scripts that modify the rendered screen buffer before it's displayed. They run after all game/lobby content is drawn but before menus and dialogs are overlaid.
+Shaders are per-player scripts that modify the rendered screen buffer before it's displayed. They run after all game/lobby content is drawn but before menus and dialogs are overlaid. Shaders are independent of the game contract — they use their own flat API (no `ctx`, no `state`).
 
 ### Loading shaders
 
@@ -685,7 +699,7 @@ Shaders are per-player scripts that modify the rendered screen buffer before it'
 /shader                   # List available + active shaders
 ```
 
-Shaders are also accessible from the **File → Shaders...** menu.
+Shaders are also accessible from the **File → Shaders…** menu.
 
 ### Writing a shader
 
@@ -693,62 +707,41 @@ Shaders are JS files in `dist/shaders/`. A shader exports a global `Shader` obje
 
 ```javascript
 const Shader = {
-    // Optional: called once when the shader is loaded.
-    init() { },
-
-    // Optional: called every tick with elapsed seconds.
-    // Use this to animate shader effects over time.
-    update(dt) { },
-
-    // Required: called every frame with the full screen buffer.
-    process(buf) {
+    init()   { },        // optional: called once on load
+    update(dt) { },      // optional: called every tick
+    process(buf) {       // required: called every frame
         for (var y = 0; y < buf.height; y++) {
             for (var x = 0; x < buf.width; x++) {
                 var p = buf.getPixel(x, y);
-                if (p) {
-                    // Swap foreground and background
-                    buf.setChar(x, y, p.char, p.bg, p.fg, p.attr);
-                }
+                if (p) buf.setChar(x, y, p.char, p.bg, p.fg, p.attr); // swap fg/bg
             }
         }
     },
-
-    // Optional: called when the shader is unloaded.
-    unload() { }
+    unload() { }         // optional: called on removal
 };
 ```
 
-### Buffer API
-
-The `buf` object passed to `process()` provides:
+### Shader buffer API
 
 | Method | Description |
 |--------|-------------|
-| `buf.width` | Buffer width in columns |
-| `buf.height` | Buffer height in rows |
-| `buf.getPixel(x, y)` | Returns `{char, fg, bg, attr}` or `null` if out of bounds. Colors are `"#rrggbb"` strings or `null` (default). |
-| `buf.setChar(x, y, ch, fg, bg, attr)` | Set a single cell. `ch` is a string (first character used). Colors are `"#rrggbb"` or `null`. |
-| `buf.writeString(x, y, text, fg, bg, attr)` | Write text starting at (x, y) |
-| `buf.fill(x, y, w, h, ch, fg, bg, attr)` | Fill a rectangle |
-| `buf.recolor(x, y, w, h, fg, bg, attr)` | Change colors/attributes without changing characters |
+| `buf.width` / `buf.height` | Dimensions in cells. |
+| `buf.getPixel(x, y)` | Returns `{char, fg, bg, attr}` or `null`. |
+| `buf.setChar(x, y, ch, fg, bg, attr)` | Set a single cell. |
+| `buf.writeString(x, y, text, fg, bg, attr)` | Write text. |
+| `buf.fill(x, y, w, h, ch, fg, bg, attr)` | Fill a rectangle. |
+| `buf.recolor(x, y, w, h, fg, bg, attr)` | Change colors/attributes without changing characters. |
 
-### Global constants
+### Shader globals
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `ATTR_NONE` | 0 | No attributes |
-| `ATTR_BOLD` | 1 | Bold text |
-| `ATTR_FAINT` | 2 | Dim/faint text |
-| `ATTR_ITALIC` | 4 | Italic text |
-| `ATTR_UNDERLINE` | 8 | Underlined text |
-| `ATTR_REVERSE` | 16 | Reverse video |
-
-### Global functions
+| Constant | Value |
+|----------|-------|
+| `ATTR_NONE` / `ATTR_BOLD` / `ATTR_FAINT` / `ATTR_ITALIC` / `ATTR_UNDERLINE` / `ATTR_REVERSE` | Attribute bitmask values |
 
 | Function | Description |
 |----------|-------------|
-| `log(msg)` | Log a debug message (visible in server log) |
-| `now()` | Server time in epoch milliseconds |
+| `log(msg)` | Log a debug message (visible in server log). |
+| `now()` | Server time in epoch milliseconds. |
 
 ### Bundled shaders
 
