@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/colorprofile"
-	"github.com/charmbracelet/x/ansi"
 
 	"dev-null/internal/domain"
+	"dev-null/internal/render"
 )
 
 // ─── Menu bar render tests ───────────────────────────────────────────────────
@@ -91,8 +91,7 @@ func TestRenderDropdownBasic(t *testing.T) {
 		}},
 	}
 	pal := testTheme().LayerAt(1)
-	box := o.RenderDropdown(menus, 0, pal)
-	dd, col, row := box.Content, box.Col, box.Row
+	ddBuf, col, row := o.RenderDropdownBuf(menus, 0, 80, 24, pal)
 
 	if col != 0 {
 		t.Errorf("expected col 0, got %d", col)
@@ -101,7 +100,7 @@ func TestRenderDropdownBasic(t *testing.T) {
 		t.Errorf("expected row 1, got %d", row)
 	}
 
-	s := newScreen(dd)
+	s := newScreen(ddBuf.ToString(colorprofile.TrueColor))
 	// Should have 5 lines: top border + 3 items + bottom border.
 	if s.h != 5 {
 		t.Fatalf("expected 5 lines, got %d\n%s", s.h, s.String())
@@ -144,8 +143,8 @@ func TestRenderDropdownWithSeparator(t *testing.T) {
 		}},
 	}
 	pal := testTheme().LayerAt(1)
-	dd := o.RenderDropdown(menus, 0, pal).Content
-	s := newScreen(dd)
+	ddBuf, _, _ := o.RenderDropdownBuf(menus, 0, 80, 24, pal)
+	s := newScreen(ddBuf.ToString(colorprofile.TrueColor))
 
 	// 5 lines: top + New + separator + Quit + bottom.
 	if s.h != 5 {
@@ -174,8 +173,8 @@ func TestRenderDropdownWithToggles(t *testing.T) {
 		}},
 	}
 	pal := testTheme().LayerAt(1)
-	dd := o.RenderDropdown(menus, 0, pal).Content
-	s := newScreen(dd)
+	ddBuf, _, _ := o.RenderDropdownBuf(menus, 0, 80, 24, pal)
+	s := newScreen(ddBuf.ToString(colorprofile.TrueColor))
 
 	// Checked item should have checkmark.
 	if !strings.Contains(s.lines[1], "√") {
@@ -202,9 +201,8 @@ func TestRenderDropdownSecondMenu(t *testing.T) {
 		{Label: "&Edit", Items: []domain.MenuItemDef{{Label: "&Copy"}, {Label: "&Paste"}}},
 	}
 	pal := testTheme().LayerAt(1)
-	box := o.RenderDropdown(menus, 0, pal)
-	dd, col, row := box.Content, box.Col, box.Row
-	s := newScreen(dd)
+	ddBuf, col, row := o.RenderDropdownBuf(menus, 0, 80, 24, pal)
+	s := newScreen(ddBuf.ToString(colorprofile.TrueColor))
 
 	// Column should be offset to Edit's position.
 	positions := MenuBarPositions(menus)
@@ -244,19 +242,12 @@ func TestDropdownOnBar(t *testing.T) {
 	// Render bar.
 	bar := o.RenderMenuBar(40, menus, pal)
 
-	// Render dropdown.
-	ddBox := o.RenderDropdown(menus, 0, pal)
-	dd, ddCol, ddRow := ddBox.Content, ddBox.Col, ddBox.Row
-
-	// Build a background: bar + empty rows to have space for the dropdown.
-	bgLines := []string{ansi.Strip(bar)}
-	for range 5 {
-		bgLines = append(bgLines, strings.Repeat(" ", 40))
-	}
-	bg := strings.Join(bgLines, "\n")
-
-	// Composite.
-	result := PlaceOverlay(ddCol, ddRow, dd, bg)
+	// Render dropdown and composite onto a background buffer.
+	ddBuf, ddCol, ddRow := o.RenderDropdownBuf(menus, 0, 40, 24, pal)
+	bgBuf := render.NewImageBuffer(40, 6)
+	bgBuf.PaintANSI(0, 0, 40, 1, bar, pal.Fg, pal.Bg)
+	bgBuf.Blit(ddCol, ddRow, ddBuf)
+	result := bgBuf.ToString(colorprofile.TrueColor)
 	s := newScreen(result)
 
 	// Bar should still be visible on row 0.
@@ -283,7 +274,7 @@ func TestDropdownOnBar(t *testing.T) {
 	}
 
 	// Area to the right of the dropdown should still be blank.
-	ddWidth := len([]rune(newScreen(dd).lines[0]))
+	ddWidth := ddBuf.Width
 	region := newScreen(result).region(ddWidth, 1, 5, 4)
 	if strings.TrimSpace(region) != "" {
 		t.Errorf("area right of dropdown should be blank, got:\n%s", region)

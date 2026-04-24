@@ -268,13 +268,6 @@ func (r *Runtime) buildCtxObject() *goja.Object {
 		return r.clock.Now().UnixMilli()
 	})
 
-	// --- ephemeral events (stub; ns;event pipe lands in a follow-up) ---
-	ctx.Set("emit", func(call goja.FunctionCall) goja.Value {
-		// Queued for broadcast when the ns;event pipe lands. For now we drop silently.
-		_ = call
-		return goja.Undefined()
-	})
-
 	return ctx
 }
 

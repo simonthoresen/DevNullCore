@@ -248,7 +248,7 @@ function spawnPlayer(pid, pname, teamIdx, firstSpawn) {
     }
 }
 
-function respawnIfReady(p, nowSec) {
+function respawnIfReady(p, nowSec, ctx) {
     if (p.alive) return;
     if (nowSec >= p.deadUntil) {
         var cell = randomSpawnCell(null);
@@ -256,7 +256,7 @@ function respawnIfReady(p, nowSec) {
         p.facing = Math.floor(Math.random() * 8);
         p.hp = PLAYER_HP; p.alive = true;
         p.fireCooldown = 0;
-        playPositionalSound(p, 9, 72, 110, 400);
+        playPositionalSound(p, 9, 72, 110, 400, ctx);
     }
 }
 
@@ -285,7 +285,7 @@ function updateLasers(dt) {
     }
 }
 
-function fireLaser(shooter) {
+function fireLaser(shooter, ctx) {
     if (!shooter.alive || shooter.fireCooldown > 0) return;
     shooter.fireCooldown = FIRE_COOLDOWN;
 
@@ -331,18 +331,18 @@ function fireLaser(shooter) {
     var color = teamColor(shooter.teamIdx);
     _s.lasers.push({ x1: eyeX, z1: eyeZ, x2: hitX, z2: hitZ, color: color, ttl: LASER_TTL });
 
-    broadcastPositionalSound({ x: eyeX, z: eyeZ }, 9, 40, 120, 180);
+    broadcastPositionalSound({ x: eyeX, z: eyeZ }, 9, 40, 120, 180, ctx);
 
     if (hitPlayer) {
         hitPlayer.hp--;
-        broadcastPositionalSound({ x: hitX, z: hitZ }, 9, 48, 115, 200);
+        broadcastPositionalSound({ x: hitX, z: hitZ }, 9, 48, 115, 200, ctx);
         if (hitPlayer.hp <= 0) {
-            killPlayer(hitPlayer, shooter);
+            killPlayer(hitPlayer, shooter, ctx);
         }
     }
 }
 
-function killPlayer(victim, killer) {
+function killPlayer(victim, killer, ctx) {
     victim.alive = false;
     victim.deaths++;
     victim.deadUntil = gameTime() + RESPAWN_SEC;
@@ -359,12 +359,12 @@ function killPlayer(victim, killer) {
     } else {
         msg = msg + " died";
     }
-    if (Game._ctx) Game._ctx.chat(msg);
-    broadcastPositionalSound({ x: victim.gx + 0.5, z: victim.gz + 0.5 }, 9, 28, 127, 600);
-    checkWinCondition();
+    ctx.chat(msg);
+    broadcastPositionalSound({ x: victim.gx + 0.5, z: victim.gz + 0.5 }, 9, 28, 127, 600, ctx);
+    checkWinCondition(ctx);
 }
 
-function checkWinCondition() {
+function checkWinCondition(ctx) {
     if (_s.winChecked) return;
     var tk = _s.teamKills;
     var td = _s.teamData;
@@ -383,7 +383,7 @@ function checkWinCondition() {
                        _k: kills, _w: i === winner ? 1 : 0 });
     }
     results.sort(function (a, b) { return b._w - a._w || b._k - a._k; });
-    if (Game._ctx) Game._ctx.gameOver(results);
+    ctx.gameOver(results);
 }
 
 // ── Audio (3D positional via per-player velocity) ────────────────────────────
@@ -395,11 +395,11 @@ function velocityFromDistance(d2) {
     return Math.max(1, Math.floor(v * v * 120));
 }
 
-function playPositionalSound(listener, ch, note, baseVel, durMs) {
-    if (Game._ctx) Game._ctx.midiNotePlayer(listener.id, ch, note, baseVel, durMs);
+function playPositionalSound(listener, ch, note, baseVel, durMs, ctx) {
+    ctx.midiNotePlayer(listener.id, ch, note, baseVel, durMs);
 }
 
-function broadcastPositionalSound(source, ch, note, baseVel, durMs) {
+function broadcastPositionalSound(source, ch, note, baseVel, durMs, ctx) {
     var players = _s.players;
     for (var id in players) {
         var q = players[id];
@@ -408,7 +408,7 @@ function broadcastPositionalSound(source, ch, note, baseVel, durMs) {
         var d2 = dx * dx + dz * dz;
         var vel = Math.min(127, Math.floor(baseVel * velocityFromDistance(d2) / 120));
         if (vel < 3) continue;
-        if (Game._ctx) Game._ctx.midiNotePlayer(id, ch, note, vel, durMs);
+        ctx.midiNotePlayer(id, ch, note, vel, durMs);
     }
 }
 
@@ -416,7 +416,7 @@ function broadcastPositionalSound(source, ch, note, baseVel, durMs) {
 
 var Game;
 
-function updatePlayers(dt) {
+function updatePlayers(dt, ctx) {
     var nowSec = gameTime();
     var players = _s.players;
     for (var id in players) {
@@ -424,29 +424,26 @@ function updatePlayers(dt) {
         if (p.fireCooldown > 0) p.fireCooldown -= dt;
         if (p.moveCooldown > 0) p.moveCooldown -= dt;
         if (p.stepTimer > 0) p.stepTimer -= dt;
-        if (!p.alive) { respawnIfReady(p, nowSec); continue; }
+        if (!p.alive) { respawnIfReady(p, nowSec, ctx); continue; }
     }
 }
 
 // ── Input (server-only) ──────────────────────────────────────────────────────
 
-function handleInput(p, key) {
+function handleInput(p, key, ctx) {
     if (key === "tab") {
         p.scoreboardUntil = gameTime() + SCOREBOARD_TIMEOUT;
         return;
     }
     if (!p.alive) return;
 
-    // Turning is always allowed, even on move cooldown.
     if (key === "q") { p.facing = (p.facing + 7) % 8; return; }
     if (key === "e") { p.facing = (p.facing + 1) % 8; return; }
 
-    if (key === " " || key === "space") { fireLaser(p); return; }
+    if (key === " " || key === "space") { fireLaser(p, ctx); return; }
 
     if (p.moveCooldown > 0) return;
 
-    // WASD relative to facing. W/S cardinal, A/D 90° from facing.
-    // forward = facing; back = facing + 4; left = facing + 6; right = facing + 2.
     var moveIdx = -1;
     if (key === "w") moveIdx = p.facing;
     else if (key === "s") moveIdx = (p.facing + 4) % 8;
@@ -457,7 +454,7 @@ function handleInput(p, key) {
     if (tryStep(p, moveIdx)) {
         p.moveCooldown = MOVE_INTERVAL;
         if (p.stepTimer <= 0) {
-            broadcastPositionalSound({ x: p.gx + 0.5, z: p.gz + 0.5 }, 9, 36, 90, 90);
+            broadcastPositionalSound({ x: p.gx + 0.5, z: p.gz + 0.5 }, 9, 36, 90, 90, ctx);
             p.stepTimer = FOOTSTEP_INTERVAL;
         }
     }
@@ -925,19 +922,13 @@ var Game = {
     gameName: "wolf3d",
     teamRange: { min: 1, max: 6 },
 
-    // Private module-level ctx pointer — helpers that need to call framework
-    // side-effects (chat, midiNote) read from _ctx, set at each hook entry.
-    _ctx: null,
-
     init: function (ctx) {
-        Game._ctx = ctx;
         ctx.midiProgram(9, 0);
         return initialState();
     },
 
     begin: function (state, ctx) {
         _s = state;
-        Game._ctx = ctx;
         _s.players = {};
         _s.lasers = [];
         _s.teamData = _s.teams || [];
@@ -960,9 +951,6 @@ var Game = {
 
     update: function (state, dt, events, ctx) {
         _s = state;
-        Game._ctx = ctx;
-        // teamData tracks the sync-captured snapshot; keep it aligned with
-        // state.teams, which is framework-injected each tick.
         _s.teamData = _s.teams || _s.teamData;
 
         for (var i = 0; i < events.length; i++) {
@@ -974,14 +962,14 @@ var Game = {
                 }
             } else if (e.type === "leave") {
                 delete _s.players[e.playerID];
-                checkWinCondition();
+                checkWinCondition(ctx);
             } else if (e.type === "input") {
                 var p = _s.players[e.playerID] || ensureSpawned(e.playerID);
-                if (p) handleInput(p, e.key);
+                if (p) handleInput(p, e.key, ctx);
             }
         }
 
-        updatePlayers(dt);
+        updatePlayers(dt, ctx);
         updateLasers(dt);
     },
 

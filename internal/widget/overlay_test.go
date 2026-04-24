@@ -99,58 +99,6 @@ func TestOverlayDialogStack(t *testing.T) {
 	}
 }
 
-// ─── Shadow tests ────────────────────────────────────────────────────────────
-
-func TestApplyShadowShape(t *testing.T) {
-	// Create a simple 5x3 background.
-	bg := strings.Join([]string{
-		"AAAAA",
-		"BBBBB",
-		"CCCCC",
-		"DDDDD",
-		"EEEEE",
-	}, "\n")
-
-	// Box at (1,1) size 3x2 → shadow right strip at col=4, rows 2..2
-	// and bottom strip at row=3, cols 2..4.
-	result := ApplyShadow(1, 1, 3, 2, bg, testTheme().ShadowStyle())
-	lines := strings.Split(result, "\n")
-
-	// Row 0 should be unchanged.
-	if stripANSI(lines[0]) != "AAAAA" {
-		t.Errorf("row 0 should be unchanged, got %q", stripANSI(lines[0]))
-	}
-
-	// Row 2 (box row 1): col 4 should be shadowed.
-	row2 := stripANSI(lines[2])
-	if row2[0:4] != "CCCC" {
-		t.Errorf("row 2 cols 0-3 should be unchanged, got %q", row2)
-	}
-
-	// Row 3 (bottom shadow): cols 2-4 should be shadowed.
-	row3 := stripANSI(lines[3])
-	if row3[0:1] != "D" {
-		t.Errorf("row 3 col 0 should be unchanged (bottom-left corner skip), got %q", row3)
-	}
-}
-
-// ─── PlaceOverlay tests ──────────────────────────────────────────────────────
-
-func TestPlaceOverlay(t *testing.T) {
-	bg := "AAAAAAA\nBBBBBBB\nCCCCCCC"
-	overlay := "XX\nYY"
-
-	result := PlaceOverlay(2, 1, overlay, bg)
-	lines := strings.Split(result, "\n")
-
-	if lines[0] != "AAAAAAA" {
-		t.Errorf("row 0 should be unchanged, got %q", lines[0])
-	}
-	if !strings.Contains(lines[1], "XX") {
-		t.Errorf("row 1 should contain overlay, got %q", lines[1])
-	}
-}
-
 // ─── About dialog click detection ────────────────────────────────────────────
 
 func TestAboutDialogClickDetection(t *testing.T) {

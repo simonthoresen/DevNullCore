@@ -316,19 +316,19 @@ function clearMoved(){
 }
 
 // Called when a heavy object lands at (x,y).
-function checkCrush(x,y){
+function checkCrush(x,y,ctx){
     var pid=playerAt(x,y);
-    if(pid!==null) triggerDeath(pid);
+    if(pid!==null) triggerDeath(pid,ctx);
 
     var ei=enemyAt(x,y);
     if(ei>=0){
         var yTile=(_s.enemies[ei].type==="butterfly")?DIAMOND:EMPTY;
         _s.enemies.splice(ei,1);
-        doExplosion(x,y,yTile);
+        doExplosion(x,y,yTile,ctx);
     }
 }
 
-function doExplosion(cx,cy,yTile){
+function doExplosion(cx,cy,yTile,ctx){
     for(var dy=-1;dy<=1;dy++){
         for(var dx=-1;dx<=1;dx++){
             var ex=cx+dx, ey=cy+dy;
@@ -339,17 +339,16 @@ function doExplosion(cx,cy,yTile){
             _s.movedGrid[ey][ex]=true;
             // Kill players in blast
             var pid=playerAt(ex,ey);
-            if(pid!==null) triggerDeath(pid);
+            if(pid!==null) triggerDeath(pid,ctx);
             // Remove any other enemies in blast
             for(var i=_s.enemies.length-1;i>=0;i--){
                 if(_s.enemies[i].x===ex && _s.enemies[i].y===ey) _s.enemies.splice(i,1);
             }
         }
     }
-    // Diamonds placed by explosions appear in the grid; players collect by walking over them.
 }
 
-function physicsTick(){
+function physicsTick(ctx){
     clearMoved();
     for(var y=0;y<_s.CAVE_H-1;y++){
         for(var x=0;x<_s.CAVE_W;x++){
@@ -368,20 +367,19 @@ function physicsTick(){
                     _s.grid[y+2][x]=out;
                     _s.fallingGrid[y+2][x]=true;
                     _s.movedGrid[y+2][x]=true;
-                    checkCrush(x,y+2);
+                    checkCrush(x,y+2,ctx);
                 }
                 continue;
             }
 
             // ── Direct fall ──────────────────────────────────
-            // Note: no player/enemy exclusion — falling onto them is the crush mechanic.
             if(below===EMPTY && !_s.movedGrid[y+1][x]){
                 _s.grid[y][x]=EMPTY;
                 _s.fallingGrid[y][x]=false;
                 _s.grid[y+1][x]=tile;
                 _s.fallingGrid[y+1][x]=true;
                 _s.movedGrid[y+1][x]=true;
-                checkCrush(x,y+1);
+                checkCrush(x,y+1,ctx);
                 continue;
             }
 
@@ -436,15 +434,15 @@ function moveEnemy(e){
     }
 }
 
-function enemyTick(){
+function enemyTick(ctx){
     for(var i=0;i<_s.enemies.length;i++){
         moveEnemy(_s.enemies[i]);
         var pid=playerAt(_s.enemies[i].x,_s.enemies[i].y);
-        if(pid!==null) triggerDeath(pid);
+        if(pid!==null) triggerDeath(pid,ctx);
     }
 }
 
-function amoebaGrow(){
+function amoebaGrow(ctx){
     var grew=false;
     var snapshot=_s.amoebaList.slice(); // avoid index drift while pushing
     for(var i=0;i<snapshot.length;i++){
@@ -470,10 +468,10 @@ function amoebaGrow(){
     if(_s.amoebaList.length>AMOEBA_MAX){
         for(var ka=0;ka<_s.amoebaList.length;ka++) _s.grid[_s.amoebaList[ka].y][_s.amoebaList[ka].x]=BOULDER;
         _s.amoebaList=[];
-        Game._ctx.chat("Amoeba too large - turned to boulders!");
+        ctx.chat("Amoeba too large - turned to boulders!");
     } else if(!grew && _s.amoebaList.length>0){
         for(var kb=0;kb<_s.amoebaList.length;kb++) _s.grid[_s.amoebaList[kb].y][_s.amoebaList[kb].x]=DIAMOND;
-        Game._ctx.chat("Amoeba suffocated - turned to diamonds!");
+        ctx.chat("Amoeba suffocated - turned to diamonds!");
         _s.amoebaList=[];
     }
 }
@@ -481,28 +479,28 @@ function amoebaGrow(){
 // ============================================================
 // Player actions
 // ============================================================
-function openExit(){
+function openExit(ctx){
     _s.exitOpen=true;
     for(var y=0;y<_s.CAVE_H;y++)
         for(var x=0;x<_s.CAVE_W;x++)
             if(_s.grid[y][x]===EXIT_C) _s.grid[y][x]=EXIT_O;
-    Game._ctx.chat("Exit open! Get to the X!");
+    ctx.chat("Exit open! Get to the X!");
 }
 
-function triggerDeath(playerID){
+function triggerDeath(playerID,ctx){
     var p=_s.pls[playerID];
     if(!p||p.dead||p.invulnTimer>0) return;
     p.dead=true;
     p.lives--;
     if(p.lives>0){
         p.respawnTimer=RESPAWN_TIME;
-        Game._ctx.chatPlayer(playerID,"Crushed! Respawning in "+Math.ceil(RESPAWN_TIME)+"s ("+p.lives+" lives left)");
+        ctx.chatPlayer(playerID,"Crushed! Respawning in "+Math.ceil(RESPAWN_TIME)+"s ("+p.lives+" lives left)");
     } else {
-        Game._ctx.chatPlayer(playerID,"No lives left! You are now spectating.");
+        ctx.chatPlayer(playerID,"No lives left! You are now spectating.");
     }
 }
 
-function tryMove(playerID, dx, dy){
+function tryMove(playerID, dx, dy, ctx){
     var p=_s.pls[playerID];
     if(!p||p.dead||p.exited||p.invulnTimer>0||_s.wonDelay>0) return;
     var tx=p.x+dx, ty=p.y+dy;
@@ -520,15 +518,14 @@ function tryMove(playerID, dx, dy){
         p.diamonds++;
         p.score+=PTS_DIAMOND;
         _s.diamondsCollected++;
-        if(_s.diamondsCollected>=_s.diamondsNeeded && !_s.exitOpen) openExit();
+        if(_s.diamondsCollected>=_s.diamondsNeeded && !_s.exitOpen) openExit(ctx);
     } else if(t===EXIT_O){
         p.x=tx; p.y=ty;
         p.exited=true;
         p.score+=Math.floor(_s.timeLeft)*PTS_TIME+PTS_CAVE;
-        checkCaveWon();
+        checkCaveWon(ctx);
         return;
     } else if(t===BOULDER && dy===0){
-        // Horizontal push: one empty space needed behind boulder
         var bx=tx+dx;
         if(inBounds(bx,ty) && _s.grid[ty][bx]===EMPTY && playerAt(bx,ty)===null && enemyAt(bx,ty)<0){
             _s.grid[ty][tx]=EMPTY;
@@ -542,14 +539,14 @@ function tryMove(playerID, dx, dy){
     }
 
     // Check if player walked into an enemy
-    if(enemyAt(p.x,p.y)>=0) triggerDeath(playerID);
+    if(enemyAt(p.x,p.y)>=0) triggerDeath(playerID,ctx);
 }
 
-function checkCaveWon(){
+function checkCaveWon(ctx){
     for(var id in _s.pls){
         if(_s.pls[id].exited){
             _s.wonDelay=CAVE_WIN_DELAY;
-            Game._ctx.chat("Cave "+_s.caveName+" cleared! Next cave in "+Math.ceil(CAVE_WIN_DELAY)+"s...");
+            ctx.chat("Cave "+_s.caveName+" cleared! Next cave in "+Math.ceil(CAVE_WIN_DELAY)+"s...");
             return;
         }
     }
@@ -712,10 +709,10 @@ var Game = {
             } else if(e.type === "input"){
                 var p = _s.pls[e.playerID];
                 if(!p || p.dead) continue;
-                if(e.key==="up")    tryMove(e.playerID, 0,-1);
-                if(e.key==="down")  tryMove(e.playerID, 0, 1);
-                if(e.key==="left")  tryMove(e.playerID,-1, 0);
-                if(e.key==="right") tryMove(e.playerID, 1, 0);
+                if(e.key==="up")    tryMove(e.playerID, 0,-1, ctx);
+                if(e.key==="down")  tryMove(e.playerID, 0, 1, ctx);
+                if(e.key==="left")  tryMove(e.playerID,-1, 0, ctx);
+                if(e.key==="right") tryMove(e.playerID, 1, 0, ctx);
             }
         }
 
@@ -772,20 +769,20 @@ var Game = {
         _s.physicsTimer+=dt;
         while(_s.physicsTimer>=PHYSICS_INTERVAL){
             _s.physicsTimer-=PHYSICS_INTERVAL;
-            physicsTick();
+            physicsTick(ctx);
         }
 
         _s.enemyTimer+=dt;
         if(_s.enemyTimer>=ENEMY_INTERVAL){
             _s.enemyTimer-=ENEMY_INTERVAL;
-            enemyTick();
+            enemyTick(ctx);
         }
 
         if(_s.amoebaList.length>0){
             _s.amoebaTimer+=dt;
             if(_s.amoebaTimer>=AMOEBA_INTERVAL){
                 _s.amoebaTimer-=AMOEBA_INTERVAL;
-                amoebaGrow();
+                amoebaGrow(ctx);
             }
         }
     },

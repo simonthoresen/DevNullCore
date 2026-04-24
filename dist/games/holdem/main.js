@@ -107,14 +107,14 @@ function playerSeat(playerID) {
 
 // ─── Deal a New Hand ───────────────────────────────────────────────────
 
-function startHand() {
+function startHand(ctx) {
     var active = activePlayers();
     if (active.length < 2) {
         _s.phase = 'waiting';
         if (active.length === 1) {
             var winner = _s.seats[active[0]];
             _s.lastWinMsg = winner.name + ' wins the tournament!';
-            Game._ctx.chat(winner.name + ' wins the tournament!');
+            ctx.chat(winner.name + ' wins the tournament!');
         }
         return;
     }
@@ -163,7 +163,7 @@ function startHand() {
     _s.actionTimer = ACTION_TIMEOUT;
 
     var dealerName = _s.seats[_s.seatOrder[_s.dealerIdx]].name;
-    Game._ctx.log('Hand #' + _s.handNum + ' -- Dealer: ' + dealerName + ' -- Blinds: ' + _s.SMALL_BLIND + '/' + _s.BIG_BLIND);
+    ctx.log('Hand #' + _s.handNum + ' -- Dealer: ' + dealerName + ' -- Blinds: ' + _s.SMALL_BLIND + '/' + _s.BIG_BLIND);
 }
 
 function postBlind(seatIdx, amount) {
@@ -178,24 +178,24 @@ function postBlind(seatIdx, amount) {
 
 // ─── Betting Actions ───────────────────────────────────────────────────
 
-function doFold(seatID) {
+function doFold(seatID, ctx) {
     var s = _s.seats[seatID];
     if (!s) return;
     s.folded = true;
     _s.lastAction = s.name + ' folds';
-    Game._ctx.log(_s.lastAction);
-    advanceAction();
+    ctx.log(_s.lastAction);
+    advanceAction(ctx);
 }
 
-function doCheck(seatID) {
+function doCheck(seatID, ctx) {
     var s = _s.seats[seatID];
     if (!s) return;
     _s.lastAction = s.name + ' checks';
-    Game._ctx.log(_s.lastAction);
-    advanceAction();
+    ctx.log(_s.lastAction);
+    advanceAction(ctx);
 }
 
-function doCall(seatID) {
+function doCall(seatID, ctx) {
     var s = _s.seats[seatID];
     if (!s) return;
     var toCall = _s.currentBet - s.bet;
@@ -205,11 +205,11 @@ function doCall(seatID) {
     _s.pot += actual;
     if (s.chips === 0) s.allIn = true;
     _s.lastAction = s.name + ' calls' + (s.allIn ? ' (all-in)' : '');
-    Game._ctx.log(_s.lastAction);
-    advanceAction();
+    ctx.log(_s.lastAction);
+    advanceAction(ctx);
 }
 
-function doRaise(seatID, amount) {
+function doRaise(seatID, amount, ctx) {
     var s = _s.seats[seatID];
     if (!s) return;
     var totalBet = _s.currentBet + amount;
@@ -224,16 +224,16 @@ function doRaise(seatID, amount) {
         _s.currentBet = s.bet;
     }
     _s.lastAction = s.name + ' raises to ' + _s.currentBet + (s.allIn ? ' (all-in)' : '');
-    Game._ctx.log(_s.lastAction);
+    ctx.log(_s.lastAction);
     _s.actionOn = nextCanActSeatExcluding(seatIndexOf(seatID), seatID);
     if (_s.actionOn === -1) {
-        finishBettingRound();
+        finishBettingRound(ctx);
     } else {
         _s.actionTimer = ACTION_TIMEOUT;
     }
 }
 
-function doAllIn(seatID) {
+function doAllIn(seatID, ctx) {
     var s = _s.seats[seatID];
     if (!s) return;
     var amount = s.chips;
@@ -246,27 +246,27 @@ function doAllIn(seatID) {
         _s.currentBet = s.bet;
         _s.lastAction = s.name + ' all-in for ' + s.bet;
         _s.actionOn = nextCanActSeatExcluding(seatIndexOf(seatID), seatID);
-        if (_s.actionOn === -1) { finishBettingRound(); return; }
+        if (_s.actionOn === -1) { finishBettingRound(ctx); return; }
         _s.actionTimer = ACTION_TIMEOUT;
     } else {
         _s.lastAction = s.name + ' all-in for ' + s.bet;
-        advanceAction();
+        advanceAction(ctx);
     }
-    Game._ctx.log(_s.lastAction);
+    ctx.log(_s.lastAction);
 }
 
-function advanceAction() {
+function advanceAction(ctx) {
     var inHand = playersInHand();
     if (inHand.length === 1) {
-        awardPot(inHand[0]);
-        endHand();
+        awardPot(inHand[0], ctx);
+        endHand(ctx);
         return;
     }
     var canAct = playersCanAct();
-    if (canAct.length === 0) { finishBettingRound(); return; }
+    if (canAct.length === 0) { finishBettingRound(ctx); return; }
 
     var nextIdx = nextCanActSeat(_s.actionOn);
-    if (nextIdx === -1) { finishBettingRound(); return; }
+    if (nextIdx === -1) { finishBettingRound(ctx); return; }
 
     var nextID = _s.seatOrder[nextIdx];
     var nextS = _s.seats[nextID];
@@ -276,7 +276,7 @@ function advanceAction() {
         if (_s.seats[canAct[i]].bet < _s.currentBet) { allMatched = false; break; }
     }
     if (allMatched && _s.currentBet > 0 && nextS.bet === _s.currentBet) {
-        finishBettingRound();
+        finishBettingRound(ctx);
         return;
     }
 
@@ -284,7 +284,7 @@ function advanceAction() {
     _s.actionTimer = ACTION_TIMEOUT;
 }
 
-function finishBettingRound() {
+function finishBettingRound(ctx) {
     for (var i = 0; i < _s.seatOrder.length; i++) {
         var s = _s.seats[_s.seatOrder[i]];
         if (s) s.bet = 0;
@@ -294,7 +294,7 @@ function finishBettingRound() {
     _s.raiseAmount = _s.BIG_BLIND;
 
     var inHand = playersInHand();
-    if (inHand.length === 1) { awardPot(inHand[0]); endHand(); return; }
+    if (inHand.length === 1) { awardPot(inHand[0], ctx); endHand(ctx); return; }
 
     if (_s.phase === 'preflop') {
         _s.phase = 'flop';
@@ -309,19 +309,19 @@ function finishBettingRound() {
         _s.deck.pop();
         _s.community.push(_s.deck.pop());
     } else if (_s.phase === 'river') {
-        doShowdown();
+        doShowdown(ctx);
         return;
     }
 
     var canAct = playersCanAct();
-    if (canAct.length <= 1) { finishBettingRound(); return; }
+    if (canAct.length <= 1) { finishBettingRound(ctx); return; }
     _s.actionOn = nextCanActSeat(_s.dealerIdx);
     _s.actionTimer = ACTION_TIMEOUT;
 }
 
 // ─── Showdown ──────────────────────────────────────────────────────────
 
-function doShowdown() {
+function doShowdown(ctx) {
     _s.phase = 'showdown';
     var inHand = playersInHand();
     var results = [];
@@ -351,22 +351,22 @@ function doShowdown() {
     }
     winMsg += ' wins ' + _s.pot + ' with ' + results[0].hand.name;
     _s.lastWinMsg = winMsg;
-    Game._ctx.chat(winMsg);
-    Game._ctx.log(winMsg);
+    ctx.chat(winMsg);
+    ctx.log(winMsg);
     _s.showdownResults = results;
     _s.showdownTimer = 5;
 }
 
-function awardPot(winnerID) {
+function awardPot(winnerID, ctx) {
     var s = _s.seats[winnerID];
     s.chips += _s.pot;
     _s.lastWinMsg = s.name + ' wins ' + _s.pot;
-    Game._ctx.chat(_s.lastWinMsg);
-    Game._ctx.log(_s.lastWinMsg);
+    ctx.chat(_s.lastWinMsg);
+    ctx.log(_s.lastWinMsg);
     _s.pot = 0;
 }
 
-function endHand() {
+function endHand(ctx) {
     _s.phase = 'between';
     _s.showdownTimer = 3;
     _s.eliminated = [];
@@ -375,14 +375,14 @@ function endHand() {
         if (s && s.chips <= 0 && !s.bustedOut) {
             s.bustedOut = true;
             _s.eliminated.push(s.name);
-            Game._ctx.chat(s.name + ' is eliminated!');
+            ctx.chat(s.name + ' is eliminated!');
         }
     }
 }
 
 // ─── AI ────────────────────────────────────────────────────────────────
 
-function addAIPlayer() {
+function addAIPlayer(ctx) {
     var usedNames = {};
     for (var i = 0; i < _s.seatOrder.length; i++) {
         var s = _s.seats[_s.seatOrder[i]];
@@ -399,14 +399,14 @@ function addAIPlayer() {
         bet: 0, allIn: false, bustedOut: false, isAI: true, aiThinkTimer: 0
     };
     _s.seatOrder.push(id);
-    Game._ctx.chat(name + ' (bot) sits down');
+    ctx.chat(name + ' (bot) sits down');
 }
 
-function fillAIPlayers() {
-    while (activePlayers().length < MIN_SEATS) addAIPlayer();
+function fillAIPlayers(ctx) {
+    while (activePlayers().length < MIN_SEATS) addAIPlayer(ctx);
 }
 
-function aiDecide(seatID) {
+function aiDecide(seatID, ctx) {
     var s = _s.seats[seatID];
     if (!s || s.folded || s.allIn) return;
     var toCall = _s.currentBet - s.bet;
@@ -420,41 +420,41 @@ function aiDecide(seatID) {
         if (strength > 0.65 && rand < 0.5) {
             var raiseAmt = Math.max(_s.minRaise, Math.floor(_s.pot * (0.3 + strength * 0.5)));
             raiseAmt = Math.min(raiseAmt, s.chips);
-            if (strength > 0.85 && rand < 0.15) doAllIn(seatID);
-            else doRaise(seatID, raiseAmt);
+            if (strength > 0.85 && rand < 0.15) doAllIn(seatID, ctx);
+            else doRaise(seatID, raiseAmt, ctx);
         } else {
-            doCheck(seatID);
+            doCheck(seatID, ctx);
         }
     } else {
         var callRatio = toCall / s.chips;
         if (strength > 0.8 && rand < 0.3) {
-            if (strength > 0.9 && rand < 0.1) doAllIn(seatID);
+            if (strength > 0.9 && rand < 0.1) doAllIn(seatID, ctx);
             else {
                 var r2 = Math.max(_s.minRaise, Math.floor(_s.pot * 0.5));
                 r2 = Math.min(r2, s.chips - toCall);
-                if (r2 >= _s.minRaise) doRaise(seatID, r2);
-                else doCall(seatID);
+                if (r2 >= _s.minRaise) doRaise(seatID, r2, ctx);
+                else doCall(seatID, ctx);
             }
         } else if (strength > potOdds + 0.1 || (callRatio < 0.1 && strength > 0.25)) {
-            doCall(seatID);
+            doCall(seatID, ctx);
         } else if (strength > 0.4 && rand < 0.3) {
-            doCall(seatID);
+            doCall(seatID, ctx);
         } else {
-            doFold(seatID);
+            doFold(seatID, ctx);
         }
     }
 }
 
 // ─── Tick ──────────────────────────────────────────────────────────────
 
-function tick(dt) {
+function tick(dt, ctx) {
     if (_s.phase === 'showdown' || _s.phase === 'between') {
         _s.showdownTimer -= dt;
         if (_s.showdownTimer <= 0) {
-            endHand();
+            endHand(ctx);
             if (_s.phase === 'between') {
                 _s.showdownTimer = 0;
-                startHand();
+                startHand(ctx);
             }
         }
         return;
@@ -472,14 +472,14 @@ function tick(dt) {
             s.aiThinkTimer -= dt;
             if (s.aiThinkTimer <= 0) {
                 s.aiThinkTimer = 0;
-                aiDecide(id);
+                aiDecide(id, ctx);
             }
         } else if (_s.actionTimer > 0) {
             _s.actionTimer -= dt;
             if (_s.actionTimer <= 0) {
                 if (s) {
-                    if (s.bet >= _s.currentBet) doCheck(id);
-                    else doFold(id);
+                    if (s.bet >= _s.currentBet) doCheck(id, ctx);
+                    else doFold(id, ctx);
                 }
             }
         }
@@ -491,10 +491,7 @@ function tick(dt) {
 var Game = {
     gameName: "Texas Hold'em",
 
-    _ctx: null,  // shared ctx pointer for helpers that need chat/log/midi
-
     init: function(ctx) {
-        Game._ctx = ctx;
         ctx.registerCommand({
             name: 'chips',
             description: 'Show chip counts for all seats',
@@ -531,8 +528,8 @@ var Game = {
                     }
                 }
                 ctx.chat('New tournament started! All seats reset to $' + STARTING_CHIPS);
-                fillAIPlayers();
-                if (activePlayers().length >= 2) startHand();
+                fillAIPlayers(ctx);
+                if (activePlayers().length >= 2) startHand(ctx);
             }
         });
         return initialState();
@@ -540,7 +537,6 @@ var Game = {
 
     begin: function(state, ctx) {
         _s = state;
-        Game._ctx = ctx;
         var t = state.teams || [];
         for (var i = 0; i < t.length; i++) {
             var team = t[i];
@@ -555,14 +551,13 @@ var Game = {
                 _s.playerToTeam[team.players[j].id] = team.name;
             }
         }
-        fillAIPlayers();
-        if (activePlayers().length >= 2) startHand();
+        fillAIPlayers(ctx);
+        if (activePlayers().length >= 2) startHand(ctx);
         ctx.log("Hold'em started with " + _s.seatOrder.length + ' seats (' + t.length + ' teams)');
     },
 
     update: function(state, dt, events, ctx) {
         _s = state;
-        Game._ctx = ctx;
         for (var i = 0; i < events.length; i++) {
             var e = events[i];
             if (e.type !== 'input') continue;
@@ -576,21 +571,21 @@ var Game = {
             var toCall = _s.currentBet - seat.bet;
             var key = e.key;
             if (key === 'f' || key === 'F') {
-                if (toCall > 0) doFold(seatID);
+                if (toCall > 0) doFold(seatID, ctx);
             } else if (key === 'c' || key === 'C' || key === ' ') {
-                if (toCall > 0) doCall(seatID);
-                else doCheck(seatID);
+                if (toCall > 0) doCall(seatID, ctx);
+                else doCheck(seatID, ctx);
             } else if (key === 'r' || key === 'R') {
-                if (seat.chips > toCall) doRaise(seatID, _s.raiseAmount);
+                if (seat.chips > toCall) doRaise(seatID, _s.raiseAmount, ctx);
             } else if (key === 'a' || key === 'A') {
-                doAllIn(seatID);
+                doAllIn(seatID, ctx);
             } else if (key === 'up') {
                 _s.raiseAmount = Math.min(seat.chips - toCall, _s.raiseAmount + _s.BIG_BLIND);
             } else if (key === 'down') {
                 _s.raiseAmount = Math.max(_s.minRaise, _s.raiseAmount - _s.BIG_BLIND);
             }
         }
-        tick(dt);
+        tick(dt, ctx);
     },
 
     renderAscii: function(state, me, cells) {

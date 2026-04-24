@@ -492,11 +492,13 @@ func renderCase(tc widgetCase, profile colorprofile.Profile) string {
 		mb := &MenuBar{Menus: menus, Overlay: overlay}
 		mb.Render(buf, 0, 0, w, 1, false, layer)
 		if openMenu >= 0 {
-			dd := overlay.RenderDropdown(menus, 0, layer)
-			if dd.Content != "" {
-				sub := render.NewImageBuffer(dd.Width, dd.Height)
-				sub.PaintANSI(0, 0, dd.Width, dd.Height, dd.Content, layer.Fg, layer.Bg)
-				buf.Blit(dd.Col, dd.Row, sub)
+			screenH := h
+			if screenH < 24 {
+				screenH = 24
+			}
+			ddBuf, ddCol, ddRow := overlay.RenderDropdownBuf(menus, 0, w, screenH, layer)
+			if ddBuf != nil {
+				buf.Blit(ddCol, ddRow, ddBuf)
 			}
 		}
 		return normaliseWidgetOutput(buf.ToString(profile))

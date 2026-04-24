@@ -110,8 +110,7 @@ var Game = {
         }
     },
 
-    // Single input handler, factored out so update() can dispatch per event.
-    _handleInput: function(playerID, key) {
+    _handleInput: function(playerID, key, ctx) {
         var p = _s.players[playerID];
         if (!p || p.dead) {
             if (p && p.dead && key === 'r') {
@@ -183,7 +182,7 @@ var Game = {
         for (var m = 0; m < _s.monsters.length; m++) {
             var mon = _s.monsters[m];
             if (mon.hp > 0 && mon.x === cellX && mon.y === cellY) {
-                attackMonster(p, mon, m);
+                attackMonster(p, mon, m, ctx);
                 return;
             }
         }
@@ -198,7 +197,7 @@ var Game = {
             var cx = Math.floor(p.x);
             var cy = Math.floor(p.y);
             if (_s.maze.grid[cy][cx] === TILE_STAIRS) {
-                descendFloor();
+                descendFloor(ctx);
             }
         }
     },
@@ -208,7 +207,7 @@ var Game = {
         for (var i = 0; i < events.length; i++) {
             var e = events[i];
             if (e.type === "input") {
-                Game._handleInput(e.playerID, e.key);
+                Game._handleInput(e.playerID, e.key, ctx);
             }
         }
         // Monster AI on a fixed interval
@@ -218,7 +217,7 @@ var Game = {
             for (var m = 0; m < _s.monsters.length; m++) {
                 var mon = _s.monsters[m];
                 if (mon.hp <= 0) continue;
-                monsterAI(mon);
+                monsterAI(mon, ctx);
             }
         }
     },
@@ -337,7 +336,7 @@ var Game = {
 
 // ─── Combat ────────────────────────────────────────────────────────────────
 
-function attackMonster(p, mon, idx) {
+function attackMonster(p, mon, idx, ctx) {
     var atk = playerTotalAtk(p);
     var dmg = Math.max(1, atk - Math.floor(mon.def || 0));
     dmg += Math.floor(Math.random() * 3);
@@ -373,14 +372,14 @@ function attackMonster(p, mon, idx) {
             p.atk += 1;
             p.def += 1;
             addMsg(p.id, "LEVEL UP! You are now level " + p.level + "!");
-            Game._ctx.chat(p.name + " reached level " + p.level + "!");
+            ctx.chat(p.name + " reached level " + p.level + "!");
         }
 
         _s.monsters.splice(idx, 1);
     }
 }
 
-function monsterAI(mon) {
+function monsterAI(mon, ctx) {
     // Find nearest player
     var nearest = null;
     var nearDist = 999;
@@ -410,7 +409,7 @@ function monsterAI(mon) {
             nearest.hp = 0;
             nearest.dead = true;
             addMsg(nearest.id, "You have been slain by " + mon.name + "!");
-            Game._ctx.chat(nearest.name + " was slain by " + mon.name + "!");
+            ctx.chat(nearest.name + " was slain by " + mon.name + "!");
         }
         return;
     }
@@ -507,7 +506,7 @@ function dropItem(p) {
 
 // ─── Floor Transition ──────────────────────────────────────────────────────
 
-function descendFloor() {
+function descendFloor(ctx) {
     _s.floor++;
     _s.maze = generateMaze(MAZE_W, MAZE_H);
     _s.items = scatterItems(_s.maze, _s.floor);
@@ -522,7 +521,7 @@ function descendFloor() {
             addMsg(p.id, "You descend to floor " + _s.floor + ".");
         }
     }
-    Game._ctx.chat("The party descends to floor " + _s.floor + "!");
+    ctx.chat("The party descends to floor " + _s.floor + "!");
 }
 
 function renderDeathScreen(buf, p, ox, oy, w, h) {

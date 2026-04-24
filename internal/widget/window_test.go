@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 
 	"dev-null/internal/domain"
+	"dev-null/internal/render"
 	"dev-null/internal/theme"
 )
 
@@ -140,8 +141,8 @@ func TestDropdownBordersSingleLineTheme(t *testing.T) {
 		}},
 	}
 	th := singleLineTheme()
-	dd := o.RenderDropdown(menus, 0, th.LayerAt(1)).Content
-	s := newScreen(dd)
+	ddBuf, _, _ := o.RenderDropdownBuf(menus, 0, 80, 24, th.LayerAt(1))
+	s := newScreen(ddBuf.ToString(colorprofile.TrueColor))
 
 	// Top/bottom use single-line.
 	if !strings.HasPrefix(s.lines[0], "┌") || !strings.HasSuffix(s.lines[0], "┐") {
@@ -320,11 +321,17 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	menus := []domain.MenuDef{
 		{Label: "&File", Items: []domain.MenuItemDef{{Label: "&New"}, {Label: "&Quit"}}},
 	}
-	ddBox := o.RenderDropdown(menus, 0, th.LayerAt(1))
-	dd, ddCol, ddRow := ddBox.Content, ddBox.Col, ddBox.Row
+	ddBuf, ddCol, ddRow := o.RenderDropdownBuf(menus, 0, 40, 12, th.LayerAt(1))
+	if ddBuf == nil {
+		t.Fatal("expected non-nil dropdown buffer")
+	}
+	dd := ddBuf.ToString(colorprofile.TrueColor)
 	assertHasANSI(t, dd, "#002200", "layer 1 dropdown (Secondary)")
 
-	layer1 := PlaceOverlay(ddCol, ddRow, dd, layer0)
+	bgBuf1 := render.NewImageBuffer(40, 12)
+	bgBuf1.PaintANSI(0, 0, 40, 12, layer0, th.LayerAt(0).Fg, th.LayerAt(0).Bg)
+	bgBuf1.Blit(ddCol, ddRow, ddBuf)
+	layer1 := bgBuf1.ToString(colorprofile.TrueColor)
 	assertHasANSI(t, layer1, "#110000", "layer 1: Primary still visible")
 	assertHasANSI(t, layer1, "#002200", "layer 1: Secondary in dropdown")
 
@@ -354,7 +361,10 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	dlg := dlgBuf.ToString(colorprofile.TrueColor)
 	assertHasANSI(t, dlg, "#000033", "layer 2 dialog (Tertiary)")
 
-	layer2 := PlaceOverlay(dlgCol, dlgRow, dlg, layer1)
+	bgBuf2 := render.NewImageBuffer(40, 12)
+	bgBuf2.PaintANSI(0, 0, 40, 12, layer1, th.LayerAt(0).Fg, th.LayerAt(0).Bg)
+	bgBuf2.Blit(dlgCol, dlgRow, dlgBuf)
+	layer2 := bgBuf2.ToString(colorprofile.TrueColor)
 	assertHasANSI(t, layer2, "#110000", "layer 2: Primary")
 	assertHasANSI(t, layer2, "#002200", "layer 2: Secondary")
 	assertHasANSI(t, layer2, "#000033", "layer 2: Tertiary")
@@ -369,7 +379,10 @@ func TestPaletteDepthCyclesThroughLayers(t *testing.T) {
 	dlg3 := dlg3Buf.ToString(colorprofile.TrueColor)
 	assertHasANSI(t, dlg3, "#002200", "layer 3 nested dialog (Secondary again)")
 
-	layer3 := PlaceOverlay(dlg3Col, dlg3Row, dlg3, layer2)
+	bgBuf3 := render.NewImageBuffer(40, 12)
+	bgBuf3.PaintANSI(0, 0, 40, 12, layer2, th.LayerAt(0).Fg, th.LayerAt(0).Bg)
+	bgBuf3.Blit(dlg3Col, dlg3Row, dlg3Buf)
+	layer3 := bgBuf3.ToString(colorprofile.TrueColor)
 	s3 := newScreen(layer3)
 	foundNested := false
 	for _, l := range s3.lines {
@@ -520,8 +533,8 @@ func TestPerLayerBordersOnDropdown(t *testing.T) {
 
 	// Depth 1 → Secondary → single-line.
 	o1 := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, SubMenus: []subMenuState{{Cursor: 0}}}
-	dd1 := o1.RenderDropdown(menus, 0, th.LayerAt(1)).Content
-	s1 := newScreen(dd1)
+	ddBuf1, _, _ := o1.RenderDropdownBuf(menus, 0, 80, 24, th.LayerAt(1))
+	s1 := newScreen(ddBuf1.ToString(colorprofile.TrueColor))
 	if !strings.HasPrefix(s1.lines[0], "┌") || !strings.HasSuffix(s1.lines[0], "┐") {
 		t.Errorf("depth 1 dropdown: expected single-line top, got %q", s1.lines[0])
 	}
@@ -531,8 +544,8 @@ func TestPerLayerBordersOnDropdown(t *testing.T) {
 
 	// Depth 2 → Tertiary → ASCII.
 	o2 := OverlayState{MenuFocused: true, MenuCursor: 0, OpenMenu: 0, SubMenus: []subMenuState{{Cursor: 0}}}
-	dd2 := o2.RenderDropdown(menus, 0, th.LayerAt(2)).Content
-	s2 := newScreen(dd2)
+	ddBuf2, _, _ := o2.RenderDropdownBuf(menus, 0, 80, 24, th.LayerAt(2))
+	s2 := newScreen(ddBuf2.ToString(colorprofile.TrueColor))
 	if !strings.HasPrefix(s2.lines[0], "+") || !strings.HasSuffix(s2.lines[0], "+") {
 		t.Errorf("depth 2 dropdown: expected ASCII top, got %q", s2.lines[0])
 	}
@@ -626,8 +639,11 @@ func TestPerLayerBordersCompositedStack(t *testing.T) {
 	menus := []domain.MenuDef{
 		{Label: "&File", Items: []domain.MenuItemDef{{Label: "&New"}}},
 	}
-	ddBox := o.RenderDropdown(menus, 0, th.LayerAt(1))
-	composited := PlaceOverlay(ddBox.Col, ddBox.Row, ddBox.Content, layer0)
+	ddBuf, ddCol, ddRow := o.RenderDropdownBuf(menus, 0, 30, 10, th.LayerAt(1))
+	bgBuf := render.NewImageBuffer(30, 10)
+	bgBuf.PaintANSI(0, 0, 30, 10, layer0, th.LayerAt(0).Fg, th.LayerAt(0).Bg)
+	bgBuf.Blit(ddCol, ddRow, ddBuf)
+	composited := bgBuf.ToString(colorprofile.TrueColor)
 	sc := newScreen(composited)
 
 	// Row 0 should still have the double-line window border.
