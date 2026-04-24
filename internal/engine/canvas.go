@@ -63,7 +63,9 @@ func (c *JSCanvas) Renew() {
 	if c.raster != nil {
 		c.raster.ClearDepth()
 	}
-	c.gradients = map[string]gg.Pattern{}
+	for k := range c.gradients {
+		delete(c.gradients, k)
+	}
 	c.gradCounter = 0
 }
 
