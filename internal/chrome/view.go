@@ -322,13 +322,32 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 			if inner != nil {
 				inner(gbuf, x, y, w, h)
 			}
+			// h*2 (rather than h*4) is lossless for quadrants and ~2x cheaper
+			// in JS for SSH-Blocks. Aspect correction is sacrificed but at
+			// 16-player wolf3d the alternative is dropping under 10fps.
+			canvasW, canvasH := w*2, h*2
+			// Tell the tick goroutine what size we want pre-rendered.
+			m.api.SetPlayerCanvasNeed(m.playerID, canvasW, canvasH)
+			// Use the cached image when available (the common case once
+			// chrome has reported the size and one tick has elapsed).
+			// Fall back to a synchronous JS raycast on first frame after
+			// resize/mode-change, so the user never sees a black hole.
+			if img, release := m.api.GetPreRenderedCanvas(m.playerID, canvasW, canvasH); img != nil {
+				render.ImageToQuadrants(img, gbuf, x, y, w, h)
+				release()
+				return
+			}
 			t0 := time.Now()
-			img := game.RenderCanvasImage(m.playerID, w*2, h*4)
+			img := game.RenderCanvasImage(m.playerID, canvasW, canvasH)
 			m.api.CountCanvasRender(time.Since(t0))
 			if img != nil {
 				render.ImageToQuadrants(img, gbuf, x, y, w, h)
 			}
 		}
+	} else if m.graphicsMode != domain.ModeBlocks || m.renderLocal {
+		// Not in SSH-Blocks mode any more — clear any stale canvas request
+		// so the tick goroutine stops rendering canvases for this player.
+		m.api.SetPlayerCanvasNeed(m.playerID, 0, 0)
 	}
 
 	// Update chat view.

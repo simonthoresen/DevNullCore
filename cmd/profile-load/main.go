@@ -197,6 +197,34 @@ func main() {
 	phase := st.GamePhase
 	st.RUnlock()
 	fmt.Printf("phase at measure-start: %v\n", phase)
+	fmt.Printf("server tick count at measure-start: %d\n", srv.MetricsSnapshot().TickCount)
+
+	// Drive SSH input keys so wolf3d players actually move — without this
+	// the rendered scene is identical every tick and Bubble Tea's diff
+	// suppresses output, making byte-rate look like 0 fps.
+	stopInput := make(chan struct{})
+	for _, c := range conns {
+		c := c
+		if c.stdin == nil {
+			continue
+		}
+		go func() {
+			t := time.NewTicker(250 * time.Millisecond)
+			defer t.Stop()
+			keys := []string{"w", "a", "s", "d", "q", "e", " "}
+			i := 0
+			for {
+				select {
+				case <-stopInput:
+					return
+				case <-t.C:
+					_, _ = c.stdin.Write([]byte(keys[i%len(keys)]))
+					i++
+				}
+			}
+		}()
+	}
+	defer close(stopInput)
 
 	// Spawn the GUI-side benchmark (replicates client-local renderCanvas).
 	var guiBenchResult *guiBenchOut
@@ -221,7 +249,11 @@ func main() {
 	}
 
 	startWall := time.Now()
-	time.Sleep(*duration)
+	for i := 0; i < int(duration.Seconds()); i++ {
+		time.Sleep(time.Second)
+		ms := srv.MetricsSnapshot()
+		fmt.Printf("  +%ds  ticks=%d  canvas=%d\n", i+1, ms.TickCount, ms.CanvasRenders)
+	}
 	elapsed := time.Since(startWall)
 
 	pprof.StopCPUProfile()

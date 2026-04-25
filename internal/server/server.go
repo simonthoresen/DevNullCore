@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"log/slog"
 	"net"
 	"os"
@@ -74,8 +75,15 @@ type Server struct {
 
 	// Per-player game viewport dimensions, reported by chrome models on resize.
 	// Used by preRenderAllPlayers to know what dimensions to render at.
-	viewports   map[string][2]int // playerID → [gameW, gameH]
-	viewportMu  sync.RWMutex
+	// localRenderers: chrome models that render locally (GUI/Pixels/Blocks-local) —
+	// the tick goroutine skips pre-rendering for these players.
+	// canvasNeeds: SSH players in Blocks mode post their desired canvas size here
+	// so the tick goroutine can run the JS raycaster once and cache the RGBA;
+	// View() then blits + quadrant-encodes without holding Runtime.mu.
+	viewports      map[string][2]int  // playerID → [gameW, gameH]
+	localRenderers map[string]bool    // playerID → true if rendering locally
+	canvasNeeds    map[string][2]int  // playerID → [canvasW, canvasH]
+	viewportMu     sync.RWMutex
 
 	// Per-player pre-rendered frame cache. The tick goroutine renders into these
 	// before broadcasting TickMsg, so player View() calls just blit the result.
@@ -91,14 +99,27 @@ type Server struct {
 }
 
 // playerRenderCache holds the most recently pre-rendered game frame for one player.
-// The per-player mutex ensures the tick goroutine (writer) and player goroutine
+// The per-player mutexes ensure the tick goroutine (writer) and player goroutine
 // (reader/blit) don't overlap on the same buffer.
+//
+// Canvas is pre-rendered alongside the buffer when the player's chrome has
+// posted a canvas need (i.e. SSH players in Blocks mode). View() then only
+// blits — the per-frame JS raycaster contention with the tick goroutine that
+// dominated wolf3d at 16 players is gone.
+//
+// The buffer and canvas use separate mutexes because chrome's renderPlaying
+// holds the buffer lock through the whole View() (via releaseCache) and
+// reaches for the canvas inside the same call — one mutex would deadlock.
 type playerRenderCache struct {
 	mu     sync.Mutex
 	buf    *render.ImageBuffer
 	status string
 	ncTree *domain.WidgetNode
 	w, h   int
+
+	canvasMu         sync.Mutex
+	canvasImg        *image.RGBA
+	canvasW, canvasH int
 }
 
 func New(address, password, dataDir string, tickInterval time.Duration) (*Server, error) {
@@ -495,6 +516,61 @@ func (a *Server) UpdatePlayerGameViewport(playerID string, w, h int) {
 	a.viewportMu.Unlock()
 }
 
+// SetPlayerLocalRenderer records that a player's chrome will render the game
+// locally (GUI client / Pixels mode / Blocks-local). The tick goroutine skips
+// pre-rendering for that player — Layout/RenderAscii/StatusBar/canvas calls
+// are wasted because View() fills the viewport with placeholder cells.
+func (a *Server) SetPlayerLocalRenderer(playerID string, isLocal bool) {
+	a.viewportMu.Lock()
+	if a.localRenderers == nil {
+		a.localRenderers = make(map[string]bool)
+	}
+	if isLocal {
+		a.localRenderers[playerID] = true
+	} else {
+		delete(a.localRenderers, playerID)
+	}
+	a.viewportMu.Unlock()
+}
+
+// SetPlayerCanvasNeed posts the canvas dimensions a player's chrome wants
+// pre-rendered each tick. Chrome calls this on every View() so the tick loop
+// can render the canvas once and View() just blits — converting per-View()
+// JS raycasts (under Runtime.mu, contending with the tick goroutine) into
+// one serial pass per tick.
+//
+// Pass w=0 or h=0 to clear the request (e.g. when switching to Ascii mode).
+func (a *Server) SetPlayerCanvasNeed(playerID string, w, h int) {
+	a.viewportMu.Lock()
+	if a.canvasNeeds == nil {
+		a.canvasNeeds = make(map[string][2]int)
+	}
+	if w > 0 && h > 0 {
+		a.canvasNeeds[playerID] = [2]int{w, h}
+	} else {
+		delete(a.canvasNeeds, playerID)
+	}
+	a.viewportMu.Unlock()
+}
+
+// GetPreRenderedCanvas returns the most recent pre-rendered canvas image for
+// a player. The caller must call release() when done. Returns nil/nil if no
+// canvas is cached, or if dimensions don't match the request.
+func (a *Server) GetPreRenderedCanvas(playerID string, expectW, expectH int) (*image.RGBA, func()) {
+	a.renderCachesMu.RLock()
+	c := a.renderCaches[playerID]
+	a.renderCachesMu.RUnlock()
+	if c == nil {
+		return nil, nil
+	}
+	c.canvasMu.Lock()
+	if c.canvasImg == nil || c.canvasW != expectW || c.canvasH != expectH {
+		c.canvasMu.Unlock()
+		return nil, nil
+	}
+	return c.canvasImg, func() { c.canvasMu.Unlock() }
+}
+
 // GetPreRenderedFrame returns the most recent pre-rendered game frame for a
 // player. The caller must call release() when done blitting to allow the tick
 // goroutine to write the next frame. Returns (nil, "", false) if no frame is
@@ -515,31 +591,55 @@ func (a *Server) GetPreRenderedFrame(playerID string, expectW, expectH int) (*re
 	return c.buf, c.ncTree, c.status, func() { c.mu.Unlock() }
 }
 
-// preRenderAllPlayers runs RenderAscii (and optionally Layout + StatusBar)
-// for every playing player sequentially from the tick goroutine. By doing this
-// before broadcastMsg, players' View() calls only need to blit the cached result
-// instead of calling into the JS VM — eliminating Runtime.mu contention from
-// the 16 concurrent player goroutines.
+// preRenderAllPlayers runs Layout/RenderAscii/StatusBar (and Canvas, when
+// requested) for every playing player sequentially from the tick goroutine.
+// By doing this before broadcastMsg, players' View() calls only need to blit
+// the cached result instead of calling into the JS VM — eliminating
+// Runtime.mu contention from the 16 concurrent player goroutines.
+//
+// Two skip rules:
+//
+//   - localRenderers: chrome that fills the viewport with placeholder cells
+//     because the actual game is rendered client-side (GUI / Pixels / Blocks-
+//     local). Pre-rendering for them is pure waste.
+//   - canvasNeeds: only SSH-Blocks chromes post a canvas request. We render
+//     the canvas RGBA here once and View() reuses it; the per-View() raycast
+//     that previously serialized 16 goroutines on Runtime.mu is gone.
 func (a *Server) preRenderAllPlayers(game domain.Game, phase domain.GamePhase) {
 	if game == nil || phase != domain.PhasePlaying {
 		return
 	}
 
-	// Snapshot viewport sizes while holding only the read lock.
+	// Snapshot viewport sizes (and which players want canvas / are local).
 	a.viewportMu.RLock()
 	type vpEntry struct {
-		id   string
-		w, h int
+		id      string
+		w, h    int
+		isLocal bool
+		canvasW int
+		canvasH int
 	}
 	vps := make([]vpEntry, 0, len(a.viewports))
 	for id, dims := range a.viewports {
-		if dims[0] > 0 && dims[1] > 0 {
-			vps = append(vps, vpEntry{id, dims[0], dims[1]})
+		if dims[0] <= 0 || dims[1] <= 0 {
+			continue
 		}
+		e := vpEntry{id: id, w: dims[0], h: dims[1]}
+		if a.localRenderers[id] {
+			e.isLocal = true
+		}
+		if cn, ok := a.canvasNeeds[id]; ok {
+			e.canvasW, e.canvasH = cn[0], cn[1]
+		}
+		vps = append(vps, e)
 	}
 	a.viewportMu.RUnlock()
 
 	for _, v := range vps {
+		if v.isLocal {
+			// Client renders locally — server-side pre-render is wasted work.
+			continue
+		}
 		// Get or create the per-player cache entry.
 		a.renderCachesMu.RLock()
 		c := a.renderCaches[v.id]
@@ -562,13 +662,35 @@ func (a *Server) preRenderAllPlayers(game domain.Game, phase domain.GamePhase) {
 			c.w, c.h = v.w, v.h
 		}
 		// Pre-render Layout tree (if the game uses NC widgets) and RenderAscii.
+		// Skip RenderAscii when the player is going to receive a canvas blit —
+		// the canvas overlays the ascii output anyway, so calling renderAscii
+		// is pure JS-VM overhead. This was costing ~3.3s/10s with 8 SSH
+		// players in wolf3d Blocks mode.
 		c.ncTree = game.Layout(v.id, v.w, v.h)
-		if c.ncTree == nil {
+		canvasOverlays := v.canvasW > 0 && v.canvasH > 0 && game.HasCanvasMode()
+		if c.ncTree == nil && !canvasOverlays {
 			// Plain renderAscii game: render into our scratch buffer.
 			game.RenderAscii(c.buf, v.id, 0, 0, v.w, v.h)
 		}
 		c.status = game.StatusBar(v.id)
 		c.mu.Unlock()
+
+		// Canvas pre-render for SSH-Blocks. Caches the RGBA image; View() will
+		// blit + quadrant-encode without re-entering the JS VM.
+		// Separate mutex from buf so chrome's View() can hold buf-mu while
+		// reading the canvas without deadlocking.
+		if v.canvasW > 0 && v.canvasH > 0 && game.HasCanvasMode() {
+			img := game.RenderCanvasImage(v.id, v.canvasW, v.canvasH)
+			c.canvasMu.Lock()
+			c.canvasImg = img
+			c.canvasW, c.canvasH = v.canvasW, v.canvasH
+			c.canvasMu.Unlock()
+		} else {
+			c.canvasMu.Lock()
+			c.canvasImg = nil
+			c.canvasW, c.canvasH = 0, 0
+			c.canvasMu.Unlock()
+		}
 	}
 }
 

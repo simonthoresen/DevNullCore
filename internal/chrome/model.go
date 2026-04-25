@@ -2,6 +2,7 @@ package chrome
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"strings"
 	"time"
@@ -59,6 +60,17 @@ type ServerAPI interface {
 	// the cached frame (caller must call the returned release func when done blitting).
 	UpdatePlayerGameViewport(playerID string, gameW, gameH int)
 	GetPreRenderedFrame(playerID string, expectW, expectH int) (buf *render.ImageBuffer, ncTree *domain.WidgetNode, status string, release func())
+
+	// SetPlayerLocalRenderer registers whether this player's chrome renders
+	// the game locally (GUI / Pixels / Blocks-local). Local renderers skip
+	// the server-side preRenderAllPlayers pass.
+	SetPlayerLocalRenderer(playerID string, isLocal bool)
+
+	// SetPlayerCanvasNeed posts the canvas dimensions the player wants
+	// pre-rendered each tick (SSH-Blocks). GetPreRenderedCanvas reads back
+	// the latest cached RGBA. Caller must call release() when done.
+	SetPlayerCanvasNeed(playerID string, w, h int)
+	GetPreRenderedCanvas(playerID string, expectW, expectH int) (img *image.RGBA, release func())
 
 	// StateSnapshot returns the most recent per-tick marshaled Game.state, or
 	// nil when no game is playing. Each local-rendering player diffs this
@@ -457,6 +469,11 @@ func (m *Model) applyGraphicsPrefs() {
 	wasMode := m.graphicsMode
 	m.graphicsMode = mode
 	m.renderLocal = local
+
+	// Tell the server whether to skip server-side pre-rendering for this
+	// player. Local rendering means the chrome fills the viewport with
+	// placeholder cells, so any preRenderAllPlayers work would be wasted.
+	m.api.SetPlayerLocalRenderer(m.playerID, local)
 
 	// Re-send the mode OSC whenever the effective mode or local flag
 	// changes — the client branches on it to pick its rendering path.

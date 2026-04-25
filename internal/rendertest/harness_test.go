@@ -147,6 +147,11 @@ func (a *mockChromeAPI) GetPreRenderedFrame(string, int, int) (*render.ImageBuff
 func (a *mockChromeAPI) StateSnapshot() *domain.StateSnapshot { return nil }
 func (a *mockChromeAPI) CountView(time.Duration)               {}
 func (a *mockChromeAPI) CountCanvasRender(time.Duration)        {}
+func (a *mockChromeAPI) SetPlayerLocalRenderer(string, bool)    {}
+func (a *mockChromeAPI) SetPlayerCanvasNeed(string, int, int)   {}
+func (a *mockChromeAPI) GetPreRenderedCanvas(string, int, int) (*image.RGBA, func()) {
+	return nil, nil
+}
 
 // ─── Mock game ───────────────────────────────────────────────────────────────
 
