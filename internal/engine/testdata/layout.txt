@@ -7,7 +7,7 @@ height: 5
 var Game = {
     contract: 2,
     init: function(ctx) { return {}; },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "label",
             text: "Hello from layout",
@@ -32,7 +32,7 @@ height: 5
 var Game = {
     contract: 2,
     init: function(ctx) { return {}; },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "vbox",
             children: [

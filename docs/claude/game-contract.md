@@ -35,6 +35,10 @@ Game = {
     renderCanvas: function(state, me, canvas) { … },
     renderAscii:  function(state, me, cells)  { … },
 
+    // Optional widget tree. Reconciler handles sizing — no width/height
+    // are passed. Pure, no ctx.
+    layout: function(state, me) { return { type: "panel", … }; },
+
     // Optional, pure, no ctx.
     statusBar:  function(state, me) { return "…"; },
     commandBar: function(state, me) { return "…"; }

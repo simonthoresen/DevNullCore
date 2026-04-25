@@ -8,7 +8,7 @@ height: 5
 var Game = {
     contract: 2,
     init: function(ctx) { return {}; },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "label",
             text: "\x1b[31mRed\x1b[0m and \x1b[32mGreen\x1b[0m",
@@ -33,7 +33,7 @@ height: 5
 var Game = {
     contract: 2,
     init: function(ctx) { return {}; },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "label",
             text: "\x1b[33mHello\x1b[0m",
@@ -59,7 +59,7 @@ height: 7
 var Game = {
     contract: 2,
     init: function(ctx) { return {}; },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "table",
             rows: [
@@ -89,7 +89,7 @@ height: 7
 var Game = {
     contract: 2,
     init: function(ctx) { return {}; },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "panel",
             title: "Scores",
@@ -144,7 +144,7 @@ var Game = {
         buf.writeString(0, 0, "\x1b[31mR\x1b[32mG\x1b[34mB\x1b[0m line", null, null);
         buf.writeString(0, 1, "row 2", null, null);
     },
-    layout: function(playerID, w, h) {
+    layout: function(state, me) {
         return {
             type: "hsplit",
             children: [

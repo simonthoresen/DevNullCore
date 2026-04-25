@@ -542,7 +542,15 @@ func (r *Runtime) Layout(playerID string, width, height int) *domain.WidgetNode 
 	defer traceCall(r.vm, "Layout")()
 	r.watchdog.arm("Layout")
 	defer r.watchdog.disarm()
-	val, err := r.layoutFn(goja.Undefined(), r.vm.ToValue(playerID), r.vm.ToValue(width), r.vm.ToValue(height))
+	// layout(state, me) — same shape as renderAscii/statusBar/commandBar.
+	// Width/height are not passed: the widget tree itself encodes sizing
+	// via weight/width/height node properties, and layouts that need to
+	// branch on viewport size should read me/state instead.
+	me := r.resolveMe(playerID)
+	if goja.IsUndefined(me) || goja.IsNull(me) {
+		return nil
+	}
+	val, err := r.layoutFn(goja.Undefined(), r.currentState(), me)
 	if err != nil {
 		slog.Error("JS Layout error", "error", err)
 		return nil

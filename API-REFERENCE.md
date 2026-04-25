@@ -627,9 +627,9 @@ GitHub blob URLs are automatically converted to raw download URLs. The file is c
 
 ## Widget tree layout (`layout`)
 
-If your game defines `layout(playerID, width, height)`, it should return a tree of widget nodes. The framework renders these as real themed NC-style panels with proper borders, respecting the player's current theme. This is optional — games that only define `renderAscii` or `renderCanvas` work unchanged.
+If your game defines `layout(state, me)`, it should return a tree of widget nodes. The framework renders these as real themed NC-style panels with proper borders, respecting the player's current theme. This is optional — games that only define `renderAscii` or `renderCanvas` work unchanged.
 
-> **Note.** The layout hook is the one contract surface that still uses the pre-v2 signature `(playerID, width, height)` rather than `(state, me)`. Games that need `state`/`me` inside layout can read them via `Game.state` and resolve the player themselves. Two shipped games (`crawler`, `holdem`) declare `layout(state, me)` and silently fall back to `renderAscii` because the args don't match — aligning the runtime call with the rest of the v2 contract is a tracked follow-up.
+The widget tree itself encodes sizing via `weight`/`width`/`height` node properties; viewport pixel dimensions aren't passed to the hook because the reconciler handles distribution.
 
 ### Node types
 
@@ -653,9 +653,7 @@ Every node can have:
 ### Example: hybrid layout
 
 ```js
-layout: function(playerID, width, height) {
-    var state = Game.state;
-    var me = state.players[playerID];
+layout: function(state, me) {
     return {
         type: 'hsplit',
         children: [
