@@ -163,11 +163,14 @@ func ListDir(dir, ext string) []string {
 	return names
 }
 
-// FormatGameList builds the game list output with team range info and compatibility markers.
-func FormatGameList(gamesDir string, available []string, activeGame string, teamCount int) string {
+// FormatGameList builds the game list output with team range info,
+// compatibility markers, and source attribution. dataDir is used to
+// resolve each item's path via the Create > Shared > Play priority list.
+func FormatGameList(dataDir string, available []Item, activeGame string, teamCount int) string {
 	var lines []string
-	for _, name := range available {
-		path := ResolveGamePath(gamesDir, name)
+	for _, item := range available {
+		name := item.Name
+		path := ResolveGamePathAll(dataDir, name)
 		tr := ProbeGameTeamRange(path)
 
 		// Compatibility check.
@@ -207,6 +210,8 @@ func FormatGameList(gamesDir string, available []string, activeGame string, team
 		if name == activeGame {
 			line += "  [active]"
 		}
+
+		line += "  (" + item.Source.Label() + ")"
 
 		lines = append(lines, line)
 	}

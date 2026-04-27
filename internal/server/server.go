@@ -967,13 +967,12 @@ func (a *Server) registerBuiltins() {
 		Name:        "game-list",
 		Description: "List available games",
 		Handler: func(ctx domain.CommandContext, args []string) {
-			gamesDir := filepath.Join(a.dataDir, "games")
-			available := engine.ListGames(gamesDir)
+			available := engine.ListAllGames(a.dataDir)
 			if len(available) == 0 {
-				ctx.Reply("No games found in games/")
+				ctx.Reply("No games found.")
 				return
 			}
-			ctx.Reply(a.formatGameList(gamesDir, available))
+			ctx.Reply(a.formatGameList(available))
 		},
 	})
 
@@ -983,7 +982,12 @@ func (a *Server) registerBuiltins() {
 		AdminOnly:   true,
 		Complete: func(before []string) []string {
 			if len(before) == 0 {
-				return engine.ListGames(filepath.Join(a.dataDir, "games"))
+				items := engine.ListAllGames(a.dataDir)
+				names := make([]string, len(items))
+				for i, item := range items {
+					names[i] = item.Name
+				}
+				return names
 			}
 			return nil
 		},
@@ -996,7 +1000,7 @@ func (a *Server) registerBuiltins() {
 			if network.IsURL(args[0]) {
 				path = args[0]
 			} else {
-				path = engine.ResolveGamePath(filepath.Join(a.dataDir, "games"), args[0])
+				path = engine.ResolveGamePathAll(a.dataDir, args[0])
 			}
 			if err := a.loadGame(path); err != nil {
 				ctx.Reply(fmt.Sprintf("Failed to load game: %v", err))
@@ -1121,15 +1125,15 @@ func (a *Server) registerBuiltins() {
 
 }
 
-// formatGameList builds the game list output with team range info and compatibility markers.
-func (a *Server) formatGameList(gamesDir string, available []string) string {
+// formatGameList builds the game list output with team range info, compatibility markers, and source attribution.
+func (a *Server) formatGameList(available []engine.Item) string {
 	a.state.RLock()
 	active := a.state.GameName
 	a.state.RUnlock()
 
 	teamCount := a.state.TeamCount()
 
-	return engine.FormatGameList(gamesDir, available, active, teamCount)
+	return engine.FormatGameList(a.dataDir, available, active, teamCount)
 }
 
 // noDelayListener wraps a net.Listener and ensures TCP_NODELAY is set on

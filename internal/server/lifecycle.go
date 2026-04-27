@@ -68,16 +68,15 @@ func formatGameOverChat(gameName string, results []domain.GameResult) string {
 
 func (a *Server) loadGame(path string) error {
 	if network.IsURL(path) {
+		sharedGames := engine.SourceDir(engine.SourceShared, "games", a.dataDir)
 		if network.IsZipURL(path) {
-			gamesDir := filepath.Join(a.dataDir, "games")
-			local, err := network.DownloadAndExtractZip(path, gamesDir)
+			local, err := network.DownloadAndExtractZip(path, sharedGames)
 			if err != nil {
 				return fmt.Errorf("download game zip: %w", err)
 			}
 			path = local
 		} else {
-			cacheDir := filepath.Join(a.dataDir, "games", ".cache")
-			local, err := network.DownloadToCache(path, cacheDir)
+			local, err := network.DownloadToCache(path, sharedGames)
 			if err != nil {
 				return fmt.Errorf("download game: %w", err)
 			}
@@ -411,8 +410,7 @@ func (a *Server) resumeGame(gameName, saveName string) error {
 		a.unloadGame()
 	}
 
-	gamesDir := filepath.Join(a.dataDir, "games")
-	path := engine.ResolveGamePath(gamesDir, gameName)
+	path := engine.ResolveGamePathAll(a.dataDir, gameName)
 
 	gameChatCh := make(chan domain.Message, 64)
 	rt, err := engine.LoadGame(path, a.serverLog, gameChatCh, a.clock, a.dataDir)

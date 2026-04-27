@@ -23,9 +23,9 @@ type GameSubMenuOptions struct {
 }
 
 // BuildGameSubItems returns the menu items for the Games sub-menu.
+// Items are grouped by source (Create > Shared > Play) with section headers.
 func BuildGameSubItems(opts GameSubMenuOptions) []domain.MenuItemDef {
-	gamesDir := filepath.Join(opts.DataDir, "games")
-	available := engine.ListGames(gamesDir)
+	available := engine.ListAllGames(opts.DataDir)
 	var items []domain.MenuItemDef
 	if opts.OnAdd != nil {
 		items = append(items,
@@ -33,22 +33,36 @@ func BuildGameSubItems(opts GameSubMenuOptions) []domain.MenuItemDef {
 			domain.MenuItemDef{Label: "---"},
 		)
 	}
-	for _, name := range available {
-		n := name
+	var lastSource = engine.Source(-1)
+	for _, item := range available {
+		if item.Source != lastSource {
+			items = append(items, sectionHeader(item.Source))
+			lastSource = item.Source
+		}
+		n := item.Name
 		label := n
 		if strings.EqualFold(n, opts.CurrentGame) {
 			label = n + "*"
 		}
-		item := domain.MenuItemDef{
+		menuItem := domain.MenuItemDef{
 			Label:   label,
 			Handler: func(_ string) { opts.OnLoad(n) },
 		}
 		if opts.OnDelete != nil {
-			item.OnDelete = func(playerID string) { opts.OnDelete(n, playerID) }
+			menuItem.OnDelete = func(playerID string) { opts.OnDelete(n, playerID) }
 		}
-		items = append(items, item)
+		items = append(items, menuItem)
 	}
 	return items
+}
+
+// sectionHeader returns a disabled menu item that labels a source group.
+// Format: "── <Label> ──". Used to group sub-menu items by source.
+func sectionHeader(src engine.Source) domain.MenuItemDef {
+	return domain.MenuItemDef{
+		Label:    "── " + src.Label() + " ──",
+		Disabled: true,
+	}
 }
 
 // ─── Load-game sub-menu ──────────────────────────────────────────────────────
@@ -133,22 +147,16 @@ type ScriptSubMenuOptions struct {
 }
 
 // BuildScriptSubItems returns the menu items for a Plugins or Shaders sub-menu.
+// Items are grouped by source (Create > Shared > Play) with section headers.
+// Loaded names not present in any source are appended at the bottom (unsourced).
 func BuildScriptSubItems(opts ScriptSubMenuOptions) []domain.MenuItemDef {
-	dir := filepath.Join(opts.DataDir, opts.SubDir)
-	available := engine.ListScripts(dir)
-	availableSet := make(map[string]bool)
-	for _, n := range available {
-		availableSet[n] = true
+	available := engine.ListAllScripts(opts.SubDir, opts.DataDir)
+	availableSet := make(map[string]bool, len(available))
+	for _, item := range available {
+		availableSet[item.Name] = true
 	}
-	all := append([]string(nil), available...)
-	for _, n := range opts.Loaded {
-		if !availableSet[n] {
-			all = append(all, n)
-		}
-	}
-	sort.Strings(all)
 
-	loadedSet := make(map[string]bool)
+	loadedSet := make(map[string]bool, len(opts.Loaded))
 	for _, n := range opts.Loaded {
 		loadedSet[n] = true
 	}
@@ -160,15 +168,41 @@ func BuildScriptSubItems(opts ScriptSubMenuOptions) []domain.MenuItemDef {
 			domain.MenuItemDef{Label: "---"},
 		)
 	}
-	for _, name := range all {
-		n := name
+	lastSource := engine.Source(-1)
+	for _, item := range available {
+		if item.Source != lastSource {
+			items = append(items, sectionHeader(item.Source))
+			lastSource = item.Source
+		}
+		n := item.Name
 		items = append(items, domain.MenuItemDef{
-			Label:   n,
-			Toggle:  true,
-			Checked: func() bool { return loadedSet[n] },
-			Handler: func(_ string) { opts.OnToggle(n, !loadedSet[n]) },
+			Label:    n,
+			Toggle:   true,
+			Checked:  func() bool { return loadedSet[n] },
+			Handler:  func(_ string) { opts.OnToggle(n, !loadedSet[n]) },
 			OnDelete: deleteHandler(opts.OnDelete, n),
 		})
+	}
+	// Loaded items that aren't present in any source (e.g. legacy paths).
+	var orphans []string
+	for _, n := range opts.Loaded {
+		if !availableSet[n] {
+			orphans = append(orphans, n)
+		}
+	}
+	if len(orphans) > 0 {
+		sort.Strings(orphans)
+		items = append(items, domain.MenuItemDef{Label: "── Other ──", Disabled: true})
+		for _, name := range orphans {
+			n := name
+			items = append(items, domain.MenuItemDef{
+				Label:    n,
+				Toggle:   true,
+				Checked:  func() bool { return loadedSet[n] },
+				Handler:  func(_ string) { opts.OnToggle(n, !loadedSet[n]) },
+				OnDelete: deleteHandler(opts.OnDelete, n),
+			})
+		}
 	}
 	return items
 }

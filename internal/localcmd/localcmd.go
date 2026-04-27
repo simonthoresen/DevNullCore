@@ -48,21 +48,21 @@ func HandleThemeLoad(name, dataDir string, output func(string)) (*theme.Theme, s
 
 // --- Plugin commands ---
 
-// HandlePluginList lists available and loaded plugins.
+// HandlePluginList lists available and loaded plugins across all sources.
 func HandlePluginList(dataDir string, names []string, output func(string)) {
-	available := engine.ListScripts(filepath.Join(dataDir, "plugins"))
+	available := engine.ListAllScripts("plugins", dataDir)
 	loadedSet := make(map[string]bool)
 	for _, n := range names {
 		loadedSet[n] = true
 	}
 	if len(available) == 0 && len(names) == 0 {
-		output("No plugins found in plugins/")
+		output("No plugins found.")
 		return
 	}
 	var lines []string
-	for _, name := range available {
-		line := "  " + name
-		if loadedSet[name] {
+	for _, item := range available {
+		line := "  " + item.Name + "  (" + item.Source.Label() + ")"
+		if loadedSet[item.Name] {
 			line += "  [loaded]"
 		}
 		lines = append(lines, line)
@@ -120,21 +120,21 @@ func HandlePluginUnload(
 
 // --- Shader commands ---
 
-// HandleShaderList lists available and active shaders.
+// HandleShaderList lists available and active shaders across all sources.
 func HandleShaderList(dataDir string, names []string, output func(string)) {
-	available := engine.ListScripts(filepath.Join(dataDir, "shaders"))
+	available := engine.ListAllScripts("shaders", dataDir)
 	loadedSet := make(map[string]bool)
 	for _, n := range names {
 		loadedSet[n] = true
 	}
 	if len(available) == 0 && len(names) == 0 {
-		output("No shaders found in shaders/")
+		output("No shaders found.")
 		return
 	}
 	var lines []string
-	for _, name := range available {
-		line := "  " + name
-		if loadedSet[name] {
+	for _, item := range available {
+		line := "  " + item.Name + "  (" + item.Source.Label() + ")"
+		if loadedSet[item.Name] {
 			line += "  [active]"
 		}
 		lines = append(lines, line)
