@@ -18,8 +18,8 @@ with anyone running a dev-null server. The full JS surface is in
    - installs the GitHub Copilot CLI extension,
    - asks you to sign in to GitHub,
    - forks the [dev-null-starter](https://github.com/simonthoresen/dev-null-starter)
-     template to your account as `<you>/dev-null` and clones it to
-     `%USERPROFILE%\dev-null\create\`,
+     template to your account as `<you>/dev-null-create` and clones it
+     to `%USERPROFILE%\dev-null\create\`,
    - opens Copilot CLI in that folder.
 
    Subsequent runs skip the install/auth/clone and just open Copilot CLI

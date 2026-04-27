@@ -11,7 +11,7 @@
 param(
     [string]$CreateDir   = (Join-Path $env:USERPROFILE "dev-null\create"),
     [string]$Template    = "simonthoresen/dev-null-starter",
-    [string]$RepoName    = "dev-null"
+    [string]$RepoName    = "dev-null-create"
 )
 
 $ErrorActionPreference = "Stop"
