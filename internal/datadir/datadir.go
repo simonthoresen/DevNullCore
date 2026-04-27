@@ -1,11 +1,21 @@
 // Package datadir handles data directory resolution and bootstrap.
 //
-// When the server or client runs from a built binary, bundled assets
-// (games, fonts, themes, etc.) live in the install directory next to
-// the executable. User data (saves, host keys, downloaded plugins)
-// lives in a platform-specific data directory (%APPDATA%/DevNull on
-// Windows). On first run or version upgrade, Bootstrap copies bundled
-// assets from the install dir to the data dir.
+// On a built binary, dev-null uses four peer subdirs under
+// $HOME/dev-null (Unix) or %USERPROFILE%\dev-null (Windows):
+//
+//	play\    runtime + bundled assets (the "data dir") — DefaultDataDir
+//	shared\  items downloaded via "Games > Add" — SharedDir
+//	make\    author's git repo (if present) — MakeDir
+//	config\  init / preference files — ConfigDir
+//
+// On first run or version upgrade, Bootstrap copies bundled assets
+// from the install dir into the data dir (play\) so user-added
+// content there is preserved across upgrades.
+//
+// Under "go run" (exe in a temp directory), DefaultDataDir falls back
+// to "." for development; the other three roots still resolve to
+// the user-level dev-null tree so personal config/make stay consistent
+// across modes.
 package datadir
 
 import (
@@ -32,18 +42,49 @@ type ManifestFile struct {
 	SHA256 string `json:"sha256"`
 }
 
-// DefaultDataDir returns the platform-specific user data directory.
-// On Windows this is %LOCALAPPDATA%/DevNull. When running via "go run"
-// (exe in a temp directory), it falls back to "." for development.
+// devNullRoot returns the user-level dev-null root directory:
+// $HOME/dev-null on Unix, %USERPROFILE%\dev-null on Windows.
+// Falls back to exeDir() if no home directory is available.
+func devNullRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return exeDir()
+	}
+	return filepath.Join(home, "dev-null")
+}
+
+// DefaultDataDir returns the play subdir (runtime + bundled assets).
+// When running via "go run" (exe in a temp directory) it falls back
+// to "." for development.
 func DefaultDataDir() string {
 	if isGoRun() {
 		return "."
 	}
-	if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-		return filepath.Join(localAppData, "DevNull")
+	return filepath.Join(devNullRoot(), "play")
+}
+
+// MakeDir returns the make subdir (the author's git repo) if it
+// exists, else "". Pure read; never creates the directory.
+func MakeDir() string {
+	p := filepath.Join(devNullRoot(), "make")
+	if info, err := os.Stat(p); err == nil && info.IsDir() {
+		return p
 	}
-	// Fallback: directory of the executable.
-	return exeDir()
+	return ""
+}
+
+// SharedDir returns the shared subdir (items downloaded via
+// Games > Add). Always returns the path; callers create the
+// directory lazily on first write.
+func SharedDir() string {
+	return filepath.Join(devNullRoot(), "shared")
+}
+
+// ConfigDir returns the config subdir (init / preference files).
+// Independent of the data dir so config survives reinstalls and
+// applies across --data-dir overrides.
+func ConfigDir() string {
+	return filepath.Join(devNullRoot(), "config")
 }
 
 // InstallDir returns the directory containing the running executable.
