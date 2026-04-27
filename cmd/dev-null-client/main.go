@@ -10,15 +10,18 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/user"
 	"strings"
+	"time"
 
 	"dev-null/internal/bootstep"
 	"dev-null/internal/client"
 	"dev-null/internal/datadir"
 	"dev-null/internal/display"
 	"dev-null/internal/engine"
+	"dev-null/internal/invite"
 )
 
 //go:embed winres/icon.ico
@@ -39,7 +42,28 @@ func main() {
 	resumeName := flag.String("resume", "", "game/save to resume on connect, e.g. orbits/autosave (sends /game-resume command)")
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
 	termFlag := flag.String("term", "", "force terminal color profile: truecolor, 256color, ansi, ascii")
+	inviteToken := flag.String("invite", "", "invite token (overrides --host/--port; picks the first reachable endpoint)")
 	flag.Parse()
+
+	// --invite overrides --host/--port: decode the token, TCP-probe each
+	// endpoint in priority order (localhost → LAN → public → Pinggy), and
+	// pick the first reachable one.
+	if *inviteToken != "" {
+		endpoints, err := invite.Decode(*inviteToken)
+		if err != nil {
+			log.Fatalf("Invalid --invite token: %v", err)
+		}
+		picked := pickReachable(endpoints, 3*time.Second)
+		if picked == nil {
+			fmt.Fprintln(os.Stderr, "No reachable endpoint in invite. Tried:")
+			for _, ep := range endpoints {
+				fmt.Fprintf(os.Stderr, "  %s\n", ep.FormatHostPort())
+			}
+			os.Exit(1)
+		}
+		*host = picked.Host
+		*port = picked.Port
+	}
 
 	// Build init commands from flags.
 	var initCommands []string
@@ -87,4 +111,19 @@ func defaultPlayer() string {
 		return u.Username
 	}
 	return "player"
+}
+
+// pickReachable returns the first endpoint that accepts a TCP connection
+// within the given timeout. Returns nil if none are reachable.
+func pickReachable(endpoints []invite.Endpoint, timeout time.Duration) *invite.Endpoint {
+	for i := range endpoints {
+		ep := endpoints[i]
+		conn, err := net.DialTimeout("tcp", ep.FormatHostPort(), timeout)
+		if err != nil {
+			continue
+		}
+		_ = conn.Close()
+		return &ep
+	}
+	return nil
 }
