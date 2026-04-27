@@ -32,9 +32,9 @@ Once the server is running, type into the server console:
 
 ## Auto-run commands on startup
 
-Create files in `~/.dev-null/` to run commands automatically. One command per line; lines starting with `#` are comments.
+Create files in `~/dev-null/config/` to run commands automatically. One command per line; lines starting with `#` are comments.
 
-### `~/.dev-null/server.txt`
+### `~/dev-null/config/server.txt`
 
 Runs when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
 
@@ -45,7 +45,7 @@ Runs when the server console starts. Useful for loading a default game, setting 
 /game load invaders
 ```
 
-### `~/.dev-null/client.txt`
+### `~/dev-null/config/client.txt`
 
 Runs when you join a server (or start in `--local` mode). The join script reads this file and sends it to the server via SSH.
 
@@ -55,7 +55,7 @@ Runs when you join a server (or start in `--local` mode). The join script reads 
 /plugin load greeter
 ```
 
-These files live in your home directory, so they survive reinstalls.
+These files live next to (not inside) the `play\` runtime install, so they survive a reinstall. Legacy `~/.dev-null/server.txt` and `~/.dev-null/client.txt` are still read on first start and copied forward to the new location.
 
 ## Write your own game
 

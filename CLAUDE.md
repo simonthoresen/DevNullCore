@@ -54,19 +54,30 @@ ssh -p 23234 localhost
 
 ## Data Directory Layout
 
-Built binaries use two directories:
+Built binaries use a single `dev-null/` root in the user's home with four peer subdirs (resolved via `internal/datadir`):
 
-| Directory | Default | Purpose |
-|-----------|---------|---------|
-| **Install dir** | Exe directory | Binaries, bundled assets, `.bundle-manifest.json` (read-only, managed by installer) |
-| **Data dir** | `%LOCALAPPDATA%/DevNull` | Working copies of assets, user-added content, saves, host keys (read-write) |
+```
+%USERPROFILE%\dev-null\          ($HOME/dev-null on Unix)
+├── play\        runtime + bundled assets — DefaultDataDir
+├── shared\      items downloaded via Games > Add — SharedDir
+├── create\      author's git repo (if present) — CreateDir, "" otherwise
+└── config\      init / preference files — ConfigDir
+```
+
+`play\` is also called the **install dir** (binaries + scripts) and the **data dir** (state, logs, host keys, bundled assets) — these are the same path in production. CLAUDE.md historically described them as separate roles; in practice they coincide unless `--data-dir` is passed.
+
+`shared\` and `config\` are siblings of `play\`, deliberately *outside* it: an explicit reinstall/wipe of `play\` leaves them intact, and `config\` lookups are independent of `--data-dir`.
+
+`create\` is auto-discovered by `MakeDir`/`CreateDir`; it returns `""` when the user hasn't run the dev-stack opt-in (the "Create Games" desktop shortcut).
+
+**Asset resolution** (games / plugins / shaders) walks Create > Shared > Play in priority order. See `internal/engine/sources.go`.
 
 On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets from install dir to data dir using a manifest-based merge:
 - New bundled files are copied; updated bundled files are overwritten; user-added files are left alone.
 - `.bundle-version` (written last) tracks the current build commit; if it matches, bootstrap is a no-op.
 - Legacy data in the install dir (`state/`, host keys) is migrated once on first upgrade.
 
-`--data-dir` overrides the data dir (skips bootstrap). `go run` (dev mode, `buildCommit=="dev"`) falls back to `"."` with no bootstrap, preserving the existing `--data-dir dist` development workflow.
+`--data-dir` overrides the data dir (skips bootstrap and changes the Play source root). `go run` (dev mode, `buildCommit=="dev"`) falls back to `"."` with no bootstrap, preserving the existing `--data-dir dist` development workflow. The `create\` / `shared\` / `config\` peers always resolve to the user-level dev-null tree regardless of `--data-dir`.
 
 ## Architecture
 
@@ -126,7 +137,8 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/engine/figlet.go` | Figlet ASCII art rendering |
 | `internal/engine/gamelist.go` | Game discovery, path resolution, team range probing |
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
-| `internal/datadir/datadir.go` | Data directory resolution, bootstrap (install dir → %LOCALAPPDATA%/DevNull) |
+| `internal/datadir/datadir.go` | Data directory resolution: DefaultDataDir / SharedDir / CreateDir / ConfigDir / InitFilePath / Bootstrap |
+| `internal/engine/sources.go` | Multi-source asset resolution: Source enum, ListAllGames/ListAllScripts, ResolveGamePathAll/ResolveScriptPathAll |
 | `cmd/dev-null-server/` | Server entry point: boot sequence, console setup, signal handling |
 | `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine canvas rendering |
 | `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums |
@@ -234,7 +246,7 @@ SSH clients are always remote. GUI clients default to local. The "Render locally
 
 **No charmap/spritesheet system** — removed. Games that want custom graphics use canvas rendering.
 
-Preferences are persisted to `~/.dev-null/client.txt` as `/render-ascii`, `/render-pixels` (Blocks is default, omitted), and `/render-remote` or `/render-local` (only if non-default for the client type).
+Preferences are persisted to `~/dev-null/config/client.txt` (resolved via `datadir.ConfigDir()`) as `/render-ascii`, `/render-pixels` (Blocks is default, omitted), and `/render-remote` or `/render-local` (only if non-default for the client type). Legacy `~/.dev-null/client.txt` is still read on first start and copied forward.
 
 ## Render Tests — Golden Files
 

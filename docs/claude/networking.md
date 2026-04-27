@@ -58,22 +58,24 @@ On Windows, `AllocatePty` creates a real ConPTY. The `charmbracelet/ssh` library
 
 `EmulatePty` stores PTY metadata (term type, window size) without spawning a ConPTY, so there is only one reader. Search for `EmulatePty` in `internal/server/server.go` to find all three call sites.
 
-## Init Files (`~/.dev-null/`)
+## Init Files (`~/dev-null/config/`)
 
-Both files: one command per line; lines starting with `#` are comments. Dispatched on the first tick after the UI is running. Lives in the home directory so they survive reinstalls.
+Both files: one command per line; lines starting with `#` are comments. Dispatched on the first tick after the UI is running. Lives in `%USERPROFILE%\dev-null\config\` (auto-resolved via `datadir.ConfigDir()`) — a peer of `play\`, so prefs survive a reinstall/wipe of `play\` and apply across `--data-dir` overrides.
 
-**`~/.dev-null/server.txt`** -- commands run automatically when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
+**`~/dev-null/config/server.txt`** -- commands run automatically when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
 
-**`~/.dev-null/client.txt`** -- commands run automatically when a player joins a server (or starts in `--local` mode). The join script reads this file, base64-encodes it, and sends it via the `DEV_NULL_INIT` SSH environment variable.
+**`~/dev-null/config/client.txt`** -- commands run automatically when a player joins a server (or starts in `--local` mode). `join.ps1` reads this file, base64-encodes it, and sends it via the `DEV_NULL_INIT` SSH environment variable.
 
-Example `~/.dev-null/server.txt`:
+Legacy `~/.dev-null/server.txt` and `~/.dev-null/client.txt` are still read for backward compatibility; on first read, the file is copied forward to `~/dev-null/config/<name>` so subsequent rewrites don't lose its non-managed lines.
+
+Example `~/dev-null/config/server.txt`:
 ```
 # Server auto-setup
 /theme dark
 /game load invaders
 ```
 
-Example `~/.dev-null/client.txt`:
+Example `~/dev-null/config/client.txt`:
 ```
 # Client auto-setup
 /theme dark
