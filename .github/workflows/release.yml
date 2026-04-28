@@ -27,19 +27,17 @@ jobs:
 
       - name: Generate bundle manifest
         shell: bash
-        run: go run ./cmd/gen-manifest dist/Common/ > dist/Common/.bundle-manifest.json
+        run: go run ./cmd/gen-manifest dist/Core/ > dist/Core/.bundle-manifest.json
 
       - name: Package dist folder
         shell: bash
         run: |
           cd dist
           7z a -tzip ../DevNull.zip . \
-            -xr!logs \
             -xr!*_ed25519 \
             -xr!*_ed25519.pub \
             -xr!.bundle-version \
-            -xr!Common/state \
-            -xr!Common/logs
+            -xr!Core/state \
 
       - name: Get short SHA
         id: sha
@@ -62,9 +60,9 @@ jobs:
           git push origin latest
           gh release create latest \
             DevNull.zip \
-            dist/Common/DevNullServer.exe \
-            dist/Common/DevNullClient.exe \
-            dist/Common/PinggyHelper.exe \
+            dist/Core/DevNullServer.exe \
+            dist/Core/DevNullClient.exe \
+            dist/Core/PinggyHelper.exe \
             --title "Latest Build (${{ steps.sha.outputs.short }})" \
             --notes "Auto-built from main at ${{ github.sha }}.
 
@@ -80,8 +78,8 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" \
             DevNull.zip \
-            dist/Common/DevNullServer.exe \
-            dist/Common/DevNullClient.exe \
-            dist/Common/PinggyHelper.exe \
+            dist/Core/DevNullServer.exe \
+            dist/Core/DevNullClient.exe \
+            dist/Core/PinggyHelper.exe \
             --title "Release ${{ github.ref_name }}" \
             --generate-notes

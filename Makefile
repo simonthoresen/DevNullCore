@@ -4,7 +4,7 @@ GIT_COMMIT  := $(shell git rev-parse --short HEAD)
 BUILD_DATE  := $(shell git log -1 --format=%cI)
 GIT_REMOTE  := $(shell git remote get-url origin)
 
-# Build all binaries into dist/Common/ (strip debug info for smaller binaries)
+# Build all binaries into dist/Core/ (strip debug info for smaller binaries)
 build: winres build-server build-client
 
 # Generate Windows resource files (icon + manifest) from winres/icon.ico
@@ -13,12 +13,12 @@ winres:
 	cd cmd/dev-null-client && go-winres simply --icon winres/icon.ico
 
 build-server:
-	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/Common/DevNullServer.exe ./cmd/dev-null-server
-	go build -ldflags="-s -w" -o dist/Common/PinggyHelper.exe ./cmd/pinggy-helper
+	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/Core/DevNullServer.exe ./cmd/dev-null-server
+	go build -ldflags="-s -w" -o dist/Core/PinggyHelper.exe ./cmd/pinggy-helper
 
 build-client:
-	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/Common/DevNullClient.exe ./cmd/dev-null-client
-	git rev-parse HEAD > dist/Common/.version
+	go build -ldflags="-s -w -X 'main.buildCommit=$(GIT_COMMIT)' -X 'main.buildDate=$(BUILD_DATE)' -X 'main.buildRemote=$(GIT_REMOTE)'" -o dist/Core/DevNullClient.exe ./cmd/dev-null-client
+	git rev-parse HEAD > dist/Core/.version
 
 # Server: normal mode (SSH server + console TUI)
 run-server: build-server
@@ -52,10 +52,10 @@ run-testbed: build-testbed
 run-testbed-onlcr: build-testbed
 	./dist/testbed.exe --onlcr
 
-# Generate bundle manifest for dist/Common/ assets
+# Generate bundle manifest for dist/Core/ assets
 generate-manifest:
-	go run ./cmd/gen-manifest dist/Common/ > dist/Common/.bundle-manifest.json
+	go run ./cmd/gen-manifest dist/Core/ > dist/Core/.bundle-manifest.json
 
-# Remove build outputs from dist/ (keeps Games/, Fonts/, logs/)
+# Remove build outputs from dist/ (keeps Games/, Fonts/, etc.)
 clean:
-	rm -f dist/Common/DevNullServer.exe dist/Common/DevNullClient.exe dist/Common/PinggyHelper.exe dist/testbed.exe
+	rm -f dist/Core/DevNullServer.exe dist/Core/DevNullClient.exe dist/Core/PinggyHelper.exe dist/testbed.exe

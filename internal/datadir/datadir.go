@@ -1,21 +1,22 @@
 // Package datadir handles data directory resolution and bootstrap.
 //
-// On a built binary, DevNull uses four peer subdirs under
+// On a built binary, DevNull uses these peer subdirs under
 // $HOME/DevNull (Unix) or %USERPROFILE%\DevNull (Windows):
 //
-//	Common\  runtime + bundled assets (the "data dir") — CommonDir
+//	Core\    runtime + bundled assets (the "data dir") — CoreDir
 //	Shared\  items downloaded via "Games > Add" — SharedDir
 //	Create\  author's git repo (if present) — CreateDir
 //	Config\  init / preference files — ConfigDir
+//	Logs\    runtime logs from script + client + server — LogsDir
 //
 // On first run or version upgrade, Bootstrap copies bundled assets
-// from the install dir into the data dir (Common\) so user-added
+// from the install dir into the data dir (Core\) so user-added
 // content there is preserved across upgrades.
 //
-// Under "go run" (exe in a temp directory), CommonDir falls back
-// to "." for development; the other three roots still resolve to
-// the user-level DevNull tree so personal config/create stay consistent
-// across modes.
+// Under "go run" (exe in a temp directory), CoreDir falls back
+// to "." for development; the other roots still resolve to the
+// user-level DevNull tree so personal config/create/logs stay
+// consistent across modes.
 package datadir
 
 import (
@@ -64,14 +65,20 @@ func devNullRoot() string {
 	return filepath.Join(home, "DevNull")
 }
 
-// CommonDir returns the Common subdir (runtime + bundled assets).
+// CoreDir returns the Core subdir (runtime + bundled assets).
 // When running via "go run" (exe in a temp directory) it falls back
 // to "." for development.
-func CommonDir() string {
+func CoreDir() string {
 	if isGoRun() {
 		return "."
 	}
-	return filepath.Join(devNullRoot(), "Common")
+	return filepath.Join(devNullRoot(), "Core")
+}
+
+// LogsDir returns the top-level Logs subdir for runtime log output
+// (client, server, and the launch script all write here).
+func LogsDir() string {
+	return filepath.Join(devNullRoot(), "Logs")
 }
 
 // CreateDir returns the Create subdir (the author's git repo) if it

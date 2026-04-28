@@ -40,9 +40,9 @@ In `%USERPROFILE%\DevNull\Create\`:
 This launches a local server and the GUI client. Your work in `Games\`,
 `Plugins\`, and `Shaders\` is auto-discovered by the server and appears
 in the relevant sub-menus under a `── Create ──` section, ahead of
-bundled (`── Common ──`) items.
+bundled (`── Core ──`) items.
 
-Naming collisions resolve in priority order **Create > Shared > Common**,
+Naming collisions resolve in priority order **Create > Shared > Core**,
 so an in-progress `snake.js` in your create folder shadows a bundled
 `snake.js` of the same name.
 
@@ -92,8 +92,8 @@ person hosting to load it for you.
   at the root (or in a single top-level directory).
 - URL ingestion requires HTTPS (HTTP is rejected) and is admin-only.
 - No live-reload — `/game-unload` then re-load to swap a running game.
-- Resolution priority is **Create > Shared > Common**: an item present
-  in your create folder always wins over Shared and Common of the same
+- Resolution priority is **Create > Shared > Core**: an item present
+  in your create folder always wins over Shared and Core of the same
   name.
 - One create folder per machine. If you want multiple author repos,
   symlink in/out of `%USERPROFILE%\DevNull\Create\` for now.

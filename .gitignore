@@ -23,14 +23,12 @@ bin/
 build/
 
 # dist: binaries are downloaded from GitHub Releases, not tracked in git
-dist/Common/*.exe~
-dist/Common/.version
-dist/Common/*_ed25519
-dist/Common/*_ed25519.pub
-dist/Common/.bundle-manifest.json
-dist/Common/.bundle-version
-dist/logs/*
-!dist/logs/.gitkeep
+dist/Core/*.exe~
+dist/Core/.version
+dist/Core/*_ed25519
+dist/Core/*_ed25519.pub
+dist/Core/.bundle-manifest.json
+dist/Core/.bundle-version
 
 
 # SSH keys (host keys and any private keys)
@@ -49,8 +47,5 @@ go.work.sum
 *.swo
 .DS_Store
 Thumbs.db
-dist/Common/client-debug.log
-dist/client-debug.log
-dist/debug.log
-dist/debug-chat.log
+*.log
 /tmp-gamespike/

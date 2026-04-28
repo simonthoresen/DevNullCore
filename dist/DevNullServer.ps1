@@ -37,8 +37,8 @@ if ($positionals.Count -ge 1 -and $positionals[0]) {
 # If not provided, the server starts without one (can be set at runtime via /password).
 
 $root = $PSScriptRoot
-$commonDir = Join-Path $root "Common"
-$logsDir = Join-Path $root "logs"
+$coreDir = Join-Path $root "Core"
+$logsDir = Join-Path $env:USERPROFILE "DevNull\Logs"
 $repo = "simonthoresen/DevNull"
 $script:tunnelShell = $null
 $script:tunnelWatcher = $null
@@ -242,7 +242,7 @@ function Update-FromRelease {
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/latest" -Headers $headers -TimeoutSec 10
 
         # Compare release commit SHA with local version stamp
-        $versionFile = Join-Path $commonDir ".version"
+        $versionFile = Join-Path $coreDir ".version"
         $localVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
         $remoteVersion = ""
         if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
@@ -255,7 +255,7 @@ function Update-FromRelease {
         # If no .version file, check whether the local exe is newer than the release.
         # This avoids overwriting a locally-built binary with an older release.
         if ($localVersion -eq "") {
-            $localExe = Join-Path $commonDir "DevNullServer.exe"
+            $localExe = Join-Path $coreDir "DevNullServer.exe"
             if (Test-Path $localExe) {
                 $localTime = (Get-Item $localExe).LastWriteTimeUtc
                 $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
@@ -330,7 +330,7 @@ if ($existingListener) {
 Write-BootStepStart "Setting up network"
 Write-BootStepEnd "DONE"
 
-$serverArgs = @("--data-dir", $commonDir, "--port", $Port)
+$serverArgs = @("--data-dir", $coreDir, "--port", $Port)
 if ($Password) { $serverArgs = @("--password", $Password) + $serverArgs }
 if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
 
@@ -344,9 +344,9 @@ if ($Lan) {
     Write-BootStepStart "Pinggy helper"
     Write-RunLogLine "starting pinggy helper"
     $script:tunnelShell = Start-Process `
-        -FilePath (Join-Path $commonDir "PinggyHelper.exe") `
+        -FilePath (Join-Path $coreDir "PinggyHelper.exe") `
         -ArgumentList @("--listen", "127.0.0.1:$Port", "--status-file", $script:tunnelStatus) `
-        -WorkingDirectory $commonDir `
+        -WorkingDirectory $coreDir `
         -RedirectStandardOutput (Join-Path $logsDir "pinggy-stdout.log") `
         -RedirectStandardError  (Join-Path $logsDir "pinggy-stderr.log") `
         -NoNewWindow -PassThru
@@ -373,10 +373,10 @@ if ($Lan) {
 
 $serverExitCode = 0
 
-Push-Location $commonDir
+Push-Location $coreDir
 try {
     Write-RunLogLine "starting DevNull server"
-    & (Join-Path $commonDir "DevNullServer.exe") @serverArgs
+    & (Join-Path $coreDir "DevNullServer.exe") @serverArgs
     if ($LASTEXITCODE) { $serverExitCode = $LASTEXITCODE }
 } finally {
     Pop-Location

@@ -44,7 +44,7 @@ func main() {
 	port := flag.Int("port", 23234, "server SSH port")
 	local := flag.Bool("local", false, "start a local headless server and connect to it")
 	player := flag.String("player", defaultPlayer(), "player name")
-	dataDirFlag := flag.String("data-dir", datadir.CommonDir(), "data directory (SoundFonts, etc.)")
+	dataDirFlag := flag.String("data-dir", datadir.CoreDir(), "data directory (SoundFonts, etc.)")
 	gameName := flag.String("game", "", "game to load on connect (sends /game-load command)")
 	resumeName := flag.String("resume", "", "game/save to resume on connect, e.g. orbits/autosave (sends /game-resume command)")
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
@@ -215,7 +215,7 @@ func startLocalServer(cfg localServerConfig) (*localServerSupervisor, error) {
 		return nil, err
 	}
 
-	logsDir := filepath.Join(cfg.DataDir, "logs")
+	logsDir := datadir.LogsDir()
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create logs dir: %w", err)
 	}

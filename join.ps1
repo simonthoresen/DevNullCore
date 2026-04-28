@@ -71,12 +71,12 @@ if ([string]::IsNullOrWhiteSpace($name)) {
 }
 
 # Locate the DevNull install directory by checking known locations.
-# Returns the install root (the dir containing DevNull.ps1 and Common/).
+# Returns the install root (the dir containing DevNull.ps1 and Core/).
 function Find-InstallDir {
     # 1. PATH
     $cmd = Get-Command "DevNullClient.exe" -ErrorAction SilentlyContinue
     if ($cmd) {
-        # PATH points at Common\; install root is one up.
+        # PATH points at Core\; install root is one up.
         return Split-Path (Split-Path $cmd.Source -Parent) -Parent
     }
 
@@ -87,13 +87,13 @@ function Find-InstallDir {
         $lnk   = $shell.CreateShortcut($shortcut)
         if ($lnk.Arguments -match '-File\s+"([^"]+)"') {
             $dir = Split-Path $Matches[1] -Parent
-            if (Test-Path (Join-Path $dir "Common\DevNullClient.exe")) { return $dir }
+            if (Test-Path (Join-Path $dir "Core\DevNullClient.exe")) { return $dir }
         }
     }
 
     # 3. Default install location.
     $candidate = Join-Path $env:USERPROFILE "DevNull"
-    if (Test-Path (Join-Path $candidate "Common\DevNullClient.exe")) { return $candidate }
+    if (Test-Path (Join-Path $candidate "Core\DevNullClient.exe")) { return $candidate }
 
     return $null
 }
@@ -103,7 +103,7 @@ $clientExe   = $null
 $startScript = $null
 
 if ($installDir) {
-    $clientExe = Join-Path $installDir "Common\DevNullClient.exe"
+    $clientExe = Join-Path $installDir "Core\DevNullClient.exe"
     $s = Join-Path $installDir "DevNull.ps1"
     if (Test-Path $s) { $startScript = $s }
 } elseif ($NoInstall) {
@@ -120,7 +120,7 @@ if ($installDir) {
         # Re-check after install.
         $installDir = Find-InstallDir
         if ($installDir) {
-            $clientExe = Join-Path $installDir "Common\DevNullClient.exe"
+            $clientExe = Join-Path $installDir "Core\DevNullClient.exe"
             $s = Join-Path $installDir "DevNull.ps1"
             if (Test-Path $s) { $startScript = $s }
         }

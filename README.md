@@ -74,7 +74,7 @@ Runs when you join a server (or start in `--local` mode). The join script reads 
 /plugin load greeter
 ```
 
-These files live next to (not inside) the `Common\` runtime install, so they survive a reinstall.
+These files live next to (not inside) the `Core\` runtime install, so they survive a reinstall.
 
 ## Write your own game
 

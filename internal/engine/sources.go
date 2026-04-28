@@ -9,8 +9,8 @@ import (
 
 // Source identifies which asset root a game/plugin/shader was found in.
 //
-// Resolution order is Create > Shared > Common: an in-progress create item
-// shadows a name from Shared, which shadows the same name in Common.
+// Resolution order is Create > Shared > Core: an in-progress create item
+// shadows a name from Shared, which shadows the same name in Core.
 type Source int
 
 const (
@@ -22,26 +22,26 @@ const (
 	// via "Games > Add" / /game-load <url>.
 	SourceShared
 
-	// SourceCommon is the data dir (defaults to %USERPROFILE%/DevNull/Common).
+	// SourceCore is the data dir (defaults to %USERPROFILE%/DevNull/Core).
 	// Holds bundled assets shipped with the install.
-	SourceCommon
+	SourceCore
 )
 
-// Label returns the display label for this source ("Create", "Shared", "Common").
+// Label returns the display label for this source ("Create", "Shared", "Core").
 func (s Source) Label() string {
 	switch s {
 	case SourceCreate:
 		return "Create"
 	case SourceShared:
 		return "Shared"
-	case SourceCommon:
-		return "Common"
+	case SourceCore:
+		return "Core"
 	}
 	return ""
 }
 
 // SourceOrder lists sources in resolution priority (highest first).
-var SourceOrder = []Source{SourceCreate, SourceShared, SourceCommon}
+var SourceOrder = []Source{SourceCreate, SourceShared, SourceCore}
 
 // SourceDir returns the directory containing items of the given asset kind
 // ("Games", "Plugins", "Shaders") for the given source. Returns "" when
@@ -56,7 +56,7 @@ func SourceDir(src Source, kind, dataDir string) string {
 		return ""
 	case SourceShared:
 		return filepath.Join(datadir.SharedDir(), kind)
-	case SourceCommon:
+	case SourceCore:
 		return filepath.Join(dataDir, kind)
 	}
 	return ""
@@ -101,8 +101,8 @@ func listAll(dataDir, kind string, lister func(string) []string) []Item {
 	return items
 }
 
-// ResolveGamePathAll walks Create > Shared > Common and returns the first
-// matching path. Falls back to the Common-source path for error messages
+// ResolveGamePathAll walks Create > Shared > Core and returns the first
+// matching path. Falls back to the Core-source path for error messages
 // even if no file exists there.
 func ResolveGamePathAll(dataDir, name string) string {
 	for _, src := range SourceOrder {
@@ -118,9 +118,9 @@ func ResolveGamePathAll(dataDir, name string) string {
 	return filepath.Join(dataDir, datadir.DirGames, name+".js")
 }
 
-// ResolveScriptPathAll walks Create > Shared > Common for a plugin or
+// ResolveScriptPathAll walks Create > Shared > Core for a plugin or
 // shader file (kind == "Plugins"/"Shaders"). Falls back to the
-// Common-source path for error messages even if no file exists.
+// Core-source path for error messages even if no file exists.
 func ResolveScriptPathAll(kind, dataDir, name string) string {
 	for _, src := range SourceOrder {
 		dir := SourceDir(src, kind, dataDir)

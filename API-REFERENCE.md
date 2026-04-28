@@ -1,6 +1,6 @@
 # DevNull API Reference
 
-This document explains how to write games for DevNull. Games are plain JavaScript files (ES5-compatible, no modules). Drop your file in your `Games\` folder (under `~/DevNull/Create/Games/` for authoring, or `~/DevNull/Common/Games/` if you're the server operator), or share it via URL — no build step required.
+This document explains how to write games for DevNull. Games are plain JavaScript files (ES5-compatible, no modules). Drop your file in your `Games\` folder (under `~/DevNull/Create/Games/` for authoring, or `~/DevNull/Core/Games/` if you're the server operator), or share it via URL — no build step required.
 
 See also: **[AUTHORING.md](AUTHORING.md)** for the end-to-end workflow (set up authoring, local test loop, push & share, get loaded by an admin).
 

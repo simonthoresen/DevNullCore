@@ -25,7 +25,6 @@ var skipExts = map[string]bool{
 var skipNames = map[string]bool{
 	".cache":                true,
 	"state":                 true,
-	"logs":                  true,
 	"DevNull_ed25519":       true,
 	"DevNull_ed25519.pub":   true,
 	".version":              true,

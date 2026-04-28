@@ -42,22 +42,22 @@ Get-ChildItem -Path $tempDir -Recurse -File | ForEach-Object {
 }
 Remove-Item $tempZip -Force
 Remove-Item $tempDir -Recurse -Force
-New-Item -ItemType Directory -Path (Join-Path $InstallDir "logs") -Force | Out-Null
-New-Item -ItemType Directory -Path (Join-Path $InstallDir "Common\state") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $InstallDir "Logs") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $InstallDir "Core\state") -Force | Out-Null
 Write-Host " OK" -ForegroundColor Green
 
-# Write version stamp into Common/.version
+# Write version stamp into Core/.version
 $version = ""
 if ($release.body -match 'at ([0-9a-f]{40})') { $version = $Matches[1] }
-if ($version) { Set-Content -Path (Join-Path $InstallDir "Common\.version") -Value $version -NoNewline }
+if ($version) { Set-Content -Path (Join-Path $InstallDir "Core\.version") -Value $version -NoNewline }
 
 # Create desktop shortcuts pointing at the root-level launcher scripts.
 $desktop          = [Environment]::GetFolderPath("Desktop")
 $serverPs1        = Join-Path $InstallDir "DevNullServer.ps1"
 $clientPs1        = Join-Path $InstallDir "DevNull.ps1"
 $createPs1        = Join-Path $InstallDir "DevNullCreate.ps1"
-$serverIcon       = (Join-Path $InstallDir "Common\DevNullServer.exe") + ",0"
-$clientIcon       = (Join-Path $InstallDir "Common\DevNullClient.exe") + ",0"
+$serverIcon       = (Join-Path $InstallDir "Core\DevNullServer.exe") + ",0"
+$clientIcon       = (Join-Path $InstallDir "Core\DevNullClient.exe") + ",0"
 $shell            = New-Object -ComObject WScript.Shell
 
 $public = $shell.CreateShortcut((Join-Path $desktop "DevNull Server (public).lnk"))

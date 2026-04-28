@@ -43,8 +43,8 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
 }
 
 $root = $PSScriptRoot
-$commonDir = Join-Path $root "Common"
-$logsDir = Join-Path $root "logs"
+$coreDir = Join-Path $root "Core"
+$logsDir = Join-Path $env:USERPROFILE "DevNull\Logs"
 $repo = "simonthoresen/DevNull"
 $script:runLog = $null
 $script:bootStepLabel = $null
@@ -133,7 +133,7 @@ function Update-FromRelease {
         $headers = @{ Accept = "application/vnd.github+json" }
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/latest" -Headers $headers -TimeoutSec 10
 
-        $versionFile = Join-Path $commonDir ".version"
+        $versionFile = Join-Path $coreDir ".version"
         $localVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
         $remoteVersion = ""
         if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
@@ -144,7 +144,7 @@ function Update-FromRelease {
         }
 
         # No .version file: fall back to timestamp comparison.
-        $localExe = Join-Path $commonDir "DevNullClient.exe"
+        $localExe = Join-Path $coreDir "DevNullClient.exe"
         if (Test-Path $localExe) {
             $localTime = (Get-Item $localExe).LastWriteTimeUtc
             $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
@@ -234,14 +234,14 @@ if ($Local -and $NoGUI) {
     # Generate a random password for auto-admin.
     $localPassword = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
 
-    $serverArgs = @("--headless", "--port", $Port, "--password", $localPassword, "--data-dir", $commonDir)
+    $serverArgs = @("--headless", "--port", $Port, "--password", $localPassword, "--data-dir", $coreDir)
     if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
 
     Write-BootStepStart "Starting local server"
     $script:serverProc = Start-Process `
-        -FilePath (Join-Path $commonDir "DevNullServer.exe") `
+        -FilePath (Join-Path $coreDir "DevNullServer.exe") `
         -ArgumentList $serverArgs `
-        -WorkingDirectory $commonDir `
+        -WorkingDirectory $coreDir `
         -RedirectStandardOutput (Join-Path $logsDir "local-server-stdout.log") `
         -RedirectStandardError  (Join-Path $logsDir "local-server-stderr.log") `
         -NoNewWindow -PassThru
@@ -267,7 +267,7 @@ if ($Local -and $NoGUI) {
 
 # ── launch client ────────────────────────────────────────────────────────────
 
-Push-Location $commonDir
+Push-Location $coreDir
 try {
     if ($NoGUI) {
         # Terminal mode: launch plain ssh instead of the GUI client binary.
@@ -296,7 +296,7 @@ try {
         $clientArgs += $positionals
 
         Write-RunLogLine "starting DevNull client (host=$Host_ port=$Port local=$Local)"
-        & (Join-Path $commonDir "DevNullClient.exe") @clientArgs
+        & (Join-Path $coreDir "DevNullClient.exe") @clientArgs
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
     }
 } finally {

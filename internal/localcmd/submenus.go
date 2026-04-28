@@ -158,7 +158,7 @@ type ScriptSubMenuOptions struct {
 }
 
 // BuildScriptSubItems returns the menu items for a Plugins or Shaders sub-menu.
-// Items are grouped by source (Create > Shared > Common) with section headers.
+// Items are grouped by source (Create > Shared > Core) with section headers.
 // Loaded names not present in any source are appended at the bottom (unsourced).
 func BuildScriptSubItems(opts ScriptSubMenuOptions) []domain.MenuItemDef {
 	available := engine.ListAllScripts(opts.SubDir, opts.DataDir)

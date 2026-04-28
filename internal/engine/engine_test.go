@@ -60,8 +60,8 @@ func TestFormatGameList(t *testing.T) {
 	os.WriteFile(filepath.Join(gamesDir, "teams.js"), []byte(`var Game = { teamRange: {min: 2, max: 2}, load: function(){} };`), 0o644)
 
 	result := FormatGameList(dir, []Item{
-		{Name: "simple", Source: SourceCommon},
-		{Name: "teams", Source: SourceCommon},
+		{Name: "simple", Source: SourceCore},
+		{Name: "teams", Source: SourceCore},
 	}, "simple", 2)
 
 	if len(result) == 0 {

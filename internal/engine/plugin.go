@@ -123,7 +123,7 @@ func (p *jsPlugin) Unload() {
 
 // ResolvePluginPath resolves a plugin name or URL to a local file path.
 // URLs are downloaded into SharedDir/Plugins/. Names are looked up in
-// Create > Shared > Common priority order.
+// Create > Shared > Core priority order.
 func ResolvePluginPath(nameOrURL, dataDir string) (name, path string, err error) {
 	if network.IsURL(nameOrURL) {
 		dest := SourceDir(SourceShared, "Plugins", dataDir)

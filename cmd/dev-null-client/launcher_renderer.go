@@ -430,7 +430,7 @@ func (r *launcherRenderer) startPinggyHelper() error {
 	if err != nil {
 		return err
 	}
-	logsDir := filepath.Join(r.dataDir, "logs")
+	logsDir := datadir.LogsDir()
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return fmt.Errorf("create logs dir: %w", err)
 	}
