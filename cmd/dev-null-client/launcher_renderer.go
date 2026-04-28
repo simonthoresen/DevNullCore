@@ -92,6 +92,7 @@ type launcherRenderer struct {
 	lanCache     []launcherServer
 	lastProbe    time.Time
 	lastLAN      time.Time
+	firstRefreshAt time.Time
 	refreshing   bool
 	refreshDone  chan refreshResult
 	status       string
@@ -131,7 +132,13 @@ func newLauncherRenderer(cfg launcherRendererConfig) *launcherRenderer {
 	r.refreshDone = make(chan refreshResult, 1)
 	r.setupLauncherUI()
 	r.setupBackground()
-	r.refreshServers(true)
+	// Defer the first scan: kicking off LAN discovery / TCP probes
+	// immediately on construction has been observed to stall the launcher
+	// animation for ~1s on Windows (likely GPU/window init colliding with
+	// firewall + multicast bind). Letting the UI settle first avoids the
+	// visible stutter; HandleInput will fire the first refresh on its
+	// next tick (lastProbe is zero, so the rate-limit check passes).
+	r.firstRefreshAt = time.Now().Add(1500 * time.Millisecond)
 	return r
 }
 
@@ -254,7 +261,7 @@ func (r *launcherRenderer) HandleInput(w *display.Window) {
 		return
 	}
 
-	if time.Since(r.lastProbe) >= serverProbeEvery {
+	if time.Since(r.lastProbe) >= serverProbeEvery && (r.firstRefreshAt.IsZero() || !time.Now().Before(r.firstRefreshAt)) {
 		r.refreshServers(false)
 	}
 	r.applyRefreshResult()
