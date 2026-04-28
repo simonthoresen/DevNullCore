@@ -22,21 +22,21 @@ func output(t *testing.T) (func(string), func() string) {
 
 func writeTheme(t *testing.T, dataDir, name string) {
 	t.Helper()
-	dir := filepath.Join(dataDir, "themes")
+	dir := filepath.Join(dataDir, "Themes")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, name+".json"), []byte(`{"name":"`+name+`"}`), 0o644)
 }
 
 func writePlugin(t *testing.T, dataDir, name string) {
 	t.Helper()
-	dir := filepath.Join(dataDir, "plugins")
+	dir := filepath.Join(dataDir, "Plugins")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, name+".js"), []byte(`var Plugin = { name: "`+name+`", onMessage: function(a,t,s){ return t; } };`), 0o644)
 }
 
 func writeShader(t *testing.T, dataDir, name string) {
 	t.Helper()
-	dir := filepath.Join(dataDir, "shaders")
+	dir := filepath.Join(dataDir, "Shaders")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, name+".js"), []byte(`var Shader = { name: "`+name+`", process: function(buf,t){} };`), 0o644)
 }

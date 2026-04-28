@@ -29,9 +29,9 @@ func SetBuildInfo(date, remote string) {
 // figletRenderer is a shared AsciiRender instance (thread-safe: read-only after init).
 var figletRenderer = figlet4go.NewAsciiRender()
 
-// LoadFigletFonts loads all .flf files from <dataDir>/fonts/ into the shared renderer.
+// LoadFigletFonts loads all .flf files from <dataDir>/Fonts/ into the shared renderer.
 func LoadFigletFonts(dataDir string) {
-	dir := filepath.Join(dataDir, "fonts")
+	dir := filepath.Join(dataDir, "Fonts")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return
 	}
@@ -42,7 +42,7 @@ func LoadFigletFonts(dataDir string) {
 	slog.Info("Loaded figlet fonts", "dir", dir)
 }
 
-// aboutLogoLines are the three rows of the "dev-null" block-character logo.
+// aboutLogoLines are the three rows of the "DevNull" block-character logo.
 // Each row is padded with spaces to column 35 so the bracket column aligns at 35.
 var aboutLogoLines = [3]string{
 	"█▀▀█ █▀▀ █  █  █▀▄█ █  █ █   █     ",  // 30 chars + 5 spaces = 35

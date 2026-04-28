@@ -1,4 +1,4 @@
-// Package main runs a load profile against an in-process dev-null server.
+// Package main runs a load profile against an in-process DevNull server.
 //
 // It boots a server on a random port, connects N SSH clients (split between
 // plain "ssh" sessions and "enhanced" GUI-style sessions that take the
@@ -47,10 +47,10 @@ func main() {
 	var (
 		nSSH       = flag.Int("ssh", 8, "number of plain SSH clients to spawn")
 		nGUI       = flag.Int("gui", 8, "number of enhanced (DEV_NULL_CLIENT=enhanced) SSH clients to spawn")
-		gameName   = flag.String("game", "wolf3d", "game to load (must be in dist/games/)")
+		gameName   = flag.String("game", "wolf3d", "game to load (must be in dist/Games/)")
 		duration   = flag.Duration("duration", 15*time.Second, "measurement window")
 		warmup     = flag.Duration("warmup", 12*time.Second, "wait this long after game-load before starting measurement (covers 10s starting countdown)")
-		dataDir    = flag.String("data-dir", "dist", "data directory containing games/")
+		dataDir    = flag.String("data-dir", "dist", "data directory containing Games/")
 		tickInt    = flag.Duration("tick", 100*time.Millisecond, "server tick interval")
 		ptyW       = flag.Int("pty-w", 120, "PTY width")
 		ptyH       = flag.Int("pty-h", 40, "PTY height")
@@ -64,7 +64,7 @@ func main() {
 		slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError})))
 	}
 
-	gamesDir := filepath.Join(*dataDir, "games")
+	gamesDir := filepath.Join(*dataDir, "Games")
 	gamePath := engine.ResolveGamePath(gamesDir, *gameName)
 	if gamePath == "" {
 		fail("game %q not found under %s", *gameName, gamesDir)

@@ -18,7 +18,7 @@ import (
 // findSoundFont returns the path to name.sf2, checking installDir before dataDir.
 // installDir is the exe directory (bundled assets); dataDir is the user data directory.
 func findSoundFont(installDir, dataDir, name string) string {
-	rel := filepath.Join("soundfonts", name+".sf2")
+	rel := filepath.Join("SoundFonts", name+".sf2")
 	if installDir != "" {
 		p := filepath.Join(installDir, rel)
 		if _, err := os.Stat(p); err == nil {

@@ -9,44 +9,44 @@ import (
 
 // Source identifies which asset root a game/plugin/shader was found in.
 //
-// Resolution order is Create > Shared > Play: an in-progress create item
-// shadows a name from Shared, which shadows the same name in Play.
+// Resolution order is Create > Shared > Common: an in-progress create item
+// shadows a name from Shared, which shadows the same name in Common.
 type Source int
 
 const (
-	// SourceCreate is %USERPROFILE%/dev-null/create — the author's git repo.
+	// SourceCreate is %USERPROFILE%/DevNull/Create — the author's git repo.
 	// Highest priority so in-progress work shadows installed names.
 	SourceCreate Source = iota
 
-	// SourceShared is %USERPROFILE%/dev-null/shared — items downloaded
+	// SourceShared is %USERPROFILE%/DevNull/Shared — items downloaded
 	// via "Games > Add" / /game-load <url>.
 	SourceShared
 
-	// SourcePlay is the data dir (defaults to %USERPROFILE%/dev-null/play).
+	// SourceCommon is the data dir (defaults to %USERPROFILE%/DevNull/Common).
 	// Holds bundled assets shipped with the install.
-	SourcePlay
+	SourceCommon
 )
 
-// Label returns the display label for this source ("Create", "Shared", "Play").
+// Label returns the display label for this source ("Create", "Shared", "Common").
 func (s Source) Label() string {
 	switch s {
 	case SourceCreate:
 		return "Create"
 	case SourceShared:
 		return "Shared"
-	case SourcePlay:
-		return "Play"
+	case SourceCommon:
+		return "Common"
 	}
 	return ""
 }
 
 // SourceOrder lists sources in resolution priority (highest first).
-var SourceOrder = []Source{SourceCreate, SourceShared, SourcePlay}
+var SourceOrder = []Source{SourceCreate, SourceShared, SourceCommon}
 
 // SourceDir returns the directory containing items of the given asset kind
-// ("games", "plugins", "shaders") for the given source. Returns "" when
+// ("Games", "Plugins", "Shaders") for the given source. Returns "" when
 // the source root is not configured (e.g. SourceCreate when the author
-// hasn't run create-game.ps1 yet).
+// hasn't run DevNullCreate.ps1 yet).
 func SourceDir(src Source, kind, dataDir string) string {
 	switch src {
 	case SourceCreate:
@@ -56,7 +56,7 @@ func SourceDir(src Source, kind, dataDir string) string {
 		return ""
 	case SourceShared:
 		return filepath.Join(datadir.SharedDir(), kind)
-	case SourcePlay:
+	case SourceCommon:
 		return filepath.Join(dataDir, kind)
 	}
 	return ""
@@ -72,10 +72,10 @@ type Item struct {
 // order. Names are deduplicated: a name appearing in a higher-priority
 // source shadows the same name in a lower-priority one.
 func ListAllGames(dataDir string) []Item {
-	return listAll(dataDir, "games", ListGames)
+	return listAll(dataDir, datadir.DirGames, ListGames)
 }
 
-// ListAllScripts returns plugins or shaders (kind == "plugins"/"shaders")
+// ListAllScripts returns plugins or shaders (kind == "Plugins"/"Shaders")
 // from every configured source in priority order, with deduplication.
 func ListAllScripts(kind, dataDir string) []Item {
 	return listAll(dataDir, kind, ListScripts)
@@ -101,12 +101,12 @@ func listAll(dataDir, kind string, lister func(string) []string) []Item {
 	return items
 }
 
-// ResolveGamePathAll walks Create > Shared > Play and returns the first
-// matching path. Falls back to the play-source path for error messages
+// ResolveGamePathAll walks Create > Shared > Common and returns the first
+// matching path. Falls back to the Common-source path for error messages
 // even if no file exists there.
 func ResolveGamePathAll(dataDir, name string) string {
 	for _, src := range SourceOrder {
-		dir := SourceDir(src, "games", dataDir)
+		dir := SourceDir(src, datadir.DirGames, dataDir)
 		if dir == "" {
 			continue
 		}
@@ -115,12 +115,12 @@ func ResolveGamePathAll(dataDir, name string) string {
 			return path
 		}
 	}
-	return filepath.Join(dataDir, "games", name+".js")
+	return filepath.Join(dataDir, datadir.DirGames, name+".js")
 }
 
-// ResolveScriptPathAll walks Create > Shared > Play for a plugin or
-// shader file (kind == "plugins"/"shaders"). Falls back to the
-// play-source path for error messages even if no file exists.
+// ResolveScriptPathAll walks Create > Shared > Common for a plugin or
+// shader file (kind == "Plugins"/"Shaders"). Falls back to the
+// Common-source path for error messages even if no file exists.
 func ResolveScriptPathAll(kind, dataDir, name string) string {
 	for _, src := range SourceOrder {
 		dir := SourceDir(src, kind, dataDir)

@@ -409,9 +409,9 @@ func Default() *Theme {
 	return t
 }
 
-// ListThemes returns the names of available theme files in the themes directory.
+// ListThemes returns the names of available theme files in the Themes directory.
 func ListThemes(dataDir string) []string {
-	dir := filepath.Join(dataDir, "themes")
+	dir := filepath.Join(dataDir, "Themes")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil

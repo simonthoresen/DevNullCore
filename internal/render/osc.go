@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// OSC escape sequences for the dev-null enhanced client protocol.
+// OSC escape sequences for the DevNull enhanced client protocol.
 // Regular terminals silently ignore unknown OSC sequences.
 //
 // Format: \x1b]ns;<type>;<payload>\x07

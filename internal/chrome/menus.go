@@ -177,11 +177,11 @@ func (m *Model) buildThemeSubItems() []domain.MenuItemDef {
 }
 
 func (m *Model) buildPluginSubItems() []domain.MenuItemDef {
-	return m.buildScriptSubItems("plugins", m.pluginNames, "/plugin-load ", "/plugin-unload ")
+	return m.buildScriptSubItems("Plugins", m.pluginNames, "/plugin-load ", "/plugin-unload ")
 }
 
 func (m *Model) buildShaderSubItems() []domain.MenuItemDef {
-	return m.buildScriptSubItems("shaders", m.shaderNames, "/shader-load ", "/shader-unload ")
+	return m.buildScriptSubItems("Shaders", m.shaderNames, "/shader-load ", "/shader-unload ")
 }
 
 func (m *Model) buildScriptSubItems(subDir string, loaded []string, loadCmd, unloadCmd string) []domain.MenuItemDef {

@@ -19,7 +19,7 @@ import (
 func HandleThemeList(dataDir, currentThemeName string, output func(string)) {
 	available := theme.ListThemes(dataDir)
 	if len(available) == 0 {
-		output("No themes found in themes/")
+		output("No themes found in Themes/")
 		return
 	}
 	var lines []string
@@ -36,7 +36,7 @@ func HandleThemeList(dataDir, currentThemeName string, output func(string)) {
 // HandleThemeLoad loads a theme by name. Returns the loaded theme and its name
 // (both non-nil/non-empty on success), or (nil, "") if nothing changed.
 func HandleThemeLoad(name, dataDir string, output func(string)) (*theme.Theme, string) {
-	path := filepath.Join(dataDir, "themes", name+".json")
+	path := filepath.Join(dataDir, "Themes", name+".json")
 	t, err := theme.Load(path)
 	if err != nil {
 		output(fmt.Sprintf("Failed to load theme: %v", err))
@@ -50,7 +50,7 @@ func HandleThemeLoad(name, dataDir string, output func(string)) (*theme.Theme, s
 
 // HandlePluginList lists available and loaded plugins across all sources.
 func HandlePluginList(dataDir string, names []string, output func(string)) {
-	available := engine.ListAllScripts("plugins", dataDir)
+	available := engine.ListAllScripts("Plugins", dataDir)
 	loadedSet := make(map[string]bool)
 	for _, n := range names {
 		loadedSet[n] = true
@@ -122,7 +122,7 @@ func HandlePluginUnload(
 
 // HandleShaderList lists available and active shaders across all sources.
 func HandleShaderList(dataDir string, names []string, output func(string)) {
-	available := engine.ListAllScripts("shaders", dataDir)
+	available := engine.ListAllScripts("Shaders", dataDir)
 	loadedSet := make(map[string]bool)
 	for _, n := range names {
 		loadedSet[n] = true

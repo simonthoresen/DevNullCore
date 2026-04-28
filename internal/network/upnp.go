@@ -64,7 +64,7 @@ func tryWANIPConnection2(ctx context.Context, port uint16) *UPnPMapping {
 			port,                        // internal port
 			client.LocalAddr().String(), // internal client IP
 			true,                        // enabled
-			"dev-null",                // description
+			"DevNull",                 // description
 			0,                           // lease duration (0 = permanent until removed)
 		)
 		if err != nil {
@@ -94,7 +94,7 @@ func tryWANIPConnection1(ctx context.Context, port uint16) bool {
 			port,
 			client.LocalAddr().String(),
 			true,
-			"dev-null",
+			"DevNull",
 			0,
 		)
 		if err != nil {
@@ -124,7 +124,7 @@ func tryWANPPPConnection1(ctx context.Context, port uint16) bool {
 			port,
 			client.LocalAddr().String(),
 			true,
-			"dev-null",
+			"DevNull",
 			0,
 		)
 		if err != nil {

@@ -49,7 +49,7 @@ func main() {
 	flag.StringVar(&password, "password", "", "admin password (optional, can be set at runtime via /password)")
 	flag.StringVar(&address, "address", ":23234", "listen address")
 	flag.StringVar(&portOverride, "port", "", "SSH listen port (overrides --address port, default 23234)")
-	flag.StringVar(&dataDir, "data-dir", datadir.DefaultDataDir(), "directory containing games/, logs/")
+	flag.StringVar(&dataDir, "data-dir", datadir.CommonDir(), "directory containing Games/, logs/")
 	flag.BoolVar(&lanMode, "lan", false, "LAN-only server (no UPnP, no public IP, no Pinggy)")
 	var headless bool
 	flag.BoolVar(&headless, "headless", false, "run with no console UI (for --local subprocess mode)")
@@ -62,7 +62,7 @@ func main() {
 	// Bootstrap bundled assets from install dir to data dir on first
 	// run or version upgrade. Skipped in dev mode and when --data-dir
 	// is explicitly set to a non-default path.
-	if dataDir == datadir.DefaultDataDir() {
+	if dataDir == datadir.CommonDir() {
 		if err := datadir.Bootstrap(datadir.InstallDir(), dataDir, buildCommit); err != nil {
 			fmt.Fprintf(os.Stderr, "bootstrap error: %v\n", err)
 			os.Exit(1)
@@ -77,7 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer cleanupLog() //nolint:errcheck
-	slog.Info("dev-null server", "commit", buildCommit, "built", buildDate)
+	slog.Info("DevNull server", "commit", buildCommit, "built", buildDate)
 
 	if portOverride != "" {
 		address = ":" + portOverride

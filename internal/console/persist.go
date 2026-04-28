@@ -1,7 +1,6 @@
 package console
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,27 +15,12 @@ func (m *Model) persistServerConfig() {
 	persistConfigFile(datadir.InitFilePath("server.txt"), m.themeName, m.pluginNames, m.shaderNames)
 }
 
-// readInitFile reads an init file by name (e.g. "server.txt"). Tries the
-// new <ConfigDir>/<name> first; if absent, falls back to the legacy
-// ~/.dev-null/<name> and copies it forward (one-time migration) so subsequent
-// writes don't lose its non-managed lines. Returns (contents, true) on success.
+// readInitFile reads an init file by name (e.g. "server.txt") from
+// <ConfigDir>/<name>. Returns (contents, true) on success.
 func readInitFile(name string) ([]byte, bool) {
-	newPath := datadir.InitFilePath(name)
-	if data, err := os.ReadFile(newPath); err == nil {
-		return data, true
-	}
-	legacy := datadir.LegacyInitFilePath(name)
-	if legacy == "" {
-		return nil, false
-	}
-	data, err := os.ReadFile(legacy)
+	data, err := os.ReadFile(datadir.InitFilePath(name))
 	if err != nil {
 		return nil, false
-	}
-	if err := os.MkdirAll(filepath.Dir(newPath), 0o755); err == nil {
-		if err := os.WriteFile(newPath, data, 0o644); err == nil {
-			slog.Info("console: migrated legacy init file", "from", legacy, "to", newPath)
-		}
 	}
 	return data, true
 }

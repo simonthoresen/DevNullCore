@@ -46,7 +46,7 @@ type options struct {
 func defaultOptions() options {
 	return options{
 		fps:          60,
-		windowTitle:  "dev-null",
+		windowTitle:  "DevNull",
 		windowWidth:  1200,
 		windowHeight: 800,
 	}

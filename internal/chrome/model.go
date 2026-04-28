@@ -100,7 +100,7 @@ type Model struct {
 	tabCandidates []string
 	tabIndex      int
 
-	// Init commands from ~/.dev-null/client.txt (dispatched on first tick)
+	// Init commands from <ConfigDir>/client.txt (dispatched on first tick)
 	InitCommands []string
 
 	// Per-player theme
@@ -128,7 +128,7 @@ type Model struct {
 	// Chat size in interior rows when a game is open. Clamped to [5, 10].
 	chatSize int
 
-	// Enhanced client protocol (dev-null-client with canvas/local-render support).
+	// Enhanced client protocol (DevNullClient with canvas/local-render support).
 	IsEnhancedClient bool
 	SessionWriter    io.Writer // direct session writer for OSC passthrough (bypasses renderer)
 	oscModeSent      bool     // true after the initial mode OSC has been sent

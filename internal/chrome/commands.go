@@ -254,7 +254,7 @@ func (m *Model) dispatchPluginReply(text string) {
 
 // handleSynthList lists available SoundFonts.
 func (m *Model) handleSynthList() {
-	sf2Dir := filepath.Join(m.api.DataDir(), "soundfonts")
+	sf2Dir := filepath.Join(m.api.DataDir(), "SoundFonts")
 	entries, _ := os.ReadDir(sf2Dir)
 	var names []string
 	for _, e := range entries {
@@ -268,7 +268,7 @@ func (m *Model) handleSynthList() {
 		}
 	}
 	if len(names) == 0 {
-		m.pluginReply("No SoundFonts found in soundfonts/")
+		m.pluginReply("No SoundFonts found in SoundFonts/")
 	} else {
 		m.pluginReply("SoundFonts: " + strings.Join(names, ", "))
 	}
@@ -276,7 +276,7 @@ func (m *Model) handleSynthList() {
 
 // handleSynthLoad selects a SoundFont by name.
 func (m *Model) handleSynthLoad(name string) {
-	sf2Dir := filepath.Join(m.api.DataDir(), "soundfonts")
+	sf2Dir := filepath.Join(m.api.DataDir(), "SoundFonts")
 	sf2Path := filepath.Join(sf2Dir, name+".sf2")
 	if _, err := os.Stat(sf2Path); err != nil {
 		m.pluginReply("SoundFont not found: " + name)

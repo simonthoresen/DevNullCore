@@ -36,9 +36,9 @@ var (
 	tsPattern = regexp.MustCompile(`\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`)
 
 	// lobbyStatusBarPattern matches the entire lobby status bar line.
-	// The line is: " dev-null | N players | uptime T   DATE"
+	// The line is: " DevNull | N players | uptime T   DATE"
 	// T and DATE have variable widths / values.
-	lobbyStatusBarPattern = regexp.MustCompile(` dev-null \| (\d+) players \| uptime \S+ +\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} *`)
+	lobbyStatusBarPattern = regexp.MustCompile(` DevNull \| (\d+) players \| uptime \S+ +\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} *`)
 
 	// aboutBracketPattern matches the bracket columns in the About dialog logo.
 	// The content (date + fill + remote URL) varies by build and is replaced
@@ -60,7 +60,7 @@ func sanitize(s string) string {
 	out := lobbyStatusBarPattern.ReplaceAllStringFunc(s, func(match string) string {
 		sub := lobbyStatusBarPattern.FindStringSubmatch(match)
 		players := sub[1]
-		left := fmt.Sprintf(" dev-null | %s players | uptime XX", players)
+		left := fmt.Sprintf(" DevNull | %s players | uptime XX", players)
 		pad := termW - len(left) - len(fixedTimestamp) - 1
 		if pad < 1 {
 			pad = 1

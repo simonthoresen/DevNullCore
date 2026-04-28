@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// SSHConn manages the SSH connection to a dev-null server.
+// SSHConn manages the SSH connection to a DevNull server.
 type SSHConn struct {
 	client  *ssh.Client
 	session *ssh.Session
@@ -36,7 +36,7 @@ func Dial(host string, port int, player string, termOverride, password string, p
 	config := &ssh.ClientConfig{
 		User: player,
 		Auth: []ssh.AuthMethod{
-			ssh.Password(""), // dev-null uses passwordless SSH
+			ssh.Password(""), // DevNull uses passwordless SSH
 		},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}

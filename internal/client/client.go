@@ -1,4 +1,4 @@
-// Package client implements the dev-null graphical client.
+// Package client implements the DevNull graphical client.
 //
 // Architecture overview:
 //

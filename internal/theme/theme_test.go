@@ -258,7 +258,7 @@ func TestLoadWithPerLayerBorders(t *testing.T) {
 
 func TestListThemes(t *testing.T) {
 	dir := t.TempDir()
-	themesDir := filepath.Join(dir, "themes")
+	themesDir := filepath.Join(dir, "Themes")
 	os.MkdirAll(themesDir, 0o755)
 	os.WriteFile(filepath.Join(themesDir, "dark.json"), []byte("{}"), 0o644)
 	os.WriteFile(filepath.Join(themesDir, "light.json"), []byte("{}"), 0o644)

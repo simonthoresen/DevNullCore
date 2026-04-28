@@ -230,18 +230,18 @@ func newJSShaderBuffer(vm *goja.Runtime, buf *render.ImageBuffer) map[string]any
 }
 
 // ResolveShaderPath resolves a shader name or URL to a local file path.
-// URLs are downloaded into SharedDir/shaders/. Names are looked up in
-// Create > Shared > Play priority order.
+// URLs are downloaded into SharedDir/Shaders/. Names are looked up in
+// Create > Shared > Common priority order.
 func ResolveShaderPath(nameOrURL, dataDir string) (name, path string, err error) {
 	if network.IsURL(nameOrURL) {
-		dest := SourceDir(SourceShared, "shaders", dataDir)
+		dest := SourceDir(SourceShared, "Shaders", dataDir)
 		local, dlErr := network.DownloadToCache(nameOrURL, dest)
 		if dlErr != nil {
 			return "", "", fmt.Errorf("download shader: %w", dlErr)
 		}
 		return strings.TrimSuffix(filepath.Base(local), ".js"), local, nil
 	}
-	return nameOrURL, ResolveScriptPathAll("shaders", dataDir, nameOrURL), nil
+	return nameOrURL, ResolveScriptPathAll("Shaders", dataDir, nameOrURL), nil
 }
 
 // ApplyShaders runs all shaders in sequence on the given buffer.

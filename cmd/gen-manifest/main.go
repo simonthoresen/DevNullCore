@@ -23,11 +23,11 @@ var skipExts = map[string]bool{
 
 // skipNames lists file/directory names to skip entirely.
 var skipNames = map[string]bool{
-	".cache":             true,
-	"state":              true,
-	"logs":               true,
-	"dev-null_ed25519":     true,
-	"dev-null_ed25519.pub": true,
+	".cache":                true,
+	"state":                 true,
+	"logs":                  true,
+	"DevNull_ed25519":       true,
+	"DevNull_ed25519.pub":   true,
 	".bundle-manifest.json": true,
 	".bundle-version":       true,
 }

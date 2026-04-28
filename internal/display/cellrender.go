@@ -32,7 +32,7 @@ func DefaultFontFace() text.Face {
 }
 
 // GUIFontFace loads a monospace TTF font suitable for the GUI backend.
-// Search order: bundled fonts dir (install dir or dev dist/fonts/), then
+// Search order: bundled Fonts dir (install dir or dev dist/Fonts/), then
 // Windows system fonts, then bitmap fallback.
 // Cell dimensions (CellW, CellH) are updated to match the loaded font.
 func GUIFontFace(size float64) text.Face {
@@ -43,10 +43,10 @@ func GUIFontFace(size float64) text.Face {
 	// Build candidate paths: bundled font takes priority over system fonts.
 	var candidates []string
 	installDir := datadir.InstallDir()
-	candidates = append(candidates, filepath.Join(installDir, "fonts", "CascadiaMono.ttf"))
-	// Dev fallback: when running via "go run" from repo root, fonts live in dist/fonts/.
+	candidates = append(candidates, filepath.Join(installDir, "Fonts", "CascadiaMono.ttf"))
+	// Dev fallback: when running via "go run" from repo root, fonts live in dist/Fonts/.
 	if installDir == "." {
-		candidates = append(candidates, filepath.Join("dist", "fonts", "CascadiaMono.ttf"))
+		candidates = append(candidates, filepath.Join("dist", "Fonts", "CascadiaMono.ttf"))
 	}
 	if runtime.GOOS == "windows" {
 		candidates = append(candidates,

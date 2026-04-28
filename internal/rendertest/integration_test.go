@@ -88,7 +88,7 @@ func sshCapture(t *testing.T, addr, playerName string, envVars []string, capture
 	for _, e := range envVars {
 		k, v, _ := splitEnv(e)
 		if err := sess.Setenv(k, v); err != nil {
-			// Some servers reject Setenv; the dev-null server accepts it.
+			// Some servers reject Setenv; the DevNull server accepts it.
 			t.Logf("Setenv %s: %v (continuing)", e, err)
 		}
 	}

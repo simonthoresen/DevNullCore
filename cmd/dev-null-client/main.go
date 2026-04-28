@@ -1,4 +1,4 @@
-// dev-null-client is a graphical SSH client for dev-null servers.
+// DevNullClient is a graphical SSH client for DevNull servers.
 //
 // It connects via standard SSH but additionally supports charmap-based
 // sprite rendering: games that declare a charmap have their PUA codepoints
@@ -37,7 +37,7 @@ func main() {
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
 	player := flag.String("player", defaultPlayer(), "player name")
-	dataDirFlag := flag.String("data-dir", datadir.DefaultDataDir(), "data directory (SoundFonts, etc.)")
+	dataDirFlag := flag.String("data-dir", datadir.CommonDir(), "data directory (SoundFonts, etc.)")
 	gameName := flag.String("game", "", "game to load on connect (sends /game-load command)")
 	resumeName := flag.String("resume", "", "game/save to resume on connect, e.g. orbits/autosave (sends /game-resume command)")
 	password := flag.String("password", "", "admin password (authenticates as admin on connect)")
@@ -100,7 +100,7 @@ func main() {
 	renderer := client.NewClientRenderer(conn, winW, winH, *player, datadir.InstallDir(), *dataDirFlag)
 	bootstep.Finish("DONE")
 
-	if err := display.RunWindow(renderer, "dev-null", winW, winH, appIcon); err != nil {
+	if err := display.RunWindow(renderer, "DevNull", winW, winH, appIcon); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

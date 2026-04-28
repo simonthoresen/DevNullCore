@@ -61,7 +61,7 @@ var Game = {
 
 func writeTestGame(t *testing.T, dir string) string {
 	t.Helper()
-	gamesDir := filepath.Join(dir, "games")
+	gamesDir := filepath.Join(dir, "Games")
 	if err := os.MkdirAll(gamesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestTeamValidationOnLoad(t *testing.T) {
 	s.registerBuiltins()
 
 	// Write a game that requires 2-4 teams.
-	gamesDir := filepath.Join(s.dataDir, "games")
+	gamesDir := filepath.Join(s.dataDir, "Games")
 	if err := os.MkdirAll(gamesDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

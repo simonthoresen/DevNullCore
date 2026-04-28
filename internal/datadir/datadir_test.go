@@ -57,16 +57,16 @@ func TestBootstrapFirstRun(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "data") // does not exist yet
 
 	// Set up install dir with two bundled files.
-	writeFile(t, filepath.Join(installDir, "games", "cube.js"), "// cube game")
-	writeFile(t, filepath.Join(installDir, "fonts", "big.flf"), "flf font data")
+	writeFile(t, filepath.Join(installDir, "Games", "cube.js"), "// cube game")
+	writeFile(t, filepath.Join(installDir, "Fonts", "big.flf"), "flf font data")
 
-	hash1, _ := FileHash(filepath.Join(installDir, "games", "cube.js"))
-	hash2, _ := FileHash(filepath.Join(installDir, "fonts", "big.flf"))
+	hash1, _ := FileHash(filepath.Join(installDir, "Games", "cube.js"))
+	hash2, _ := FileHash(filepath.Join(installDir, "Fonts", "big.flf"))
 	writeManifest(t, installDir, Manifest{
 		Version: "abc123",
 		Files: []ManifestFile{
-			{Path: "games/cube.js", SHA256: hash1},
-			{Path: "fonts/big.flf", SHA256: hash2},
+			{Path: "Games/cube.js", SHA256: hash1},
+			{Path: "Fonts/big.flf", SHA256: hash2},
 		},
 	})
 
@@ -75,10 +75,10 @@ func TestBootstrapFirstRun(t *testing.T) {
 	}
 
 	// Verify files were copied.
-	if got := readFile(t, filepath.Join(dataDir, "games", "cube.js")); got != "// cube game" {
+	if got := readFile(t, filepath.Join(dataDir, "Games", "cube.js")); got != "// cube game" {
 		t.Errorf("cube.js = %q, want %q", got, "// cube game")
 	}
-	if got := readFile(t, filepath.Join(dataDir, "fonts", "big.flf")); got != "flf font data" {
+	if got := readFile(t, filepath.Join(dataDir, "Fonts", "big.flf")); got != "flf font data" {
 		t.Errorf("big.flf = %q, want %q", got, "flf font data")
 	}
 
@@ -115,29 +115,29 @@ func TestBootstrapUpgrade(t *testing.T) {
 	dataDir := t.TempDir()
 
 	// Old version: one file.
-	writeFile(t, filepath.Join(dataDir, "games", "cube.js"), "// old cube")
-	oldHash, _ := FileHash(filepath.Join(dataDir, "games", "cube.js"))
+	writeFile(t, filepath.Join(dataDir, "Games", "cube.js"), "// old cube")
+	oldHash, _ := FileHash(filepath.Join(dataDir, "Games", "cube.js"))
 	writeManifest(t, dataDir, Manifest{
 		Version: "old",
 		Files: []ManifestFile{
-			{Path: "games/cube.js", SHA256: oldHash},
+			{Path: "Games/cube.js", SHA256: oldHash},
 		},
 	})
 	writeFile(t, filepath.Join(dataDir, ".bundle-version"), "old")
 
 	// User added a custom file (not in any manifest).
-	writeFile(t, filepath.Join(dataDir, "games", "custom.js"), "// user game")
+	writeFile(t, filepath.Join(dataDir, "Games", "custom.js"), "// user game")
 
 	// New version: updated cube.js + new orbits.js.
-	writeFile(t, filepath.Join(installDir, "games", "cube.js"), "// new cube")
-	writeFile(t, filepath.Join(installDir, "games", "orbits.js"), "// orbits")
-	newCubeHash, _ := FileHash(filepath.Join(installDir, "games", "cube.js"))
-	newOrbitsHash, _ := FileHash(filepath.Join(installDir, "games", "orbits.js"))
+	writeFile(t, filepath.Join(installDir, "Games", "cube.js"), "// new cube")
+	writeFile(t, filepath.Join(installDir, "Games", "orbits.js"), "// orbits")
+	newCubeHash, _ := FileHash(filepath.Join(installDir, "Games", "cube.js"))
+	newOrbitsHash, _ := FileHash(filepath.Join(installDir, "Games", "orbits.js"))
 	writeManifest(t, installDir, Manifest{
 		Version: "new",
 		Files: []ManifestFile{
-			{Path: "games/cube.js", SHA256: newCubeHash},
-			{Path: "games/orbits.js", SHA256: newOrbitsHash},
+			{Path: "Games/cube.js", SHA256: newCubeHash},
+			{Path: "Games/orbits.js", SHA256: newOrbitsHash},
 		},
 	})
 
@@ -146,15 +146,15 @@ func TestBootstrapUpgrade(t *testing.T) {
 	}
 
 	// Updated file should be overwritten.
-	if got := readFile(t, filepath.Join(dataDir, "games", "cube.js")); got != "// new cube" {
+	if got := readFile(t, filepath.Join(dataDir, "Games", "cube.js")); got != "// new cube" {
 		t.Errorf("cube.js = %q, want %q", got, "// new cube")
 	}
 	// New file should be copied.
-	if got := readFile(t, filepath.Join(dataDir, "games", "orbits.js")); got != "// orbits" {
+	if got := readFile(t, filepath.Join(dataDir, "Games", "orbits.js")); got != "// orbits" {
 		t.Errorf("orbits.js = %q, want %q", got, "// orbits")
 	}
 	// User-added file should be untouched.
-	if got := readFile(t, filepath.Join(dataDir, "games", "custom.js")); got != "// user game" {
+	if got := readFile(t, filepath.Join(dataDir, "Games", "custom.js")); got != "// user game" {
 		t.Errorf("custom.js = %q, want %q", got, "// user game")
 	}
 	// Version marker updated.

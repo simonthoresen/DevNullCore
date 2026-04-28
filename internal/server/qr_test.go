@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-const wantInvite = `$env:NS='ABCDEFGH';irm https://raw.githubusercontent.com/simonthoresen/dev-null/main/join.ps1|iex`
+const wantInvite = `$env:NS='ABCDEFGH';irm https://raw.githubusercontent.com/simonthoresen/DevNull/main/Join.ps1|iex`
 
 const wantQR = "" +
 	"                                                 \n" +
@@ -45,7 +45,7 @@ func TestRenderQR(t *testing.T) {
 
 func TestInviteString(t *testing.T) {
 	const wantPrefix = "$env:NS='"
-	const wantSuffix = "irm https://raw.githubusercontent.com/simonthoresen/dev-null/main/join.ps1|iex"
+	const wantSuffix = "irm https://raw.githubusercontent.com/simonthoresen/DevNull/main/Join.ps1|iex"
 
 	if len(wantInvite) == 0 {
 		t.Fatal("invite string is empty")

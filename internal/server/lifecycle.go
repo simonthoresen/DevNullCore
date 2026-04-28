@@ -68,7 +68,7 @@ func formatGameOverChat(gameName string, results []domain.GameResult) string {
 
 func (a *Server) loadGame(path string) error {
 	if network.IsURL(path) {
-		sharedGames := engine.SourceDir(engine.SourceShared, "games", a.dataDir)
+		sharedGames := engine.SourceDir(engine.SourceShared, "Games", a.dataDir)
 		if network.IsZipURL(path) {
 			local, err := network.DownloadAndExtractZip(path, sharedGames)
 			if err != nil {

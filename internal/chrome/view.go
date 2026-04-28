@@ -26,7 +26,7 @@ func (m *Model) View() tea.View {
 
 	var view tea.View
 	if m.width == 0 || m.height == 0 {
-		view.SetContent("Loading dev-null...")
+		view.SetContent("Loading DevNull...")
 		view.AltScreen = true
 		return view
 	}
@@ -214,7 +214,7 @@ func (m *Model) renderLobby(buf *render.ImageBuffer, menus []domain.MenuDef) {
 	m.lobbyTeamPanel.ShowCreate = !m.api.State().IsSoleMemberOfTeam(m.playerID)
 
 	// Update status bar.
-	statusLeft := fmt.Sprintf(" dev-null | %d players | uptime %s", m.api.State().PlayerCount(), m.api.Uptime())
+	statusLeft := fmt.Sprintf(" DevNull | %d players | uptime %s", m.api.State().PlayerCount(), m.api.Uptime())
 	m.lobbyStatusBar.LeftText = statusLeft
 	m.lobbyStatusBar.RightText = m.api.Clock().Now().Format(domain.TimeFormatDateTime) + " "
 

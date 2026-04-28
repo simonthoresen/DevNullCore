@@ -1,20 +1,20 @@
 // Package datadir handles data directory resolution and bootstrap.
 //
-// On a built binary, dev-null uses four peer subdirs under
-// $HOME/dev-null (Unix) or %USERPROFILE%\dev-null (Windows):
+// On a built binary, DevNull uses four peer subdirs under
+// $HOME/DevNull (Unix) or %USERPROFILE%\DevNull (Windows):
 //
-//	play\    runtime + bundled assets (the "data dir") — DefaultDataDir
-//	shared\  items downloaded via "Games > Add" — SharedDir
-//	create\  author's git repo (if present) — CreateDir
-//	config\  init / preference files — ConfigDir
+//	Common\  runtime + bundled assets (the "data dir") — CommonDir
+//	Shared\  items downloaded via "Games > Add" — SharedDir
+//	Create\  author's git repo (if present) — CreateDir
+//	Config\  init / preference files — ConfigDir
 //
 // On first run or version upgrade, Bootstrap copies bundled assets
-// from the install dir into the data dir (play\) so user-added
+// from the install dir into the data dir (Common\) so user-added
 // content there is preserved across upgrades.
 //
-// Under "go run" (exe in a temp directory), DefaultDataDir falls back
+// Under "go run" (exe in a temp directory), CommonDir falls back
 // to "." for development; the other three roots still resolve to
-// the user-level dev-null tree so personal config/create stay consistent
+// the user-level DevNull tree so personal config/create stay consistent
 // across modes.
 package datadir
 
@@ -42,66 +42,66 @@ type ManifestFile struct {
 	SHA256 string `json:"sha256"`
 }
 
-// devNullRoot returns the user-level dev-null root directory:
-// $HOME/dev-null on Unix, %USERPROFILE%\dev-null on Windows.
+// Bundled-asset directory names (PascalCase to match Windows convention).
+// Use these constants instead of string literals when joining paths.
+const (
+	DirGames      = "Games"
+	DirPlugins    = "Plugins"
+	DirShaders    = "Shaders"
+	DirThemes     = "Themes"
+	DirFonts      = "Fonts"
+	DirSoundFonts = "SoundFonts"
+)
+
+// devNullRoot returns the user-level DevNull root directory:
+// $HOME/DevNull on Unix, %USERPROFILE%\DevNull on Windows.
 // Falls back to exeDir() if no home directory is available.
 func devNullRoot() string {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return exeDir()
 	}
-	return filepath.Join(home, "dev-null")
+	return filepath.Join(home, "DevNull")
 }
 
-// DefaultDataDir returns the play subdir (runtime + bundled assets).
+// CommonDir returns the Common subdir (runtime + bundled assets).
 // When running via "go run" (exe in a temp directory) it falls back
 // to "." for development.
-func DefaultDataDir() string {
+func CommonDir() string {
 	if isGoRun() {
 		return "."
 	}
-	return filepath.Join(devNullRoot(), "play")
+	return filepath.Join(devNullRoot(), "Common")
 }
 
-// CreateDir returns the create subdir (the author's git repo) if it
+// CreateDir returns the Create subdir (the author's git repo) if it
 // exists, else "". Pure read; never creates the directory.
 func CreateDir() string {
-	p := filepath.Join(devNullRoot(), "create")
+	p := filepath.Join(devNullRoot(), "Create")
 	if info, err := os.Stat(p); err == nil && info.IsDir() {
 		return p
 	}
 	return ""
 }
 
-// SharedDir returns the shared subdir (items downloaded via
+// SharedDir returns the Shared subdir (items downloaded via
 // Games > Add). Always returns the path; callers create the
 // directory lazily on first write.
 func SharedDir() string {
-	return filepath.Join(devNullRoot(), "shared")
+	return filepath.Join(devNullRoot(), "Shared")
 }
 
-// ConfigDir returns the config subdir (init / preference files).
+// ConfigDir returns the Config subdir (init / preference files).
 // Independent of the data dir so config survives reinstalls and
 // applies across --data-dir overrides.
 func ConfigDir() string {
-	return filepath.Join(devNullRoot(), "config")
+	return filepath.Join(devNullRoot(), "Config")
 }
 
 // InitFilePath returns the canonical location of an init / preference
 // file (e.g. "server.txt", "client.txt"): <ConfigDir>/<name>.
 func InitFilePath(name string) string {
 	return filepath.Join(ConfigDir(), name)
-}
-
-// LegacyInitFilePath returns the pre-relocation init-file path:
-// ~/.dev-null/<name>. Used for one-time migration from the old layout.
-// Returns "" if the user home dir cannot be determined.
-func LegacyInitFilePath(name string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	return filepath.Join(home, ".dev-null", name)
 }
 
 // InstallDir returns the directory containing the running executable.

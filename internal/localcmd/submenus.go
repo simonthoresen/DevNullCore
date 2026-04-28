@@ -139,7 +139,7 @@ func BuildThemeSubItems(opts ThemeSubMenuOptions) []domain.MenuItemDef {
 // ScriptSubMenuOptions configures a Plugins or Shaders sub-menu.
 type ScriptSubMenuOptions struct {
 	DataDir   string
-	SubDir    string   // "plugins" or "shaders"
+	SubDir    string   // "Plugins" or "Shaders"
 	Loaded    []string // currently loaded/active names
 	OnAdd     func(playerID string)       // nil → no Add item
 	OnToggle  func(name string, load bool) // called on Enter (toggle)
@@ -147,7 +147,7 @@ type ScriptSubMenuOptions struct {
 }
 
 // BuildScriptSubItems returns the menu items for a Plugins or Shaders sub-menu.
-// Items are grouped by source (Create > Shared > Play) with section headers.
+// Items are grouped by source (Create > Shared > Common) with section headers.
 // Loaded names not present in any source are appended at the bottom (unsourced).
 func BuildScriptSubItems(opts ScriptSubMenuOptions) []domain.MenuItemDef {
 	available := engine.ListAllScripts(opts.SubDir, opts.DataDir)
@@ -220,7 +220,7 @@ type SynthSubMenuOptions struct {
 
 // BuildSynthSubItems returns the menu items for the Synths sub-menu.
 func BuildSynthSubItems(opts SynthSubMenuOptions) []domain.MenuItemDef {
-	sf2Dir := filepath.Join(opts.DataDir, "soundfonts")
+	sf2Dir := filepath.Join(opts.DataDir, "SoundFonts")
 	available := engine.ListDir(sf2Dir, ".sf2")
 	var items []domain.MenuItemDef
 	if opts.OnAdd != nil {
@@ -256,7 +256,7 @@ type FontSubMenuOptions struct {
 
 // BuildFontSubItems returns the menu items for the Fonts sub-menu.
 func BuildFontSubItems(opts FontSubMenuOptions) []domain.MenuItemDef {
-	fontsDir := filepath.Join(opts.DataDir, "fonts")
+	fontsDir := filepath.Join(opts.DataDir, "Fonts")
 	available := engine.ListDir(fontsDir, ".flf")
 	var items []domain.MenuItemDef
 	if opts.OnAdd != nil {

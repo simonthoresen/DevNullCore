@@ -81,7 +81,7 @@ type Model struct {
 	// NC overlay (menus, dialogs)
 	overlay widget.OverlayState
 
-	// Init commands from ~/.dev-null/server.txt (dispatched on first tick)
+	// Init commands from <ConfigDir>/server.txt (dispatched on first tick)
 	initCommands []string
 
 	// Per-console plugins
@@ -174,8 +174,7 @@ func NewModel(api ServerAPI, cancel context.CancelFunc, profile colorprofile.Pro
 	inputCtrl.OnSubmit = m.submitInput
 	inputCtrl.OnTab = m.tabComplete
 
-	// Load init commands from <ConfigDir>/server.txt; fall back to the
-	// legacy ~/.dev-null/server.txt and migrate it on first read.
+	// Load init commands from <ConfigDir>/server.txt.
 	if data, ok := readInitFile("server.txt"); ok {
 		for _, line := range strings.Split(string(data), "\n") {
 			line = strings.TrimSpace(line)
@@ -216,7 +215,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case domain.TickMsg:
-		// Dispatch init commands from ~/.dev-null/server.txt on the first tick
+		// Dispatch init commands from <ConfigDir>/server.txt on the first tick
 		// (after the console UI is fully running).
 		if len(m.initCommands) > 0 {
 			for _, cmd := range m.initCommands {
@@ -466,11 +465,11 @@ func (m *Model) buildThemeSubItems() []domain.MenuItemDef {
 }
 
 func (m *Model) buildPluginSubItems() []domain.MenuItemDef {
-	return m.buildScriptSubItems("plugins", m.pluginNames, "/plugin-load ", "/plugin-unload ")
+	return m.buildScriptSubItems("Plugins", m.pluginNames, "/plugin-load ", "/plugin-unload ")
 }
 
 func (m *Model) buildShaderSubItems() []domain.MenuItemDef {
-	return m.buildScriptSubItems("shaders", m.shaderNames, "/shader-load ", "/shader-unload ")
+	return m.buildScriptSubItems("Shaders", m.shaderNames, "/shader-load ", "/shader-unload ")
 }
 
 func (m *Model) buildScriptSubItems(subDir string, loaded []string, loadCmd, unloadCmd string) []domain.MenuItemDef {
@@ -564,7 +563,7 @@ func scriptExt(dir, name string) string {
 }
 
 func (m *Model) showGameRemoveConfirm(name string) {
-	gamesDir := filepath.Join(m.api.DataDir(), "games")
+	gamesDir := filepath.Join(m.api.DataDir(), "Games")
 	var displayPath string
 	if _, err := os.Stat(filepath.Join(gamesDir, name)); err == nil {
 		displayPath = name + "/"
@@ -573,7 +572,7 @@ func (m *Model) showGameRemoveConfirm(name string) {
 	}
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:   "Delete Game",
-		Body:    fmt.Sprintf("Delete game from the games folder?\n\n  %s\n\nThis cannot be undone.", displayPath),
+		Body:    fmt.Sprintf("Delete game from the Games folder?\n\n  %s\n\nThis cannot be undone.", displayPath),
 		Buttons: []string{"Delete", "Cancel"},
 		Warning: true,
 		OnClose: func(btn string) {
@@ -597,12 +596,12 @@ func (m *Model) showGameRemoveConfirm(name string) {
 func (m *Model) showThemeRemoveConfirm(name string) {
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:   "Delete Theme File",
-		Body:    fmt.Sprintf("Delete '%s.json' from the themes folder?\nThis cannot be undone.", name),
+		Body:    fmt.Sprintf("Delete '%s.json' from the Themes folder?\nThis cannot be undone.", name),
 		Buttons: []string{"Delete", "Cancel"},
 		Warning: true,
 		OnClose: func(btn string) {
 			if btn == "Delete" {
-				os.Remove(filepath.Join(m.api.DataDir(), "themes", name+".json"))
+				os.Remove(filepath.Join(m.api.DataDir(), "Themes", name+".json"))
 			}
 		},
 	})
@@ -620,9 +619,9 @@ func (m *Model) showScriptRemoveConfirm(subDir, name string) {
 		OnClose: func(btn string) {
 			if btn == "Delete" {
 				// Unload first if it's a plugin/shader.
-				if subDir == "plugins" {
+				if subDir == "Plugins" {
 					m.submitInput("/plugin-unload " + name)
-				} else if subDir == "shaders" {
+				} else if subDir == "Shaders" {
 					m.submitInput("/shader-unload " + name)
 				}
 				os.Remove(filepath.Join(dir, name+ext))
@@ -634,12 +633,12 @@ func (m *Model) showScriptRemoveConfirm(subDir, name string) {
 func (m *Model) showSynthRemoveConfirm(name string) {
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:   "Delete SoundFont",
-		Body:    fmt.Sprintf("Delete '%s.sf2' from the soundfonts folder?\nThis cannot be undone.", name),
+		Body:    fmt.Sprintf("Delete '%s.sf2' from the SoundFonts folder?\nThis cannot be undone.", name),
 		Buttons: []string{"Delete", "Cancel"},
 		Warning: true,
 		OnClose: func(btn string) {
 			if btn == "Delete" {
-				os.Remove(filepath.Join(m.api.DataDir(), "soundfonts", name+".sf2"))
+				os.Remove(filepath.Join(m.api.DataDir(), "SoundFonts", name+".sf2"))
 			}
 		},
 	})
@@ -648,12 +647,12 @@ func (m *Model) showSynthRemoveConfirm(name string) {
 func (m *Model) showFontRemoveConfirm(name string) {
 	m.overlay.PushDialog(domain.DialogRequest{
 		Title:   "Delete Font",
-		Body:    fmt.Sprintf("Delete '%s.flf' from the fonts folder?\nThis cannot be undone.", name),
+		Body:    fmt.Sprintf("Delete '%s.flf' from the Fonts folder?\nThis cannot be undone.", name),
 		Buttons: []string{"Delete", "Cancel"},
 		Warning: true,
 		OnClose: func(btn string) {
 			if btn == "Delete" {
-				os.Remove(filepath.Join(m.api.DataDir(), "fonts", name+".flf"))
+				os.Remove(filepath.Join(m.api.DataDir(), "Fonts", name+".flf"))
 			}
 		},
 	})

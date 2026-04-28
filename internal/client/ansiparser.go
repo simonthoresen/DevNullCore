@@ -762,7 +762,7 @@ func (g *TerminalGrid) parseOSC(data []byte, start int) int {
 	return end + 2 // ESC + backslash
 }
 
-// handleOSC processes a dev-null OSC payload.
+// handleOSC processes a DevNull OSC payload.
 func (g *TerminalGrid) handleOSC(payload string) {
 	// Standard OSC 52 clipboard: "52;c;<base64>"
 	if strings.HasPrefix(payload, "52;c;") {
@@ -773,7 +773,7 @@ func (g *TerminalGrid) handleOSC(payload string) {
 	}
 
 	if !strings.HasPrefix(payload, "ns;") {
-		return // not a dev-null OSC
+		return // not a DevNull OSC
 	}
 
 	rest := payload[3:]

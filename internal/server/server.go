@@ -147,7 +147,7 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 	server, err := wish.NewServer(
 		ssh.EmulatePty(),
 		wish.WithAddress(address),
-		wish.WithHostKeyPath(filepath.Join(dataDir, "dev-null_ed25519")),
+		wish.WithHostKeyPath(filepath.Join(dataDir, "DevNull_ed25519")),
 		wish.WithMiddleware(
 			wishbubbletea.MiddlewareWithProgramHandler(app.programHandler),
 			app.sessionMiddleware(),
@@ -368,7 +368,7 @@ func (a *Server) inviteToken() string {
 	return base64.RawURLEncoding.EncodeToString(buf)
 }
 
-const joinScriptURL = "https://raw.githubusercontent.com/simonthoresen/dev-null/main/join.ps1"
+const joinScriptURL = "https://raw.githubusercontent.com/simonthoresen/DevNull/main/Join.ps1"
 
 // inviteWinCommand returns the Windows invite command.
 // The command is wrapped in "powershell -Command ..." so it runs directly from

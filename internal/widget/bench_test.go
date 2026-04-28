@@ -173,7 +173,7 @@ func buildComplexWindow() *Window {
 
 	// Assemble the full window
 	return &Window{
-		Title: "dev-null",
+		Title: "DevNull",
 		Children: []GridChild{
 			// Row 0: header
 			{
