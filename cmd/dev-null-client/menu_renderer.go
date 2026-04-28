@@ -1,0 +1,614 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"net"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/hajimehoshi/ebiten/v2"
+
+	"dev-null/internal/client"
+	"dev-null/internal/datadir"
+	"dev-null/internal/display"
+	"dev-null/internal/render"
+	"dev-null/internal/theme"
+	"dev-null/internal/widget"
+)
+
+const (
+	defaultServerPort = 23234
+	serverProbeEvery  = 2 * time.Second
+)
+
+// menuSolarScript renders a lightweight animated solar system used as the
+// menu background while disconnected.
+const menuSolarScript = `
+var Game = {
+  resolveMe: function(state, pid) { return { id: pid }; },
+  renderCanvas: function(state, me, canvas) {
+    var w = canvas.width, h = canvas.height;
+    var t = state._gameTime || 0;
+    var cx = w * 0.5, cy = h * 0.5;
+    var cam = t * 0.08;
+    var tilt = 0.30;
+
+    canvas.setFillStyle("#03050d");
+    canvas.fillRect(0, 0, w, h);
+
+    // Star field.
+    var stars = 180;
+    for (var i = 0; i < stars; i++) {
+      var sx = ((i * 137 + 53) % w);
+      var sy = ((i * 89 + 17) % h);
+      var tw = 0.55 + 0.45 * Math.sin(t * 1.7 + i * 0.37);
+      var v = Math.floor(110 + tw * 120);
+      canvas.setFillStyle("rgba(" + v + "," + v + "," + (v + 20) + ",0.9)");
+      canvas.fillRect(sx, sy, 1, 1);
+    }
+
+    function orbitRing(r, col) {
+      canvas.setStrokeStyle(col);
+      canvas.setLineWidth(1);
+      canvas.beginPath();
+      var started = false;
+      for (var a = 0; a <= 6.283; a += 0.08) {
+        var x = Math.cos(a) * r;
+        var z = Math.sin(a) * r;
+        var px = cx + x * Math.cos(cam) + z * Math.sin(cam) * 0.45;
+        var py = cy + z * Math.cos(cam) * tilt;
+        if (!started) { canvas.moveTo(px, py); started = true; }
+        else { canvas.lineTo(px, py); }
+      }
+      canvas.stroke();
+    }
+
+    function planet(r, speed, phase, size, col) {
+      var a = phase + t * speed;
+      var x = Math.cos(a) * r;
+      var z = Math.sin(a) * r;
+      var px = cx + x * Math.cos(cam) + z * Math.sin(cam) * 0.45;
+      var py = cy + z * Math.cos(cam) * tilt;
+      var depth = 0.55 + 0.45 * Math.sin(a - cam);
+      var pr = size * (0.65 + depth * 0.7);
+      canvas.setFillStyle(col);
+      canvas.fillCircle(px, py, pr);
+    }
+
+    // Sun glow.
+    for (var g = 5; g >= 1; g--) {
+      canvas.setFillStyle("rgba(255,190,80," + (0.05 * g) + ")");
+      canvas.fillCircle(cx, cy, 20 + g * 11);
+    }
+    canvas.setFillStyle("#ffe08a");
+    canvas.fillCircle(cx, cy, 18);
+    canvas.setFillStyle("#fff6d0");
+    canvas.fillCircle(cx - 3, cy - 3, 7);
+
+    orbitRing(70, "rgba(80,110,180,0.35)");
+    orbitRing(110, "rgba(90,120,180,0.28)");
+    orbitRing(150, "rgba(100,130,170,0.24)");
+    orbitRing(200, "rgba(110,140,160,0.20)");
+
+    planet(70, 1.15, 0.9, 4, "#a8a8a8");
+    planet(110, 0.75, 2.4, 6, "#d9c082");
+    planet(150, 0.52, 4.8, 6, "#3f7de2");
+    planet(200, 0.28, 1.7, 10, "#d4a66f");
+  }
+};
+`
+
+type menuRendererConfig struct {
+	Player       string
+	Term         string
+	Password     string
+	InstallDir   string
+	DataDir      string
+	LocalPort    int
+	WindowWidth  int
+	WindowHeight int
+	InitCommands []string
+}
+
+type menuServer struct {
+	Name      string
+	Host      string
+	Port      int
+	Source    string
+	Available bool
+}
+
+func (s menuServer) endpoint() string {
+	return net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
+}
+
+func (s menuServer) key() string {
+	return strings.ToLower(s.endpoint())
+}
+
+func (s menuServer) itemLabel() string {
+	return fmt.Sprintf("[%s] %s (%s)", s.Source, s.Name, s.endpoint())
+}
+
+type menuRenderer struct {
+	player       string
+	term         string
+	password     string
+	installDir   string
+	dataDir      string
+	localPort    int
+	windowWidth  int
+	windowHeight int
+	initCommands []string
+
+	cols int
+	rows int
+
+	sessionConn     *client.SSHConn
+	sessionRenderer *client.ClientRenderer
+
+	localServer   *localServerSupervisor
+	localPassword string
+
+	servers   []menuServer
+	lastProbe time.Time
+	status    string
+	closing   bool
+
+	menuTheme   *theme.Theme
+	menuWindow  *widget.Window
+	serverList  *widget.ListBox
+	statusLabel *widget.Label
+	connectBtn  *widget.Button
+	createBtn   *widget.Button
+	refreshBtn  *widget.Button
+
+	background *client.LocalRenderer
+}
+
+func newMenuRenderer(cfg menuRendererConfig) *menuRenderer {
+	r := &menuRenderer{
+		player:       cfg.Player,
+		term:         cfg.Term,
+		password:     cfg.Password,
+		installDir:   cfg.InstallDir,
+		dataDir:      cfg.DataDir,
+		localPort:    cfg.LocalPort,
+		windowWidth:  cfg.WindowWidth,
+		windowHeight: cfg.WindowHeight,
+		initCommands: append([]string(nil), cfg.InitCommands...),
+		menuTheme:    theme.Default(),
+		status:       "Select a server or create a local one.",
+	}
+	if r.localPort <= 0 {
+		r.localPort = defaultServerPort
+	}
+	r.setupMenuUI()
+	r.setupBackground()
+	r.refreshServers(true)
+	return r
+}
+
+func (r *menuRenderer) setupBackground() {
+	lr := client.NewLocalRenderer()
+	lr.LoadGame([]client.GameSrcFile{{Name: "menu_solar.js", Content: menuSolarScript}})
+	lr.SetState([]byte(`{"_gameTime":0}`))
+	r.background = lr
+}
+
+func (r *menuRenderer) setupMenuUI() {
+	r.serverList = &widget.ListBox{}
+	r.connectBtn = &widget.Button{
+		Label: "Connect",
+		Disabled: func() bool {
+			i := r.serverList.Cursor
+			return i < 0 || i >= len(r.servers) || !r.servers[i].Available
+		},
+		OnPress: r.connectSelected,
+	}
+	r.createBtn = &widget.Button{
+		Label:   "Create server",
+		OnPress: r.createLocalAndConnect,
+	}
+	r.refreshBtn = &widget.Button{
+		Label:   "Refresh",
+		OnPress: func() { r.refreshServers(true) },
+	}
+
+	buttonRow := &widget.Container{
+		Horizontal: true,
+		Children: []widget.ContainerChild{
+			{Control: r.connectBtn, Fixed: len(r.connectBtn.Label) + 6},
+			{Control: &widget.Label{Text: " "}, Fixed: 1},
+			{Control: r.createBtn, Fixed: len(r.createBtn.Label) + 6},
+			{Control: &widget.Label{Text: " "}, Fixed: 1},
+			{Control: r.refreshBtn, Fixed: len(r.refreshBtn.Label) + 6},
+		},
+	}
+
+	r.statusLabel = &widget.Label{Align: "left"}
+	r.menuWindow = &widget.Window{
+		Title: "DevNull",
+		Children: []widget.GridChild{
+			{
+				Control: &widget.Label{Text: "Main Menu", Align: "left"},
+				Constraint: widget.GridConstraint{
+					Col: 0, Row: 0, WeightX: 1, Fill: widget.FillHorizontal, MinH: 1,
+				},
+			},
+			{
+				Control: r.serverList, TabIndex: 0,
+				Constraint: widget.GridConstraint{
+					Col: 0, Row: 1, WeightX: 1, WeightY: 1, Fill: widget.FillBoth, MinH: 7,
+				},
+			},
+			{
+				Control: &widget.HDivider{Connected: true},
+				Constraint: widget.GridConstraint{
+					Col: 0, Row: 2, Fill: widget.FillHorizontal, MinH: 1,
+				},
+			},
+			{
+				Control: buttonRow, TabIndex: 1,
+				Constraint: widget.GridConstraint{
+					Col: 0, Row: 3, WeightX: 1, Fill: widget.FillHorizontal, MinH: 1,
+				},
+			},
+			{
+				Control: &widget.Label{
+					Text:  "Enter: connect   F5: refresh   Esc: quit",
+					Align: "left",
+				},
+				Constraint: widget.GridConstraint{
+					Col: 0, Row: 4, WeightX: 1, Fill: widget.FillHorizontal, MinH: 1,
+				},
+			},
+			{
+				Control: r.statusLabel,
+				Constraint: widget.GridConstraint{
+					Col: 0, Row: 5, WeightX: 1, Fill: widget.FillHorizontal, MinH: 1,
+				},
+			},
+		},
+	}
+	r.menuWindow.FocusFirst()
+}
+
+func (r *menuRenderer) Stop() {
+	if r.sessionConn != nil {
+		_ = r.sessionConn.Close()
+		r.sessionConn = nil
+		r.sessionRenderer = nil
+	}
+	if r.localServer != nil {
+		r.localServer.Stop()
+		r.localServer = nil
+	}
+}
+
+func (r *menuRenderer) HandleInput(w *display.Window) {
+	if r.sessionRenderer != nil {
+		r.sessionRenderer.HandleInput(w)
+		if r.sessionRenderer.ShouldClose() {
+			r.closeSession()
+			r.status = "Disconnected. Back in main menu."
+			r.refreshServers(true)
+		}
+		return
+	}
+
+	if time.Since(r.lastProbe) >= serverProbeEvery {
+		r.refreshServers(false)
+	}
+
+	msgs := append(display.PollKeyMessages(), display.PollMouseMessages()...)
+	for _, msg := range msgs {
+		switch m := msg.(type) {
+		case tea.MouseClickMsg:
+			r.menuWindow.HandleClick(m.X, m.Y)
+			continue
+		case tea.KeyPressMsg:
+			switch m.String() {
+			case "esc":
+				r.closing = true
+				return
+			case "f5", "ctrl+r":
+				r.refreshServers(true)
+				continue
+			case "enter":
+				if r.menuWindow.FocusedControl() == r.serverList {
+					r.connectSelected()
+					continue
+				}
+			}
+		}
+
+		r.menuWindow.HandleUpdate(msg)
+	}
+}
+
+func (r *menuRenderer) Draw(w *display.Window, screen *ebiten.Image) {
+	if r.sessionRenderer != nil {
+		r.sessionRenderer.Draw(w, screen)
+		return
+	}
+
+	if r.background != nil {
+		if bg := r.background.RenderCanvas("menu", screen.Bounds().Dx(), screen.Bounds().Dy()); bg != nil {
+			screen.DrawImage(bg, &ebiten.DrawImageOptions{})
+		}
+	}
+
+	if r.cols <= 0 || r.rows <= 0 {
+		return
+	}
+
+	buf := render.NewImageBuffer(r.cols, r.rows)
+	dialogW := min(86, max(56, r.cols-12))
+	dialogH := min(20, max(12, r.rows-6))
+	dialogX := max(0, (r.cols-dialogW)/2)
+	dialogY := max(0, (r.rows-dialogH)/2)
+
+	r.statusLabel.Text = r.clipStatus(r.status)
+	r.menuWindow.RenderToBuf(buf, dialogX, dialogY, dialogW, dialogH, r.menuTheme.LayerAt(0))
+	display.DrawImageBuffer(screen, buf, w.FontFace, nil)
+}
+
+func (r *menuRenderer) Resize(cols, rows int) {
+	r.cols = cols
+	r.rows = rows
+	if r.sessionRenderer != nil {
+		r.sessionRenderer.Resize(cols, rows)
+	}
+}
+
+func (r *menuRenderer) ShouldClose() bool {
+	return r.closing
+}
+
+func (r *menuRenderer) connectSelected() {
+	i := r.serverList.Cursor
+	if i < 0 || i >= len(r.servers) {
+		r.status = "No server selected."
+		return
+	}
+	target := r.servers[i]
+	if !target.Available {
+		r.status = "Selected server is offline."
+		return
+	}
+
+	password := r.password
+	if strings.EqualFold(target.Source, "Local") && r.localPassword != "" {
+		password = r.localPassword
+	}
+	if err := r.connectTo(target.Host, target.Port, password); err != nil {
+		r.status = fmt.Sprintf("Connect failed: %v", err)
+		return
+	}
+	r.status = fmt.Sprintf("Connected to %s", target.endpoint())
+}
+
+func (r *menuRenderer) createLocalAndConnect() {
+	if !r.localServerReady() {
+		password, err := randomHexSecret(16)
+		if err != nil {
+			r.status = fmt.Sprintf("Local server password failed: %v", err)
+			return
+		}
+		srv, err := startLocalServer(localServerConfig{
+			InstallDir: r.installDir,
+			DataDir:    r.dataDir,
+			Term:       r.term,
+			Port:       r.localPort,
+			Password:   password,
+		})
+		if err != nil {
+			r.status = fmt.Sprintf("Local server start failed: %v", err)
+			return
+		}
+		if r.localServer != nil {
+			r.localServer.Stop()
+		}
+		r.localServer = srv
+		r.localPassword = password
+	}
+
+	if err := r.connectTo("127.0.0.1", r.localPort, r.localPassword); err != nil {
+		r.status = fmt.Sprintf("Connect failed: %v", err)
+		return
+	}
+	r.refreshServers(true)
+	r.status = "Local server running and connected."
+}
+
+func (r *menuRenderer) connectTo(host string, port int, password string) error {
+	ptyW, ptyH := r.cols, r.rows
+	if ptyW <= 0 {
+		ptyW = display.WindowCols(r.windowWidth)
+	}
+	if ptyH <= 0 {
+		ptyH = display.WindowRows(r.windowHeight)
+	}
+
+	conn, err := client.Dial(host, port, r.player, r.term, password, ptyW, ptyH, r.initCommands)
+	if err != nil {
+		return err
+	}
+
+	r.closeSession()
+	r.sessionConn = conn
+	r.sessionRenderer = client.NewClientRenderer(conn, r.windowWidth, r.windowHeight, r.player, r.installDir, r.dataDir)
+	r.sessionRenderer.Resize(ptyW, ptyH)
+	return nil
+}
+
+func (r *menuRenderer) closeSession() {
+	if r.sessionConn != nil {
+		_ = r.sessionConn.Close()
+	}
+	r.sessionConn = nil
+	r.sessionRenderer = nil
+}
+
+func (r *menuRenderer) localServerReady() bool {
+	return probeServer("127.0.0.1", r.localPort, 300*time.Millisecond)
+}
+
+func (r *menuRenderer) refreshServers(force bool) {
+	if !force && time.Since(r.lastProbe) < serverProbeEvery {
+		return
+	}
+	r.lastProbe = time.Now()
+
+	selectedKey := ""
+	if i := r.serverList.Cursor; i >= 0 && i < len(r.servers) {
+		selectedKey = r.servers[i].key()
+	}
+
+	servers := collectMenuServers(r.localPort)
+	for i := range servers {
+		servers[i].Available = probeServer(servers[i].Host, servers[i].Port, 350*time.Millisecond)
+	}
+	r.servers = servers
+
+	items := make([]string, 0, len(r.servers))
+	tags := make([]string, 0, len(r.servers))
+	cursor := 0
+	for i, s := range r.servers {
+		items = append(items, s.itemLabel())
+		if s.Available {
+			tags = append(tags, "UP")
+		} else {
+			tags = append(tags, "DOWN")
+		}
+		if selectedKey != "" && s.key() == selectedKey {
+			cursor = i
+		}
+	}
+	if len(items) == 0 {
+		items = []string{"No servers configured. Use Create server."}
+		tags = []string{""}
+	}
+	r.serverList.Items = items
+	r.serverList.Tags = tags
+	r.serverList.SetCursor(cursor)
+}
+
+func collectMenuServers(localPort int) []menuServer {
+	if localPort <= 0 {
+		localPort = defaultServerPort
+	}
+	servers := []menuServer{
+		{Name: "This machine", Host: "127.0.0.1", Port: localPort, Source: "Local"},
+	}
+	known := readKnownServers(datadir.InitFilePath("servers.txt"))
+	seen := map[string]bool{
+		servers[0].key(): true,
+	}
+	for _, s := range known {
+		if seen[s.key()] {
+			continue
+		}
+		seen[s.key()] = true
+		servers = append(servers, s)
+	}
+	return servers
+}
+
+func readKnownServers(path string) []menuServer {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var out []menuServer
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		name := ""
+		endpoint := line
+		if idx := strings.Index(line, "="); idx > 0 {
+			name = strings.TrimSpace(line[:idx])
+			endpoint = strings.TrimSpace(line[idx+1:])
+		}
+		host, port, ok := parseKnownEndpoint(endpoint)
+		if !ok {
+			continue
+		}
+		if name == "" {
+			name = host
+		}
+		out = append(out, menuServer{
+			Name:   name,
+			Host:   host,
+			Port:   port,
+			Source: "Known",
+		})
+	}
+	return out
+}
+
+func parseKnownEndpoint(raw string) (string, int, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", 0, false
+	}
+
+	if !strings.Contains(raw, ":") {
+		return raw, defaultServerPort, true
+	}
+
+	if host, portText, err := net.SplitHostPort(raw); err == nil {
+		port, err := strconv.Atoi(portText)
+		if err != nil || port <= 0 {
+			return "", 0, false
+		}
+		return host, port, true
+	}
+
+	parts := strings.Split(raw, ":")
+	if len(parts) != 2 {
+		return "", 0, false
+	}
+	host := strings.TrimSpace(parts[0])
+	port, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || host == "" || port <= 0 {
+		return "", 0, false
+	}
+	return host, port, true
+}
+
+func probeServer(host string, port int, timeout time.Duration) bool {
+	if host == "" || port <= 0 {
+		return false
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, strconv.Itoa(port)), timeout)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func (r *menuRenderer) clipStatus(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	limit := 68
+	rs := []rune(s)
+	if len(rs) <= limit {
+		return s
+	}
+	return string(rs[:limit-3]) + "..."
+}

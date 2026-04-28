@@ -6,7 +6,9 @@ param(
 $NoUpdate = $false
 $LogLevel = ""
 $Host_    = "localhost"
+$HostSet  = $false
 $Port     = "23234"
+$PortSet  = $false
 $Player   = ""
 $Local    = $false
 $NoGUI    = $false
@@ -24,10 +26,10 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
         '^--?debug$'         { $LogLevel = "debug"; continue }
         '^--?log-?level$'    { $i++; if ($i -lt $CliArgs.Count) { $LogLevel = $CliArgs[$i] }; continue }
         '^--?log-?level=(.+)$' { $LogLevel = $Matches[1]; continue }
-        '^--?host$'          { $i++; if ($i -lt $CliArgs.Count) { $Host_ = $CliArgs[$i] }; continue }
-        '^--?host=(.+)$'     { $Host_ = $Matches[1]; continue }
-        '^--?port$'          { $i++; if ($i -lt $CliArgs.Count) { $Port = $CliArgs[$i] }; continue }
-        '^--?port=(.+)$'     { $Port = $Matches[1]; continue }
+        '^--?host$'          { $i++; if ($i -lt $CliArgs.Count) { $Host_ = $CliArgs[$i]; $HostSet = $true }; continue }
+        '^--?host=(.+)$'     { $Host_ = $Matches[1]; $HostSet = $true; continue }
+        '^--?port$'          { $i++; if ($i -lt $CliArgs.Count) { $Port = $CliArgs[$i]; $PortSet = $true }; continue }
+        '^--?port=(.+)$'     { $Port = $Matches[1]; $PortSet = $true; continue }
         '^--?player$'        { $i++; if ($i -lt $CliArgs.Count) { $Player = $CliArgs[$i] }; continue }
         '^--?player=(.+)$'   { $Player = $Matches[1]; continue }
         '^--?term$'          { $i++; if ($i -lt $CliArgs.Count) { $Term = $CliArgs[$i] }; continue }
@@ -284,8 +286,8 @@ try {
             $clientArgs += "--local"
             if ($Port) { $clientArgs += "--port"; $clientArgs += $Port }
         } else {
-            if ($Host_) { $clientArgs += "--host"; $clientArgs += $Host_ }
-            if ($Port)  { $clientArgs += "--port"; $clientArgs += $Port }
+            if ($HostSet -and $Host_) { $clientArgs += "--host"; $clientArgs += $Host_ }
+            if ($PortSet -and $Port)  { $clientArgs += "--port"; $clientArgs += $Port }
         }
         if ($Player)   { $clientArgs += "--player"; $clientArgs += $Player }
         if ($Term)     { $clientArgs += "--term";   $clientArgs += $Term }

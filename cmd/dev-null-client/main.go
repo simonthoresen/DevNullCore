@@ -39,6 +39,7 @@ var buildRemote = ""
 
 func main() {
 	engine.SetBuildInfo(buildDate, buildRemote)
+	rawArgs := append([]string(nil), os.Args[1:]...)
 	host := flag.String("host", "localhost", "server hostname")
 	port := flag.Int("port", 23234, "server SSH port")
 	local := flag.Bool("local", false, "start a local headless server and connect to it")
@@ -88,11 +89,35 @@ func main() {
 	}
 
 	bootstep.Init(*termFlag)
+	const winW, winH = 1200, 800
+
+	explicitConnect := *local ||
+		*inviteToken != "" ||
+		hasCLIFlag(rawArgs, "host") ||
+		hasCLIFlag(rawArgs, "port")
+	if !explicitConnect {
+		menu := newMenuRenderer(menuRendererConfig{
+			Player:       *player,
+			Term:         *termFlag,
+			Password:     *password,
+			InstallDir:   datadir.InstallDir(),
+			DataDir:      *dataDirFlag,
+			LocalPort:    *port,
+			WindowWidth:  winW,
+			WindowHeight: winH,
+			InitCommands: initCommands,
+		})
+		defer menu.Stop()
+		if err := display.RunWindow(menu, "DevNull", winW, winH, appIcon); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Init font before dialing so CellW/CellH are set to their real values.
 	// This lets us request the correct PTY size from the very first frame,
 	// avoiding a size mismatch between the initial server render and the window.
-	const winW, winH = 1200, 800
 	display.InitGUIFont()
 	ptyW := display.WindowCols(winW)
 	ptyH := display.WindowRows(winH)
@@ -326,4 +351,13 @@ func randomHexSecret(byteLen int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf), nil
+}
+
+func hasCLIFlag(args []string, name string) bool {
+	for _, arg := range args {
+		if arg == "--"+name || arg == "-"+name || strings.HasPrefix(arg, "--"+name+"=") || strings.HasPrefix(arg, "-"+name+"=") {
+			return true
+		}
+	}
+	return false
 }
