@@ -25,7 +25,7 @@ Row 2: StatusBar    (fixed 1)   <- left text + right-aligned time
 +---------------------+--------------+  [Tab] cycles: input -> chat -> teams
 | [.....]                            |  NCCommandInput: Enter=submit, Tab=cycle
 +====================================+
-| dev-null (local) | 3 players | ..|  StatusBar (row 2)
+| DevNull (local) | 3 players | ..|  StatusBar (row 2)
 ```
 
 **Playing:**
@@ -53,7 +53,7 @@ Row 2: StatusBar    (fixed 1)   <- left text + right-aligned time
 
 ## Themes
 
-JSON files in `dist/themes/` that control the NC-style chrome colors. Switch at runtime with `/theme <name>` (per-player, not global). Bundled themes: `norton` (default), `dark`, `light`.
+JSON files in `dist/Common/Themes/` that control the NC-style chrome colors. Switch at runtime with `/theme <name>` (per-player, not global). Bundled themes: `norton` (default), `dark`, `light`.
 
 Themes use a 4-layer depth model matching the original Norton Commander. Each layer (`ThemeLayer`) carries **both** a color palette (`Palette`) **and** a border character set (`BorderSet`):
 

@@ -1,6 +1,6 @@
-# dev-null API Reference
+# DevNull API Reference
 
-This document explains how to write games for dev-null. Games are plain JavaScript files (ES5-compatible, no modules). Drop your file in `dist/games/`, or share it via URL — no build step required.
+This document explains how to write games for DevNull. Games are plain JavaScript files (ES5-compatible, no modules). Drop your file in your `Games\` folder (under `~/DevNull/Create/Games/` for authoring, or `~/DevNull/Common/Games/` if you're the server operator), or share it via URL — no build step required.
 
 See also: **[AUTHORING.md](AUTHORING.md)** for the end-to-end workflow (set up authoring, local test loop, push & share, get loaded by an admin).
 
@@ -25,24 +25,24 @@ The contract is summarized in one page at [`docs/claude/game-contract.md`](docs/
 ## Loading a game
 
 ```
-# From a local file in dist/games/
+# From a local file in <data-dir>/Games/
 /game load example
 
-# From a folder-based game in dist/games/nethack/main.js
+# From a folder-based game in <data-dir>/Games/nethack/main.js
 /game load nethack
 
 # From a URL (GitHub blob or any HTTPS .js URL)
 /game load https://github.com/you/repo/blob/main/mygame.js
 
-# From a zip URL (downloaded, extracted to dist/games/<name>/)
+# From a zip URL (downloaded, extracted to ~/DevNull/Shared/Games/<name>/)
 /game load https://example.com/mygame.zip
 
 # Local mode (no SSH server)
-dev-null --local --game example
-dev-null --local --game https://github.com/you/repo/blob/main/mygame.js
+.\DevNull.ps1 --local --game example
+.\DevNull.ps1 --local --game https://github.com/you/repo/blob/main/mygame.js
 ```
 
-URL-loaded `.js` files are cached in `dist/games/.cache/`. Re-loading the same URL always fetches the latest version. Zip files are extracted to `dist/games/<name>/` and must contain a `main.js` at the root.
+URL-loaded `.js` files are cached in `~/DevNull/Shared/Games/.cache/`. Re-loading the same URL always fetches the latest version. Zip files are extracted to `~/DevNull/Shared/Games/<name>/` and must contain a `main.js` at the root.
 
 ---
 
@@ -51,13 +51,13 @@ URL-loaded `.js` files are cached in `dist/games/.cache/`. Re-loading the same U
 For larger games, use a folder structure with `include()`:
 
 ```
-dist/games/mygame/
+<data-dir>/Games/mygame/
   main.js        <- entry point (must define the Game object)
   monsters.js    <- included via include("monsters")
   dungeon.js     <- included via include("dungeon")
 ```
 
-Load with `/game load mygame`. The framework detects `games/mygame/main.js` automatically.
+Load with `/game load mygame`. The framework detects `Games/mygame/main.js` automatically.
 
 `include("filename")` evaluates a JS file from the same directory. The `.js` extension is added if omitted. Each file is included at most once (idempotent — safe to call multiple times). All included files share the same global scope, so functions and variables defined in one file are accessible in others.
 
@@ -67,7 +67,7 @@ To distribute a multi-file game as a URL, package it as a `.zip` file with `main
 /game load https://example.com/mygame.zip
 ```
 
-The zip is extracted to `dist/games/mygame/` and then loaded normally.
+The zip is extracted to `~/DevNull/Shared/Games/mygame/` and then loaded normally.
 
 ---
 
@@ -629,7 +629,7 @@ Rule of thumb: if a value affects what `renderAscii`/`renderCanvas` draws, put i
 
 ## Sharing your game
 
-Host your `.js` file anywhere publicly accessible over HTTPS — a GitHub repo is the simplest option. Anyone running dev-null can then load it directly:
+Host your `.js` file anywhere publicly accessible over HTTPS — a GitHub repo is the simplest option. Anyone running DevNull can then load it directly:
 
 ```
 /game load https://github.com/you/your-repo/blob/main/mygame.js
@@ -702,7 +702,7 @@ Shaders are per-player scripts that modify the rendered screen buffer before it'
 ### Loading shaders
 
 ```
-/shader load invert       # Load from dist/shaders/invert.js
+/shader load invert       # Load from <data-dir>/Shaders/invert.js
 /shader load https://...  # Load from URL (cached locally)
 /shader unload invert     # Remove shader
 /shader list              # Show active shaders in order
@@ -715,7 +715,7 @@ Shaders are also accessible from the **File → Shaders…** menu.
 
 ### Writing a shader
 
-Shaders are JS files in `dist/shaders/`. A shader exports a global `Shader` object with a required `process(buf)` method:
+Shaders are JS files in `<data-dir>/Shaders/`. A shader exports a global `Shader` object with a required `process(buf)` method:
 
 ```javascript
 const Shader = {

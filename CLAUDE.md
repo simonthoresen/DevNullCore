@@ -10,29 +10,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A framework for hosting terminal-based multiplayer **games** over SSH. **Only the server operator needs to install anything.** Players connect with a plain `ssh` command — no client install required.
 
-Games are written in JavaScript (goja) and loaded at runtime from `dist/games/`. The server binary itself is game-agnostic.
+Games are written in JavaScript (goja) and loaded at runtime from `dist/Common/Games/`. The server binary itself is game-agnostic.
 
 ## Commands
 
 ```bash
-make build              # compile to dist/dev-null-{server,client}.exe + dist/pinggy-helper.exe
+make build              # compile to dist/Common/{DevNullServer,DevNullClient,PinggyHelper}.exe
 make run-server         # server: SSH server + console GUI
 make run-server-lan     # server: LAN-only (no UPnP, no public IP, no Pinggy)
 make run-client         # client: connect to a running server
 make run-client-local   # client: headless SSH server + graphical client
-make clean              # remove compiled binaries from dist/
+make clean              # remove compiled binaries from dist/Common/
 
 # Server — always runs as TUI (Bubble Tea in terminal).
-go run ./cmd/dev-null-server --data-dir dist    # TUI mode (only mode)
+go run ./cmd/dev-null-server --data-dir dist/Common    # TUI mode (only mode)
 go test ./...
 
 ssh -p 23234 localhost   # connect via plain SSH (host plays this way too)
 
 # Client — always GUI (Ebitengine graphical window).
-go run ./cmd/dev-null-client --data-dir dist        # --data-dir needed in go-run mode (no bootstrap)
+go run ./cmd/dev-null-client --data-dir dist/Common      # --data-dir needed in go-run mode (no bootstrap)
 go run ./cmd/dev-null-client --host example.com --port 23234 --player alice
-go run ./cmd/dev-null-client --game orbits          # send /game-load on connect
-go run ./cmd/dev-null-client --resume orbits/autosave  # send /game-resume on connect
+go run ./cmd/dev-null-client --game orbits               # send /game-load on connect
+go run ./cmd/dev-null-client --resume orbits/autosave    # send /game-resume on connect
 
 # Terminal client — use plain ssh (no binary needed).
 ssh -p 23234 localhost
@@ -40,10 +40,10 @@ ssh -p 23234 localhost
 # Local mode — the script starts a headless server + connects the client.
 # (--local is a script flag, not a binary flag)
 # --no-gui launches plain ssh instead of the GUI binary.
-.\start-client.ps1 --local
-.\start-client.ps1 --local --game orbits
-.\start-client.ps1 --local --resume orbits/autosave
-.\start-client.ps1 --local --no-gui   # launches ssh instead of GUI binary
+.\DevNull.ps1 --local
+.\DevNull.ps1 --local --game orbits
+.\DevNull.ps1 --local --resume orbits/autosave
+.\DevNull.ps1 --local --no-gui   # launches ssh instead of GUI binary
 
 ```
 
@@ -54,34 +54,37 @@ ssh -p 23234 localhost
 
 ## Data Directory Layout
 
-Built binaries use a single `dev-null/` root in the user's home with four peer subdirs (resolved via `internal/datadir`):
+Built binaries use a single `DevNull\` root in the user's home with four peer subdirs and three launcher scripts (resolved via `internal/datadir`):
 
 ```
-%USERPROFILE%\dev-null\          ($HOME/dev-null on Unix)
-├── play\        runtime + bundled assets — DefaultDataDir
-├── shared\      items downloaded via Games > Add — SharedDir
-├── create\      author's git repo (if present) — CreateDir, "" otherwise
-└── config\      init / preference files — ConfigDir
+%USERPROFILE%\DevNull\           ($HOME/DevNull on Unix)
+├── DevNull.ps1                  client launcher
+├── DevNullServer.ps1            server launcher
+├── DevNullCreate.ps1            authoring opt-in (forks DevNullCreateTemplate)
+├── Common\        runtime + bundled assets — CommonDir
+├── Shared\        items downloaded via Games > Add — SharedDir
+├── Create\        author's git repo (if present) — CreateDir, "" otherwise
+└── Config\        init / preference files — ConfigDir
 ```
 
-`play\` is also called the **install dir** (binaries + scripts) and the **data dir** (state, logs, host keys, bundled assets) — these are the same path in production. CLAUDE.md historically described them as separate roles; in practice they coincide unless `--data-dir` is passed.
+`Common\` is the **install dir** (binaries) and the **data dir** (state, logs, host keys, bundled assets) — these are the same path in production. The repo's `dist/` mirrors this layout 1:1, so build/zip/install is a verbatim copy.
 
-`shared\` and `config\` are siblings of `play\`, deliberately *outside* it: an explicit reinstall/wipe of `play\` leaves them intact, and `config\` lookups are independent of `--data-dir`.
+`Shared\`, `Config\`, and `Create\` are siblings of `Common\`, deliberately *outside* it: an explicit reinstall/wipe of `Common\` leaves them intact, and `Config\` lookups are independent of `--data-dir`.
 
-`create\` is auto-discovered by `MakeDir`/`CreateDir`; it returns `""` when the user hasn't run the dev-stack opt-in (the "Create Games" desktop shortcut).
+`Create\` is auto-discovered by `datadir.CreateDir()`; it returns `""` when the user hasn't run the dev-stack opt-in (the "DevNull Create Games" desktop shortcut → `DevNullCreate.ps1`).
 
-**Asset resolution** (games / plugins / shaders) walks Create > Shared > Play in priority order. See `internal/engine/sources.go`.
+**Asset resolution** (games / plugins / shaders) walks Create > Shared > Common in priority order. See `internal/engine/sources.go` (`SourceCreate`, `SourceShared`, `SourceCommon`). Asset subdirs are PascalCase: `Games\`, `Plugins\`, `Shaders\`, `Themes\`, `Fonts\`, `SoundFonts\` (constants in `internal/datadir`).
 
 On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets from install dir to data dir using a manifest-based merge:
 - New bundled files are copied; updated bundled files are overwritten; user-added files are left alone.
 - `.bundle-version` (written last) tracks the current build commit; if it matches, bootstrap is a no-op.
-- Legacy data in the install dir (`state/`, host keys) is migrated once on first upgrade.
+- In production install dir == data dir == `~/DevNull/Common\`, so Bootstrap just stamps the version marker.
 
-`--data-dir` overrides the data dir (skips bootstrap and changes the Play source root). `go run` (dev mode, `buildCommit=="dev"`) falls back to `"."` with no bootstrap, preserving the existing `--data-dir dist` development workflow. The `create\` / `shared\` / `config\` peers always resolve to the user-level dev-null tree regardless of `--data-dir`.
+`--data-dir` overrides the data dir (skips bootstrap and changes the Common-source root). `go run` (dev mode, `buildCommit=="dev"`) falls back to `"."` with no bootstrap, so use `--data-dir dist/Common`. The `Create\` / `Shared\` / `Config\` peers always resolve to the user-level DevNull tree regardless of `--data-dir`.
 
 ## Architecture
 
-**dev-null** is a "Multitenant Singleton" server over SSH.
+**DevNull** is a "Multitenant Singleton" server over SSH.
 
 ### Core Pattern
 - **One game singleton** runs on the server (`CentralState.ActiveGame`)
@@ -137,18 +140,20 @@ On first run or version upgrade, `datadir.Bootstrap()` copies bundled assets fro
 | `internal/engine/figlet.go` | Figlet ASCII art rendering |
 | `internal/engine/gamelist.go` | Game discovery, path resolution, team range probing |
 | `internal/network/` | UPnP, Pinggy status, public IP detection, downloads |
-| `internal/datadir/datadir.go` | Data directory resolution: DefaultDataDir / SharedDir / CreateDir / ConfigDir / InitFilePath / Bootstrap |
-| `internal/engine/sources.go` | Multi-source asset resolution: Source enum, ListAllGames/ListAllScripts, ResolveGamePathAll/ResolveScriptPathAll |
-| `cmd/dev-null-server/` | Server entry point: boot sequence, console setup, signal handling |
-| `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine canvas rendering |
-| `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums |
-| `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel |
+| `internal/datadir/datadir.go` | Data directory resolution: CommonDir / SharedDir / CreateDir / ConfigDir / InitFilePath / Bootstrap; Dir{Games,Plugins,Shaders,Themes,Fonts,SoundFonts} constants |
+| `internal/engine/sources.go` | Multi-source asset resolution: Source enum (Create/Shared/Common), ListAllGames/ListAllScripts, ResolveGamePathAll/ResolveScriptPathAll |
+| `cmd/dev-null-server/` | Server entry point: boot sequence, console setup, signal handling. Builds to `dist/Common/DevNullServer.exe`. |
+| `cmd/dev-null-client/` | Graphical client: SSH + Ebitengine canvas rendering. Builds to `dist/Common/DevNullClient.exe`. |
+| `cmd/gen-manifest/` | Generates `.bundle-manifest.json` listing bundled assets with SHA-256 checksums (walks `dist/Common/`) |
+| `cmd/pinggy-helper/` | Standalone helper that runs the Pinggy SSH tunnel. Builds to `dist/Common/PinggyHelper.exe`. |
 | `internal/client/` | Client internals: SSH transport, ANSI parser, Ebitengine renderer |
 | `internal/client/audio.go` | MIDI synthesizer: go-meltysynth SoundFont rendering, NoteOff scheduling |
-| `dist/soundfonts/` | SoundFont (.sf2) files for MIDI synthesis: chiptune.sf2, gm.sf2 |
-| `dist/start-server.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts pinggy-helper, then dev-null-server.exe |
-| `dist/start-client.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts dev-null-client.exe |
-| `install.ps1` | One-liner installer: downloads latest release zip, extracts to a folder, creates desktop shortcuts |
+| `dist/Common/SoundFonts/` | SoundFont (.sf2) files for MIDI synthesis: chiptune.sf2, gm.sf2 |
+| `dist/DevNullServer.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts PinggyHelper, then DevNullServer.exe |
+| `dist/DevNull.ps1` | PowerShell launcher: auto-updates from GitHub Releases, starts DevNullClient.exe (or `--local` headless server + GUI) |
+| `dist/DevNullCreate.ps1` | "DevNull Create Games" desktop-shortcut entrypoint: forks DevNullCreateTemplate, clones to `~/DevNull/Create/` |
+| `Join.ps1` | Per-invite one-liner: decodes the NS env-var token, locates DevNullClient (or installs if missing), connects |
+| `install.ps1` | One-liner installer: downloads latest DevNull.zip, extracts verbatim to `%USERPROFILE%\DevNull\`, creates 5 desktop shortcuts |
 | `.github/workflows/release.yml` | CI: builds binaries, publishes rolling `latest` on main push, versioned releases on `v*` tags |
 
 ## Input Routing
@@ -246,7 +251,7 @@ SSH clients are always remote. GUI clients default to local. The "Render locally
 
 **No charmap/spritesheet system** — removed. Games that want custom graphics use canvas rendering.
 
-Preferences are persisted to `~/dev-null/config/client.txt` (resolved via `datadir.ConfigDir()`) as `/render-ascii`, `/render-pixels` (Blocks is default, omitted), and `/render-remote` or `/render-local` (only if non-default for the client type). Legacy `~/.dev-null/client.txt` is still read on first start and copied forward.
+Preferences are persisted to `~/DevNull/Config/client.txt` (resolved via `datadir.ConfigDir()`) as `/render-ascii`, `/render-pixels` (Blocks is default, omitted), and `/render-remote` or `/render-local` (only if non-default for the client type).
 
 ## Render Tests — Golden Files
 

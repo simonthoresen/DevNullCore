@@ -4,20 +4,20 @@
 
 **Binaries are NOT checked into git.** They are built and published automatically by GitHub Actions on every push to `main`.
 
-- **GitHub Actions** (`.github/workflows/release.yml`): builds binaries, generates `.bundle-manifest.json` (via `cmd/gen-manifest`), zips everything in `dist/` (excluding `logs/`, `state/`, host keys, `.bundle-version`), and publishes releases.
+- **GitHub Actions** (`.github/workflows/release.yml`): builds binaries, generates `.bundle-manifest.json` (via `cmd/gen-manifest`), zips everything in `dist/` (excluding `logs/`, `Common/state/`, host keys, `.bundle-version`) into `DevNull.zip`, and publishes releases.
   - **`push to main`**: rolling `latest` release (dev channel).
   - **`v*` tags**: versioned release (e.g. `v0.1.0`) for stable distribution and winget.
-- **Winget packaging** (`winget/`): manifest templates for Windows Package Manager. `InstallerType: zip` with `NestedInstallerType: portable` — winget extracts the zip, creates PATH symlinks for `dev-null-server` and `dev-null-client`. Submit to `microsoft/winget-pkgs` by updating the version, URL, and SHA256, then opening a PR.
-- **`install.ps1`** (repo root): one-liner installer for operators -- downloads and extracts the latest release zip, creates desktop shortcuts. Usage: `irm https://github.com/simonthoresen/dev-null/raw/main/install.ps1 | iex`
-- **`start-server.ps1` / `start-client.ps1`** (in `dist/`): auto-updates on each launch -- checks the GitHub release for a newer version and downloads the full zip (binaries, games, fonts) before starting.
-- **Version tracking**: `dist/.version` stores the commit SHA of the installed release. Not tracked in git.
-- **Data directory bootstrap** (`internal/datadir`): on first run or version upgrade, bundled assets are copied from the install dir (next to the exe) to `%APPDATA%/DevNull` using `.bundle-manifest.json` for diffing. See the "Data Directory Layout" section in `CLAUDE.md` for the full merge strategy.
+- **Winget packaging** (`winget/`): manifest templates for Windows Package Manager. `InstallerType: zip` with `NestedInstallerType: portable` — winget extracts the zip, creates PATH symlinks for `DevNullServer` and `DevNullClient`. Submit to `microsoft/winget-pkgs` by updating the version, URL, and SHA256, then opening a PR.
+- **`install.ps1`** (repo root): one-liner installer for operators -- downloads and extracts the latest release zip verbatim into `%USERPROFILE%\DevNull\`, creates desktop shortcuts. Usage: `irm https://github.com/simonthoresen/DevNull/raw/main/install.ps1 | iex`
+- **`DevNullServer.ps1` / `DevNull.ps1`** (in `dist/` → install root): auto-updates on each launch -- checks the GitHub release for a newer version and downloads the full zip before starting.
+- **Version tracking**: `dist/Common/.version` (i.e. `~/DevNull/Common/.version`) stores the commit SHA of the installed release. Not tracked in git.
+- **Data directory bootstrap** (`internal/datadir`): on first run or version upgrade, bundled assets are copied from the install dir (the exe's dir, `~/DevNull/Common\`) to the data dir (same path in production); `.bundle-manifest.json` is used for diffing. See the "Data Directory Layout" section in `CLAUDE.md` for the full merge strategy.
 
 ## Connection Strategy
 
 Startup order: UPnP -> Pinggy -> generate invite script.
 
-The invite command is a raw PowerShell one-liner (paste into a PowerShell window): `$env:NS='<token>';irm <join.ps1 URL>|iex`. The `NS` environment variable is a base64url-encoded binary token:
+The invite command is a raw PowerShell one-liner (paste into a PowerShell window): `$env:NS='<token>';irm <Join.ps1 URL>|iex`. The `NS` environment variable is a base64url-encoded binary token:
 
 | Bytes | Field | Notes |
 |-------|-------|-------|
@@ -27,11 +27,11 @@ The invite command is a raw PowerShell one-liner (paste into a PowerShell window
 | 10-11 | Pinggy port (uint16 BE) | `0` = no Pinggy |
 | 12+ | Pinggy hostname (UTF-8) | Remaining bytes |
 
-Variable-length: trailing absent fields are omitted. `join.ps1` always tries `localhost` first (not encoded). Field presence is determined by token length: >=6 -> LAN, >=10 -> public IP, >=12 -> Pinggy.
+Variable-length: trailing absent fields are omitted. `Join.ps1` always tries `localhost` first (not encoded). Field presence is determined by token length: >=6 -> LAN, >=10 -> public IP, >=12 -> Pinggy.
 
 Each attempt uses a short `ConnectTimeout`; falls through on failure.
 
-`pinggy-helper.exe` stdout/stderr are redirected to `dist/logs/pinggy-stdout.log` / `pinggy-stderr.log` by `start.ps1` -- they must not pollute the boot sequence output.
+`PinggyHelper.exe` stdout/stderr are redirected to the install-root `logs/pinggy-stdout.log` / `pinggy-stderr.log` by `DevNullServer.ps1` -- they must not pollute the boot sequence output.
 
 ## SSH Delta Rendering Bug on Windows (bubbletea patch)
 
@@ -58,24 +58,22 @@ On Windows, `AllocatePty` creates a real ConPTY. The `charmbracelet/ssh` library
 
 `EmulatePty` stores PTY metadata (term type, window size) without spawning a ConPTY, so there is only one reader. Search for `EmulatePty` in `internal/server/server.go` to find all three call sites.
 
-## Init Files (`~/dev-null/config/`)
+## Init Files (`~/DevNull/Config/`)
 
-Both files: one command per line; lines starting with `#` are comments. Dispatched on the first tick after the UI is running. Lives in `%USERPROFILE%\dev-null\config\` (auto-resolved via `datadir.ConfigDir()`) — a peer of `play\`, so prefs survive a reinstall/wipe of `play\` and apply across `--data-dir` overrides.
+Both files: one command per line; lines starting with `#` are comments. Dispatched on the first tick after the UI is running. Lives in `%USERPROFILE%\DevNull\Config\` (auto-resolved via `datadir.ConfigDir()`) — a peer of `Common\`, so prefs survive a reinstall/wipe of `Common\` and apply across `--data-dir` overrides.
 
-**`~/dev-null/config/server.txt`** -- commands run automatically when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
+**`~/DevNull/Config/server.txt`** -- commands run automatically when the server console starts. Useful for loading a default game, setting a theme, or loading server-side plugins.
 
-**`~/dev-null/config/client.txt`** -- commands run automatically when a player joins a server (or starts in `--local` mode). `join.ps1` reads this file, base64-encodes it, and sends it via the `DEV_NULL_INIT` SSH environment variable.
+**`~/DevNull/Config/client.txt`** -- commands run automatically when a player joins a server (or starts in `--local` mode). `Join.ps1` reads this file, base64-encodes it, and sends it via the `DEV_NULL_INIT` SSH environment variable.
 
-Legacy `~/.dev-null/server.txt` and `~/.dev-null/client.txt` are still read for backward compatibility; on first read, the file is copied forward to `~/dev-null/config/<name>` so subsequent rewrites don't lose its non-managed lines.
-
-Example `~/dev-null/config/server.txt`:
+Example `~/DevNull/Config/server.txt`:
 ```
 # Server auto-setup
 /theme dark
 /game load invaders
 ```
 
-Example `~/dev-null/config/client.txt`:
+Example `~/DevNull/Config/client.txt`:
 ```
 # Client auto-setup
 /theme dark

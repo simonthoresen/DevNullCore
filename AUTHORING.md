@@ -1,25 +1,25 @@
 # Authoring games, plugins, and shaders
 
-This guide covers writing your own content for dev-null and sharing it
-with anyone running a dev-null server. The full JS surface is in
+This guide covers writing your own content for DevNull and sharing it
+with anyone running a DevNull server. The full JS surface is in
 [API-REFERENCE.md](API-REFERENCE.md); this doc is about the workflow.
 
 ## Set up authoring
 
-1. Make sure dev-null is installed on your machine. If not, run the
+1. Make sure DevNull is installed on your machine. If not, run the
    installer one-liner:
    ```powershell
-   irm https://github.com/simonthoresen/dev-null/raw/main/install.ps1 | iex
+   irm https://github.com/simonthoresen/DevNull/raw/main/install.ps1 | iex
    ```
-2. Click **dev-null Create Games** on your desktop.
+2. Click **DevNull Create Games** on your desktop.
 
    On first run this:
    - installs the GitHub CLI (`gh`) if it's missing,
    - installs the GitHub Copilot CLI extension,
    - asks you to sign in to GitHub,
-   - forks the [dev-null-starter](https://github.com/simonthoresen/dev-null-starter)
-     template to your account as `<you>/dev-null-create` and clones it
-     to `%USERPROFILE%\dev-null\create\`,
+   - forks the [DevNullCreateTemplate](https://github.com/simonthoresen/DevNullCreateTemplate)
+     template to your account as `<you>/DevNullCreate` and clones it
+     to `%USERPROFILE%\DevNull\Create\`,
    - opens Copilot CLI in that folder.
 
    Subsequent runs skip the install/auth/clone and just open Copilot CLI
@@ -31,18 +31,18 @@ aren't asked to set up GitHub.
 
 ## Local test loop
 
-In `%USERPROFILE%\dev-null\create\`:
+In `%USERPROFILE%\DevNull\Create\`:
 
 ```powershell
-.\play.ps1
+.\DevNullTest.ps1
 ```
 
-This launches a local server and the GUI client. Your work in `games\`,
-`plugins\`, and `shaders\` is auto-discovered by the server (via
-`MakeDir`/`CreateDir`) and appears in the relevant sub-menus under a
-`── Create ──` section, ahead of bundled (`── Play ──`) items.
+This launches a local server and the GUI client. Your work in `Games\`,
+`Plugins\`, and `Shaders\` is auto-discovered by the server and appears
+in the relevant sub-menus under a `── Create ──` section, ahead of
+bundled (`── Common ──`) items.
 
-Naming collisions resolve in priority order **Create > Shared > Play**,
+Naming collisions resolve in priority order **Create > Shared > Common**,
 so an in-progress `snake.js` in your create folder shadows a bundled
 `snake.js` of the same name.
 
@@ -63,14 +63,14 @@ https://raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>
 If you're using Copilot CLI with the starter's
 `.github/copilot-instructions.md`, it computes and prints this URL after
 each push. Otherwise run `.\print-raw-urls.ps1` in the create folder to
-list URLs for every `.js` under `games\`, `plugins\`, `shaders\`.
+list URLs for every `.js` under `Games\`, `Plugins\`, `Shaders\`.
 
 GitHub `blob/` URLs are auto-converted server-side, so either form
 works when pasting.
 
 ## Hand the URL to a server admin
 
-The admin of any dev-null server can load your file by either of:
+The admin of any DevNull server can load your file by either of:
 
 - Opening **File > Games > Add...** (or Plugins > Add / Shaders > Add),
   pasting your raw URL, and clicking Load.
@@ -78,7 +78,7 @@ The admin of any dev-null server can load your file by either of:
   server console.
 
 Loading happens once per URL — the server downloads the file into
-`%USERPROFILE%\dev-null\shared\<kind>\` and it appears in the relevant
+`%USERPROFILE%\DevNull\Shared\<Kind>\` and it appears in the relevant
 sub-menu under the `── Shared ──` section. Re-loading the same URL
 overwrites the local copy.
 
@@ -92,8 +92,8 @@ person hosting to load it for you.
   at the root (or in a single top-level directory).
 - URL ingestion requires HTTPS (HTTP is rejected) and is admin-only.
 - No live-reload — `/game-unload` then re-load to swap a running game.
-- Resolution priority is **Create > Shared > Play**: an item present
-  in your create folder always wins over Shared and Play of the same
+- Resolution priority is **Create > Shared > Common**: an item present
+  in your create folder always wins over Shared and Common of the same
   name.
 - One create folder per machine. If you want multiple author repos,
-  symlink in/out of `%USERPROFILE%\dev-null\create\` for now.
+  symlink in/out of `%USERPROFILE%\DevNull\Create\` for now.

@@ -2,7 +2,7 @@
 
 ## Plugins (JS)
 
-Per-player (or per-console) JavaScript extensions in `dist/plugins/`. Loaded with `/plugin load <name|url>`. Each player/console maintains their own plugin list -- plugins are not shared.
+Per-player (or per-console) JavaScript extensions in `dist/Common/Plugins/`. Loaded with `/plugin load <name|url>`. Each player/console maintains their own plugin list -- plugins are not shared.
 
 A plugin exports a `Plugin` object with an `onMessage(author, text, isSystem)` hook. The hook is called for every chat message (or log line, for console plugins). If it returns a non-empty string, that string is dispatched as if the player typed it -- starting with `/` means a command, otherwise it's sent as chat. Return `null` to do nothing.
 
@@ -16,7 +16,7 @@ A plugin exports a `Plugin` object with an `onMessage(author, text, isSystem)` h
 
 ## Shaders (JS / Go)
 
-Per-player (or per-console) post-processing scripts in `dist/shaders/`. Loaded with `/shader load <name|url>`. Each player/console maintains their own ordered shader list. Shaders run in sequence on the fully-rendered `ImageBuffer` **after** the screen is composed but **before** overlays (menus, dialogs) and `ToString()`.
+Per-player (or per-console) post-processing scripts in `dist/Common/Shaders/`. Loaded with `/shader load <name|url>`. Each player/console maintains their own ordered shader list. Shaders run in sequence on the fully-rendered `ImageBuffer` **after** the screen is composed but **before** overlays (menus, dialogs) and `ToString()`.
 
 A JS shader exports a `Shader` object with a required `process(buf, time)` method. `time` is total elapsed seconds since server start (deterministic, same value on server and client for local rendering). `buf` exposes:
 - `width`, `height` -- buffer dimensions
@@ -42,9 +42,9 @@ Optional hooks: `init()` (called once on load), `unload()` (called on removal). 
 
 ## Charmaps (Sprite-Based Rendering)
 
-Games can use **charmap-based sprite rendering** by mapping Unicode Private Use Area codepoints (U+E000-U+F8FF) to sprites in a sprite sheet. Regular SSH clients show tofu/blank for PUA codepoints; the custom `dev-null-client` renders them as sprites.
+Games can use **charmap-based sprite rendering** by mapping Unicode Private Use Area codepoints (U+E000-U+F8FF) to sprites in a sprite sheet. Regular SSH clients show tofu/blank for PUA codepoints; the custom `DevNullClient` renders them as sprites.
 
-**Charmap format:** Each charmap lives in `dist/charmaps/<name>/` with a `charmap.json` and an atlas PNG:
+**Charmap format:** Each charmap lives in `dist/Common/Charmaps/<name>/` with a `charmap.json` and an atlas PNG:
 ```json
 {
   "name": "pacman",
