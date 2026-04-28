@@ -111,7 +111,8 @@ type launcherRenderer struct {
 	refreshBtn     *widget.Button
 	tunnelBtn      *widget.Button
 
-	background *client.LocalRenderer
+	background      *client.LocalRenderer
+	backgroundStart time.Time
 }
 
 func newLauncherRenderer(cfg launcherRendererConfig) *launcherRenderer {
@@ -143,6 +144,7 @@ func (r *launcherRenderer) setupBackground() {
 	lr.LoadGame([]client.GameSrcFile{{Name: "launcher_scene.js", Content: launcherSceneScript}})
 	lr.SetState([]byte(`{"_gameTime":0}`))
 	r.background = lr
+	r.backgroundStart = time.Now()
 }
 
 func (r *launcherRenderer) setupLauncherUI() {
@@ -292,17 +294,23 @@ func (r *launcherRenderer) Draw(w *display.Window, screen *ebiten.Image) {
 		return
 	}
 
-	if r.background != nil {
-		if bg := r.background.RenderCanvas("launcher", screen.Bounds().Dx(), screen.Bounds().Dy()); bg != nil {
-			screen.DrawImage(bg, &ebiten.DrawImageOptions{})
-		}
-	}
-
 	if r.cols <= 0 || r.rows <= 0 {
 		return
 	}
 
 	buf := render.NewImageBuffer(r.cols, r.rows)
+
+	// Render the animated 3D background scene through the same pipeline used
+	// by the in-session blocks-local mode: render to a 2×W × 4×H RGBA image
+	// and convert to quadrant block characters in the cell buffer.
+	if r.background != nil {
+		elapsed := time.Since(r.backgroundStart).Seconds()
+		r.background.SetState([]byte(fmt.Sprintf(`{"_gameTime":%.4f}`, elapsed)))
+		if img := r.background.RenderCanvasImage("launcher", r.cols*2, r.rows*4); img != nil {
+			render.ImageToQuadrants(img, buf, 0, 0, r.cols, r.rows)
+		}
+	}
+
 	dialogW := min(86, max(56, r.cols-12))
 	dialogH := min(20, max(12, r.rows-6))
 	dialogX := max(0, (r.cols-dialogW)/2)
