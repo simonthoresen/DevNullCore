@@ -191,6 +191,7 @@ Update-FromRelease
 # ── local mode: start headless server ────────────────────────────────────────
 
 $script:serverProc = $null
+$localPassword = ""
 
 function Stop-LocalServer {
     if ($script:serverProc -and -not $script:serverProc.HasExited) {
@@ -227,7 +228,7 @@ function Stop-ProcessTree {
     Stop-Process -Id $RootPid -Force -ErrorAction SilentlyContinue
 }
 
-if ($Local) {
+if ($Local -and $NoGUI) {
     # Generate a random password for auto-admin.
     $localPassword = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
 
@@ -280,9 +281,8 @@ try {
         # GUI mode: build args and launch the graphical client binary.
         $clientArgs = @()
         if ($Local) {
-            $clientArgs += "--host"; $clientArgs += "localhost"
-            $clientArgs += "--port"; $clientArgs += $Port
-            $clientArgs += "--password"; $clientArgs += $localPassword
+            $clientArgs += "--local"
+            if ($Port) { $clientArgs += "--port"; $clientArgs += $Port }
         } else {
             if ($Host_) { $clientArgs += "--host"; $clientArgs += $Host_ }
             if ($Port)  { $clientArgs += "--port"; $clientArgs += $Port }
@@ -300,7 +300,7 @@ try {
 } finally {
     Pop-Location
     Write-RunLogLine "client process finished"
-    if ($Local) { Stop-LocalServer }
+    if ($Local -and $NoGUI) { Stop-LocalServer }
     if ($null -eq $previousLogLevel)  { Remove-Item Env:DEV_NULL_LOG_LEVEL  -ErrorAction SilentlyContinue }
     else { $env:DEV_NULL_LOG_LEVEL = $previousLogLevel }
     if ($null -eq $previousTermWidth) { Remove-Item Env:DEV_NULL_TERM_WIDTH -ErrorAction SilentlyContinue }
