@@ -115,22 +115,18 @@ var Game = {
 
 **Canvas scale:** Admin sets the scaling factor with `/canvas scale <n>` (pixels per cell). `/canvas info` shows current scale, pixel dimensions, and estimated bandwidth per user. `/canvas off` disables canvas rendering. Scale is stored in `CentralState.CanvasScale`. Canvas dimensions = viewport cells x scale. The `/canvas` command shows bandwidth estimates at the console's viewport size.
 
-**Render modes:** Two orthogonal per-player settings, both in the **Graphics** menu:
+**Rendering pipeline:** Every game can define `renderCanvas`, `renderAscii`, or both. The framework always composites whatever the game has:
 
-1. **Graphics mode** (`domain.GraphicsMode`): Ascii, Blocks, Pixels
-2. **Render location** (`renderLocal` bool): local (client-side JS) or remote (server-side)
+1. If `renderCanvas` is defined: image is converted to Unicode quadrant blocks → **bottom layer**.
+2. If `renderAscii` is defined: cells are drawn into a scratch buffer and overlaid on top with **transparency** — a cell is transparent iff `Char==' ' && Fg==nil && Bg==nil && Attr==AttrNone` (i.e., untouched after `Clear()`). This lets games place HUDs/minimaps over the canvas without blocking out the scene.
+3. If only one is defined, that layer fills the viewport (the other is empty, so the composite is a no-op).
+4. If neither is defined, the framework shows the not-ready splash.
 
-| Mode | Remote | Local (GUI only) |
-|------|--------|-------------------|
-| **Ascii** | `renderAscii()` on server | — |
-| **Blocks** | Canvas → quadrant blocks on server | Canvas → quadrant blocks on client (**GUI default**) |
-| **Pixels** | — | Canvas at full pixel resolution (always local) |
+There is no user-facing graphics-mode selection — players get whatever combination of layers the game provides.
 
-Degradation: Pixels → Blocks → Ascii. SSH is always remote. The quadrant renderer (`internal/render/quadrant.go`) partitions each 2×2 pixel block into optimal fg/bg color groups using exhaustive 2-means clustering.
+**Render location** (`renderLocal` bool, **View** menu, enhanced-client only): toggle for running the game's render hooks locally (in the client's goja VM) versus remotely (on the server, ANSI-streamed). Off by default; useful as a debug aid. SSH is always remote. When local, the client receives game JS source + `Game.state` deltas via OSC and runs `renderCanvas` (→ quadrant blocks) and `renderAscii` (→ overlay) itself, compositing into `render.CanvasCell` placeholder cells the chrome paints into the viewport. Menus/dialogs that overlap the viewport replace placeholders with real cells, rendering on top.
 
-**Local rendering** sends game JS source files and `Game.state` deltas via OSC; the client runs the game in its own goja VM. In Pixels mode the canvas renders at display-pixel resolution; in Blocks mode the client converts canvas to quadrant block characters. Both local modes fill the viewport with `render.CanvasCell` placeholder cells; menus/dialogs that overlap replace placeholders with real cells, rendering on top.
-
-Per-player state: `Model.graphicsMode` + `Model.renderLocal` + `Model.oscModeSent` flag. Client-side: `renderer.go` checks `renderMode` string (`"local"`, `"blocks-local"`, `"remote"`) to choose rendering path.
+Per-player state: `Model.renderLocalPref` + `Model.renderLocal` (effective) + `Model.oscModeSent` flag. Client-side: `renderer.go` checks `renderMode` string (`"local"` or `"remote"`) to choose rendering path.
 
 | Package | Role |
 |---------|------|

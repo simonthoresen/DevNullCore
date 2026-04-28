@@ -392,7 +392,7 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
 			m.viewportX, m.viewportY, m.viewportW, m.viewportH = x, y, w, h
 			if m.renderLocal && phase == domain.PhasePlaying {
-				// Local mode (Pixels or Blocks-local): fill viewport with placeholder
+				// Local mode (Render locally toggle): fill viewport with placeholder
 				// cells. The client renders locally and composites these placeholders.
 				gbuf.Fill(x, y, w, h, render.CanvasCell, nil, nil, render.AttrNone)
 			} else {

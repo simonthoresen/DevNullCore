@@ -76,7 +76,7 @@ type Server struct {
 
 	// Per-player game viewport dimensions, reported by chrome models on resize.
 	// Used by preRenderAllPlayers to know what dimensions to render at.
-	// localRenderers: chrome models that render locally (GUI/Pixels/Blocks-local) —
+	// localRenderers: chrome models that render locally (GUI client, Render-locally toggle) —
 	// the tick goroutine skips pre-rendering for these players.
 	// canvasNeeds: SSH players in Blocks mode post their desired canvas size here
 	// so the tick goroutine can run the JS raycaster once and cache the RGBA;
@@ -522,7 +522,7 @@ func (a *Server) UpdatePlayerGameViewport(playerID string, w, h int) {
 }
 
 // SetPlayerLocalRenderer records that a player's chrome will render the game
-// locally (GUI client / Pixels mode / Blocks-local). The tick goroutine skips
+// locally (GUI client with Render-locally toggle on). The tick goroutine skips
 // pre-rendering for that player — Layout/RenderAscii/StatusBar/canvas calls
 // are wasted because View() fills the viewport with placeholder cells.
 func (a *Server) SetPlayerLocalRenderer(playerID string, isLocal bool) {

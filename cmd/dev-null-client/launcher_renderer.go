@@ -298,7 +298,7 @@ func (r *launcherRenderer) Draw(w *display.Window, screen *ebiten.Image) {
 	buf := render.NewImageBuffer(r.cols, r.rows)
 
 	// Render the animated 3D background scene through the same pipeline used
-	// by the in-session blocks-local mode: render to a 2×W × 4×H RGBA image
+	// by the in-session local-render mode: render to a 2×W × 4×H RGBA image
 	// and convert to quadrant block characters in the cell buffer.
 	if r.background != nil {
 		elapsed := time.Since(r.backgroundStart).Seconds()

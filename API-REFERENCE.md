@@ -607,9 +607,15 @@ Any playing game can be suspended — no opt-in flag is required.
 
 ---
 
-## Render modes and `state`
+## Rendering and `state`
 
-Each player chooses a render mode (Ascii, Blocks, Pixels) and a render location (Remote, Local). Blocks and Pixels require `renderCanvas`. Local modes re-execute the game's JS on the GUI client and call only `renderCanvas` (or `renderAscii`) — never `update`. Everything your renderer needs must therefore be on `state`, because that's the only thing transported to the client each tick.
+Every game can define `renderAscii`, `renderCanvas`, or both. The framework always composites whatever the game has — there is no per-player graphics-mode selection:
+
+1. If `renderCanvas` is defined, the resulting image is converted to Unicode quadrant blocks and forms the **bottom layer** of the viewport.
+2. If `renderAscii` is defined, its cells are overlaid on top of the canvas with **transparency**: a cell is treated as transparent iff it's still the post-`Clear()` default (`Char==' ' && Fg==null && Bg==null && Attr==ATTR_NONE`). This lets you draw HUDs, minimaps, or status overlays without blanking out the canvas underneath.
+3. If only one of the two is defined, that layer fills the viewport (the other is empty so the composite is a no-op).
+
+Players can also toggle **Render locally** (View menu, enhanced GUI client only) — a debug aid that runs the game's render hooks in the client's own goja VM instead of on the server. SSH players are always server-rendered. Local re-execution calls only `renderCanvas` and `renderAscii` — never `update`. Everything your renderer needs must therefore be on `state`, because that's the only thing transported to the client each tick.
 
 Module-level `var`s are not shared: they're initialized once on each VM (server and client) and only the server's `update` runs against its copy. The client re-executes the game file once on load, then holds its VM idle except for render calls.
 
@@ -618,6 +624,8 @@ Rule of thumb: if a value affects what `renderAscii`/`renderCanvas` draws, put i
 ### Render tips
 
 **`renderAscii`/`renderCanvas` is called per player per tick.** Keep it fast and side-effect-free. Don't mutate state from render.
+
+**`renderAscii` cells you don't write are transparent.** When using both hooks, only write the cells you want to overlay; leave the rest as default and the canvas shows through.
 
 **`update(state, dt, events, ctx)` is called once per tick.** All gameplay logic belongs here. Always use `dt` for timing (accumulate elapsed seconds, count down timers by subtracting `dt`) — never count ticks; tick rate is configurable.
 

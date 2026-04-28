@@ -240,3 +240,63 @@ func TestContract_CustomResolveMe(t *testing.T) {
 		t.Errorf("resolveMe null should degrade gracefully; got %q", got)
 	}
 }
+
+// Dual-hook games define both renderCanvas and renderAscii. The renderer
+// composites: canvas (as quadrant blocks) bottom, ascii on top with
+// transparency. From the engine's perspective, both HasCanvasMode and
+// HasAsciiMode return true, and the ascii buffer only contains the cells
+// the game actually wrote — leaving the rest as default {' ', nil, nil,
+// AttrNone} so the compositor treats them as transparent.
+func TestContract_DualHookGameAdvertisesBoth(t *testing.T) {
+	rt := loadHookRuntime(t, `
+		Game = {
+			gameName: "dual",
+			teamRange: { min: 1, max: 1 },
+			init: function(ctx) { return { players: {} }; },
+			begin: function(state, ctx) { state.players["p1"] = { id: "p1" }; },
+			renderCanvas: function(state, me, canvas) {
+				canvas.fillStyle = "rgb(255,0,0)";
+				canvas.fillRect(0, 0, 4, 4);
+			},
+			renderAscii: function(state, me, cells) {
+				// Only write a single overlay cell — the rest must remain
+				// transparent so the canvas shows through underneath.
+				cells.setChar(1, 0, "X", "#FFF", null, cells.ATTR_NONE);
+			}
+		};
+	`)
+	rt.Load(nil)
+	rt.Begin()
+
+	if !rt.HasCanvasMode() {
+		t.Error("HasCanvasMode should be true for dual-hook game")
+	}
+	if !rt.HasAsciiMode() {
+		t.Error("HasAsciiMode should be true for dual-hook game")
+	}
+
+	// Render ascii into a 4×2 buf; only (1,0) should be opaque.
+	buf := render.NewImageBuffer(4, 2)
+	rt.RenderAscii(buf, "p1", 0, 0, 4, 2)
+	if got := buf.CharAt(1, 0); got != 'X' {
+		t.Errorf("renderAscii should write X at (1,0), got %q", got)
+	}
+	// Every other cell should still be the post-Clear default — transparent
+	// per the BlitOverlay rule.
+	for y := 0; y < 2; y++ {
+		for x := 0; x < 4; x++ {
+			if x == 1 && y == 0 {
+				continue
+			}
+			c := &buf.Pixels[y*4+x]
+			if c.Char != ' ' || c.Fg != nil || c.Bg != nil || c.Attr != render.AttrNone {
+				t.Errorf("(%d,%d) should be transparent default, got %+v", x, y, *c)
+			}
+		}
+	}
+
+	// renderCanvas must also produce a valid frame.
+	if data := rt.RenderCanvas("p1", 8, 4); data == nil {
+		t.Error("RenderCanvas should produce a PNG for dual-hook game")
+	}
+}

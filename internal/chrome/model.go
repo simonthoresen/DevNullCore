@@ -62,7 +62,7 @@ type ServerAPI interface {
 	GetPreRenderedFrame(playerID string, expectW, expectH int) (buf *render.ImageBuffer, ncTree *domain.WidgetNode, status string, release func())
 
 	// SetPlayerLocalRenderer registers whether this player's chrome renders
-	// the game locally (GUI / Pixels / Blocks-local). Local renderers skip
+	// the game locally (GUI / Render-locally toggle). Local renderers skip
 	// the server-side preRenderAllPlayers pass.
 	SetPlayerLocalRenderer(playerID string, isLocal bool)
 
