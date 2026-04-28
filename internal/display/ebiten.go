@@ -46,6 +46,18 @@ func RunWindow(renderer Renderer, title string, width, height int, iconICO []byt
 	ebiten.SetWindowSize(width, height)
 	ebiten.SetWindowTitle(title)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	// Keep Update/Draw running at full rate even when the window isn't
+	// the foreground window. Without this, ebiten throttles whenever
+	// focus is elsewhere — which on Windows happens at launch (the
+	// parent PowerShell keeps focus) and any time the user alt-tabs.
+	ebiten.SetRunnableOnUnfocused(true)
+	// Run Update/Draw at the maximum possible rate without vsync. With the
+	// default FPSModeVsyncOn, ebiten on Windows stalls the entire game
+	// loop for ~3-4 seconds at cold startup (likely DirectX swap-chain /
+	// DWM compositor pacing during initial window present), causing the
+	// launcher's spinning cube to freeze right after appearing. Maximum
+	// mode bypasses that pacing and starts smoothly.
+	ebiten.SetFPSMode(ebiten.FPSModeVsyncOffMaximum)
 	if len(iconICO) > 0 {
 		_ = SetWindowIconFromICO(iconICO)
 	}

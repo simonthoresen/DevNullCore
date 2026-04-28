@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -109,10 +108,6 @@ type launcherRenderer struct {
 
 	background      *launcherScene
 	backgroundStart time.Time
-
-	frameCount     uint64
-	lastFrameLogAt time.Time
-	lastFrameAt    time.Time
 }
 
 func newLauncherRenderer(cfg launcherRendererConfig) *launcherRenderer {
@@ -134,16 +129,9 @@ func newLauncherRenderer(cfg launcherRendererConfig) *launcherRenderer {
 		r.localPort = defaultServerPort
 	}
 	r.refreshDone = make(chan refreshResult, 1)
-	slog.Info("launcher: setupLauncherUI begin")
-	t := time.Now()
 	r.setupLauncherUI()
-	slog.Info("launcher: setupLauncherUI done", "took", time.Since(t))
-	t = time.Now()
 	r.setupBackground()
-	slog.Info("launcher: setupBackground done", "took", time.Since(t))
-	t = time.Now()
 	r.refreshServers(true)
-	slog.Info("launcher: initial refreshServers dispatch done (sync portion)", "took", time.Since(t))
 	return r
 }
 
@@ -298,26 +286,6 @@ func (r *launcherRenderer) HandleInput(w *display.Window) {
 }
 
 func (r *launcherRenderer) Draw(w *display.Window, screen *ebiten.Image) {
-	now := time.Now()
-	r.frameCount++
-	gap := time.Duration(0)
-	if !r.lastFrameAt.IsZero() {
-		gap = now.Sub(r.lastFrameAt)
-	}
-	// Log every frame whose gap >= 100ms (a stutter), plus once per second
-	// at minimum so we can see the timeline even when smooth.
-	if gap >= 100*time.Millisecond || now.Sub(r.lastFrameLogAt) >= time.Second {
-		slog.Info("launcher: Draw",
-			"frame", r.frameCount,
-			"gapMs", gap.Milliseconds(),
-			"refreshing", r.refreshing,
-			"servers", len(r.servers),
-			"cols", r.cols, "rows", r.rows,
-		)
-		r.lastFrameLogAt = now
-	}
-	r.lastFrameAt = now
-
 	if r.sessionRenderer != nil {
 		r.sessionRenderer.Draw(w, screen)
 		return
@@ -596,7 +564,6 @@ type refreshResult struct {
 // the callback applies results from the channel each frame.
 func (r *launcherRenderer) refreshServers(force bool) {
 	if r.refreshing {
-		slog.Debug("launcher: refreshServers skip — already refreshing", "force", force)
 		return
 	}
 	if !force && time.Since(r.lastProbe) < serverProbeEvery {
@@ -613,27 +580,16 @@ func (r *launcherRenderer) refreshServers(force bool) {
 		r.lastLAN = time.Now()
 	}
 
-	slog.Info("launcher: refresh dispatch", "force", force, "needLAN", needLAN, "lanCacheLen", len(lanSnapshot))
-
 	go func() {
-		gStart := time.Now()
-		slog.Info("launcher: refresh goroutine begin")
 		lanCache := lanSnapshot
 		if needLAN {
-			t := time.Now()
-			slog.Info("launcher: discoverLANServers begin", "timeout", lanDiscoverWait)
 			discovered, err := discoverLANServers(lanDiscoverWait)
-			slog.Info("launcher: discoverLANServers end", "took", time.Since(t), "err", err, "found", len(discovered))
 			if err == nil {
 				lanCache = discovered
 			}
 		}
-		t := time.Now()
 		servers := collectLauncherServers(localPort, lanCache)
-		slog.Info("launcher: collectLauncherServers done", "took", time.Since(t), "count", len(servers))
-		t = time.Now()
 		probeLauncherServers(servers, 350*time.Millisecond)
-		slog.Info("launcher: probeLauncherServers done", "took", time.Since(t))
 
 		// Drop any prior pending result; only the latest matters.
 		select {
@@ -641,7 +597,6 @@ func (r *launcherRenderer) refreshServers(force bool) {
 		default:
 		}
 		r.refreshDone <- refreshResult{servers: servers, lanCache: lanCache, didLAN: needLAN}
-		slog.Info("launcher: refresh goroutine end", "totalTook", time.Since(gStart))
 	}()
 }
 
@@ -654,7 +609,6 @@ func (r *launcherRenderer) applyRefreshResult() {
 	default:
 		return
 	}
-	t := time.Now()
 	r.refreshing = false
 	if res.didLAN {
 		r.lanCache = res.lanCache
@@ -687,7 +641,6 @@ func (r *launcherRenderer) applyRefreshResult() {
 	r.serverList.Items = items
 	r.serverList.Tags = tags
 	r.serverList.SetCursor(cursor)
-	slog.Info("launcher: applyRefreshResult done", "took", time.Since(t), "items", len(items), "didLAN", res.didLAN)
 }
 
 func collectLauncherServers(localPort int, lan []launcherServer) []launcherServer {
