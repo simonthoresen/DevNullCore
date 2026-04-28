@@ -27,18 +27,19 @@ jobs:
 
       - name: Generate bundle manifest
         shell: bash
-        run: go run ./cmd/gen-manifest dist/ > dist/.bundle-manifest.json
+        run: go run ./cmd/gen-manifest dist/Common/ > dist/Common/.bundle-manifest.json
 
       - name: Package dist folder
         shell: bash
         run: |
           cd dist
-          7z a -tzip ../dev-null.zip . \
+          7z a -tzip ../DevNull.zip . \
             -xr!logs \
-            -xr!state \
             -xr!*_ed25519 \
             -xr!*_ed25519.pub \
-            -xr!.bundle-version
+            -xr!.bundle-version \
+            -xr!Common/state \
+            -xr!Common/logs
 
       - name: Get short SHA
         id: sha
@@ -60,15 +61,15 @@ jobs:
           git tag latest
           git push origin latest
           gh release create latest \
-            dev-null.zip \
-            dist/dev-null-server.exe \
-            dist/dev-null-client.exe \
-            dist/pinggy-helper.exe \
+            DevNull.zip \
+            dist/Common/DevNullServer.exe \
+            dist/Common/DevNullClient.exe \
+            dist/Common/PinggyHelper.exe \
             --title "Latest Build (${{ steps.sha.outputs.short }})" \
             --notes "Auto-built from main at ${{ github.sha }}.
 
-          **Fresh install:** save and run [install.ps1](https://github.com/simonthoresen/dev-null/raw/main/install.ps1).
-          **Existing install:** \`start-server.ps1\` / \`start-client.ps1\` auto-update binaries on each launch." \
+          **Fresh install:** save and run [install.ps1](https://github.com/simonthoresen/DevNull/raw/main/install.ps1).
+          **Existing install:** \`DevNullServer.ps1\` / \`DevNull.ps1\` auto-update binaries on each launch." \
             --latest
 
       - name: Create versioned release
@@ -78,9 +79,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            dev-null.zip \
-            dist/dev-null-server.exe \
-            dist/dev-null-client.exe \
-            dist/pinggy-helper.exe \
+            DevNull.zip \
+            dist/Common/DevNullServer.exe \
+            dist/Common/DevNullClient.exe \
+            dist/Common/PinggyHelper.exe \
             --title "Release ${{ github.ref_name }}" \
             --generate-notes

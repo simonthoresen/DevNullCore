@@ -28,6 +28,7 @@ var skipNames = map[string]bool{
 	"logs":                  true,
 	"DevNull_ed25519":       true,
 	"DevNull_ed25519.pub":   true,
+	".version":              true,
 	".bundle-manifest.json": true,
 	".bundle-version":       true,
 }

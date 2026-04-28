@@ -37,8 +37,9 @@ if ($positionals.Count -ge 1 -and $positionals[0]) {
 # If not provided, the server starts without one (can be set at runtime via /password).
 
 $root = $PSScriptRoot
+$commonDir = Join-Path $root "Common"
 $logsDir = Join-Path $root "logs"
-$repo = "simonthoresen/dev-null"
+$repo = "simonthoresen/DevNull"
 $script:tunnelShell = $null
 $script:tunnelWatcher = $null
 $script:tunnelStatus = $null
@@ -114,7 +115,7 @@ function Write-RunLogLine {
     Add-Content -Path $script:runLog -Value ("time={0} level=INFO msg=`"{1}`" component=script pid={2}" -f $timestamp, $Message, $PID)
 }
 
-Write-RunLogLine "starting dev-null start script"
+Write-RunLogLine "starting DevNull server script"
 
 $previousLogFile      = $env:DEV_NULL_LOG_FILE
 $previousLogLevel     = $env:DEV_NULL_LOG_LEVEL
@@ -196,7 +197,7 @@ function Start-TunnelWatcher {
             Start-Sleep -Milliseconds 500
             if (-not (Get-Process -Id $TunnelPid -ErrorAction SilentlyContinue)) {
                 $targets = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-                    Where-Object { $_.ParentProcessId -eq $ConsolePid -and $_.Name -in @('dev-null-server.exe') }
+                    Where-Object { $_.ParentProcessId -eq $ConsolePid -and $_.Name -in @('DevNullServer.exe') }
                 foreach ($t in $targets) {
                     Stop-Process -Id $t.ProcessId -Force -ErrorAction SilentlyContinue
                 }
@@ -241,7 +242,7 @@ function Update-FromRelease {
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/latest" -Headers $headers -TimeoutSec 10
 
         # Compare release commit SHA with local version stamp
-        $versionFile = Join-Path $root ".version"
+        $versionFile = Join-Path $commonDir ".version"
         $localVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
         $remoteVersion = ""
         if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
@@ -254,7 +255,7 @@ function Update-FromRelease {
         # If no .version file, check whether the local exe is newer than the release.
         # This avoids overwriting a locally-built binary with an older release.
         if ($localVersion -eq "") {
-            $localExe = Join-Path $root "dev-null-server.exe"
+            $localExe = Join-Path $commonDir "DevNullServer.exe"
             if (Test-Path $localExe) {
                 $localTime = (Get-Item $localExe).LastWriteTimeUtc
                 $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
@@ -268,16 +269,16 @@ function Update-FromRelease {
 
         Write-BootStepEnd "DONE"
 
-        # Download the full release zip (includes binaries, games, fonts, etc.)
-        $zipAsset = $release.assets | Where-Object { $_.name -eq "dev-null.zip" } | Select-Object -First 1
+        # Download the full release zip (includes binaries, Games, Fonts, etc.)
+        $zipAsset = $release.assets | Where-Object { $_.name -eq "DevNull.zip" } | Select-Object -First 1
         if (-not $zipAsset) {
-            Write-RunLogLine "no dev-null.zip in release, skipping update"
+            Write-RunLogLine "no DevNull.zip in release, skipping update"
             return
         }
 
         Write-BootStepStart "Downloading update"
-        $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "dev-null-update.zip"
-        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dev-null-update"
+        $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "DevNull-update.zip"
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DevNull-update"
         Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $tempZip -TimeoutSec 120
 
         # Extract to temp folder, then merge into install dir (preserves user's custom files)
@@ -329,7 +330,7 @@ if ($existingListener) {
 Write-BootStepStart "Setting up network"
 Write-BootStepEnd "DONE"
 
-$serverArgs = @("--data-dir", $root, "--port", $Port)
+$serverArgs = @("--data-dir", $commonDir, "--port", $Port)
 if ($Password) { $serverArgs = @("--password", $Password) + $serverArgs }
 if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
 
@@ -338,14 +339,14 @@ if ($Lan) {
     Write-BootStepEnd "SKIP"
     $serverArgs += "--lan"
 } else {
-    $script:tunnelStatus = Join-Path ([System.IO.Path]::GetTempPath()) ("dev-null-pinggy-{0}.status.log" -f ([guid]::NewGuid().ToString("N")))
+    $script:tunnelStatus = Join-Path ([System.IO.Path]::GetTempPath()) ("DevNull-pinggy-{0}.status.log" -f ([guid]::NewGuid().ToString("N")))
 
     Write-BootStepStart "Pinggy helper"
     Write-RunLogLine "starting pinggy helper"
     $script:tunnelShell = Start-Process `
-        -FilePath (Join-Path $root "pinggy-helper.exe") `
+        -FilePath (Join-Path $commonDir "PinggyHelper.exe") `
         -ArgumentList @("--listen", "127.0.0.1:$Port", "--status-file", $script:tunnelStatus) `
-        -WorkingDirectory $root `
+        -WorkingDirectory $commonDir `
         -RedirectStandardOutput (Join-Path $logsDir "pinggy-stdout.log") `
         -RedirectStandardError  (Join-Path $logsDir "pinggy-stderr.log") `
         -NoNewWindow -PassThru
@@ -372,10 +373,10 @@ if ($Lan) {
 
 $serverExitCode = 0
 
-Push-Location $root
+Push-Location $commonDir
 try {
-    Write-RunLogLine "starting dev-null server"
-    & (Join-Path $root "dev-null-server.exe") @serverArgs
+    Write-RunLogLine "starting DevNull server"
+    & (Join-Path $commonDir "DevNullServer.exe") @serverArgs
     if ($LASTEXITCODE) { $serverExitCode = $LASTEXITCODE }
 } finally {
     Pop-Location

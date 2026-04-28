@@ -1,17 +1,17 @@
-# dev-null create-game: dev-stack setup
-# Run by the "dev-null Create Games" desktop shortcut.
+# DevNull create-game: dev-stack setup
+# Run by the "DevNull Create Games" desktop shortcut.
 #
 # First run: installs gh CLI (via winget) + Copilot CLI extension,
 # runs gh auth login, forks the starter template to your account,
-# clones it to %USERPROFILE%\dev-null\create\, and opens Copilot CLI
+# clones it to %USERPROFILE%\DevNull\Create\, and opens Copilot CLI
 # in that folder.
 #
 # Subsequent runs: skip the install/auth/clone and just open Copilot CLI.
 
 param(
-    [string]$CreateDir   = (Join-Path $env:USERPROFILE "dev-null\create"),
-    [string]$Template    = "simonthoresen/dev-null-starter",
-    [string]$RepoName    = "dev-null-create"
+    [string]$CreateDir   = (Join-Path $env:USERPROFILE "DevNull\Create"),
+    [string]$Template    = "simonthoresen/DevNullCreateTemplate",
+    [string]$RepoName    = "DevNullCreate"
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,7 +30,7 @@ function Refresh-Path {
 }
 
 Write-Host ""
-Write-Host "  dev-null Create Games" -ForegroundColor Cyan
+Write-Host "  DevNull Create Games" -ForegroundColor Cyan
 Write-Host ""
 
 # ── 1. gh CLI ──────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ if ($LASTEXITCODE -eq 0) {
 Write-Step "Starter repo at $CreateDir"
 if (Test-Path $CreateDir) {
     # Validate that the existing folder is the starter clone (or at least a git
-    # repo we shouldn't clobber). If origin matches the user's <user>/dev-null
+    # repo we shouldn't clobber). If origin matches the user's <user>/DevNullCreate
     # forked from the template we treat it as already set up. Otherwise refuse.
     $origin = ""
     try {
@@ -112,8 +112,8 @@ if (Test-Path $CreateDir) {
     Push-Location $parent
     try {
         # Create a public fork of the template under <user>/<RepoName> and
-        # clone into a sibling folder named <RepoName>; rename to "create".
-        & gh repo create $RepoName --template $Template --clone --public --description "My dev-null games" 2>&1 | Out-Null
+        # clone into a sibling folder named <RepoName>; rename to "Create".
+        & gh repo create $RepoName --template $Template --clone --public --description "My DevNull games" 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
             Write-Fail "gh repo create failed"
             Write-Host ""
@@ -139,6 +139,6 @@ if ($wt) {
 }
 
 Write-Host ""
-Write-Host "  All set. Edit games/, plugins/, or shaders/ in the new window." -ForegroundColor Cyan
-Write-Host "  Run .\play.ps1 in that folder to test locally."
+Write-Host "  All set. Edit Games/, Plugins/, or Shaders/ in the new window." -ForegroundColor Cyan
+Write-Host "  Run .\DevNullTest.ps1 in that folder to test locally."
 Write-Host ""

@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 # Localhost is always tried first (not encoded in the token).
 
 if (-not $env:NS) {
-    Write-Host "Error: NS not set. Use the invite command from a dev-null server." -ForegroundColor Red
+    Write-Host "Error: NS not set. Use the invite command from a DevNull server." -ForegroundColor Red
     exit 1
 }
 
@@ -70,34 +70,30 @@ if ([string]::IsNullOrWhiteSpace($name)) {
     $name = $env:USERNAME
 }
 
-# Locate the dev-null install directory by checking known locations,
-# preferring the new ~/dev-null/play/ layout and falling back to legacy paths.
+# Locate the DevNull install directory by checking known locations.
+# Returns the install root (the dir containing DevNull.ps1 and Common/).
 function Find-InstallDir {
     # 1. PATH
-    $cmd = Get-Command "dev-null-client.exe" -ErrorAction SilentlyContinue
-    if ($cmd) { return Split-Path $cmd.Source -Parent }
+    $cmd = Get-Command "DevNullClient.exe" -ErrorAction SilentlyContinue
+    if ($cmd) {
+        # PATH points at Common\; install root is one up.
+        return Split-Path (Split-Path $cmd.Source -Parent) -Parent
+    }
 
-    # 2. Desktop shortcut (new "dev-null Client" name first, then legacy "DevNull Client")
-    foreach ($lnkName in @("dev-null Client.lnk", "DevNull Client.lnk")) {
-        $shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) $lnkName
-        if (Test-Path $shortcut) {
-            $shell = New-Object -ComObject WScript.Shell
-            $lnk   = $shell.CreateShortcut($shortcut)
-            if ($lnk.Arguments -match '-File\s+"([^"]+)"') {
-                $dir = Split-Path $Matches[1] -Parent
-                if (Test-Path (Join-Path $dir "dev-null-client.exe")) { return $dir }
-            }
+    # 2. Desktop shortcut
+    $shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "DevNull Client.lnk"
+    if (Test-Path $shortcut) {
+        $shell = New-Object -ComObject WScript.Shell
+        $lnk   = $shell.CreateShortcut($shortcut)
+        if ($lnk.Arguments -match '-File\s+"([^"]+)"') {
+            $dir = Split-Path $Matches[1] -Parent
+            if (Test-Path (Join-Path $dir "Common\DevNullClient.exe")) { return $dir }
         }
     }
 
-    # 3. Default install locations: new path first, legacy paths after.
-    foreach ($candidate in @(
-        (Join-Path $env:USERPROFILE "dev-null\play"),
-        (Join-Path $env:LOCALAPPDATA "dev-null"),
-        (Join-Path $env:LOCALAPPDATA "DevNull")
-    )) {
-        if (Test-Path (Join-Path $candidate "dev-null-client.exe")) { return $candidate }
-    }
+    # 3. Default install location.
+    $candidate = Join-Path $env:USERPROFILE "DevNull"
+    if (Test-Path (Join-Path $candidate "Common\DevNullClient.exe")) { return $candidate }
 
     return $null
 }
@@ -107,25 +103,25 @@ $clientExe   = $null
 $startScript = $null
 
 if ($installDir) {
-    $clientExe = Join-Path $installDir "dev-null-client.exe"
-    $s = Join-Path $installDir "start-client.ps1"
+    $clientExe = Join-Path $installDir "Common\DevNullClient.exe"
+    $s = Join-Path $installDir "DevNull.ps1"
     if (Test-Path $s) { $startScript = $s }
 } elseif ($NoInstall) {
     Write-Host ""
-    Write-Host "dev-null client is not installed; -NoInstall set, falling back to ssh." -ForegroundColor Yellow
+    Write-Host "DevNull client is not installed; -NoInstall set, falling back to ssh." -ForegroundColor Yellow
 } else {
     Write-Host ""
-    Write-Host "dev-null client is not installed." -ForegroundColor Yellow
+    Write-Host "DevNull client is not installed." -ForegroundColor Yellow
     $answer = Read-Host "Install it now? [Y/n]"
     if ($answer -eq '' -or $answer -match '^[Yy]') {
-        $installDir = Join-Path $env:USERPROFILE "dev-null\play"
+        $installDir = Join-Path $env:USERPROFILE "DevNull"
         Write-Host "Installing to $installDir ..." -ForegroundColor Cyan
-        & ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/simonthoresen/dev-null/main/install.ps1'))) -InstallDir $installDir
+        & ([scriptblock]::Create((Invoke-RestMethod 'https://raw.githubusercontent.com/simonthoresen/DevNull/main/install.ps1'))) -InstallDir $installDir
         # Re-check after install.
         $installDir = Find-InstallDir
         if ($installDir) {
-            $clientExe = Join-Path $installDir "dev-null-client.exe"
-            $s = Join-Path $installDir "start-client.ps1"
+            $clientExe = Join-Path $installDir "Common\DevNullClient.exe"
+            $s = Join-Path $installDir "DevNull.ps1"
             if (Test-Path $s) { $startScript = $s }
         }
     }
@@ -144,14 +140,10 @@ function Test-TcpEndpoint {
     finally { if ($tcp) { try { $tcp.Close() } catch {} } }
 }
 
-# Read init commands from <UserProfile>\dev-null\config\client.txt (new
-# canonical location); fall back to legacy ~/.dev-null/client.txt for
-# unmigrated installs. SSH fallback only — used to forward DEV_NULL_INIT.
+# Read init commands from <UserProfile>\DevNull\Config\client.txt.
+# SSH fallback only — used to forward DEV_NULL_INIT.
 $devNullInit = ""
-$initFile = Join-Path $env:USERPROFILE "dev-null\config\client.txt"
-if (-not (Test-Path $initFile)) {
-    $initFile = Join-Path $HOME ".dev-null\client.txt"
-}
+$initFile = Join-Path $env:USERPROFILE "DevNull\Config\client.txt"
 if (Test-Path $initFile) {
     $initContent = Get-Content $initFile -Raw -ErrorAction SilentlyContinue
     if ($initContent) {

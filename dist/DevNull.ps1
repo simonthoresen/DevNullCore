@@ -41,8 +41,9 @@ for ($i = 0; $i -lt $CliArgs.Count; $i++) {
 }
 
 $root = $PSScriptRoot
+$commonDir = Join-Path $root "Common"
 $logsDir = Join-Path $root "logs"
-$repo = "simonthoresen/dev-null"
+$repo = "simonthoresen/DevNull"
 $script:runLog = $null
 $script:bootStepLabel = $null
 $script:bootStepWidth = 80
@@ -109,7 +110,7 @@ function Write-RunLogLine {
     Add-Content -Path $script:runLog -Value ("time={0} level=INFO msg=`"{1}`" component=script pid={2}" -f $timestamp, $Message, $PID)
 }
 
-Write-RunLogLine "starting dev-null client script"
+Write-RunLogLine "starting DevNull client script"
 
 $previousLogLevel  = $env:DEV_NULL_LOG_LEVEL
 $previousTermWidth = $env:DEV_NULL_TERM_WIDTH
@@ -130,7 +131,7 @@ function Update-FromRelease {
         $headers = @{ Accept = "application/vnd.github+json" }
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/latest" -Headers $headers -TimeoutSec 10
 
-        $versionFile = Join-Path $root ".version"
+        $versionFile = Join-Path $commonDir ".version"
         $localVersion = if (Test-Path $versionFile) { (Get-Content $versionFile -Raw).Trim() } else { "" }
         $remoteVersion = ""
         if ($release.body -match 'at ([0-9a-f]{40})') { $remoteVersion = $Matches[1] }
@@ -141,7 +142,7 @@ function Update-FromRelease {
         }
 
         # No .version file: fall back to timestamp comparison.
-        $localExe = Join-Path $root "dev-null-client.exe"
+        $localExe = Join-Path $commonDir "DevNullClient.exe"
         if (Test-Path $localExe) {
             $localTime = (Get-Item $localExe).LastWriteTimeUtc
             $releaseTime = [DateTimeOffset]::Parse($release.published_at).UtcDateTime
@@ -154,15 +155,15 @@ function Update-FromRelease {
 
         Write-BootStepEnd "DONE"
 
-        $zipAsset = $release.assets | Where-Object { $_.name -eq "dev-null.zip" } | Select-Object -First 1
+        $zipAsset = $release.assets | Where-Object { $_.name -eq "DevNull.zip" } | Select-Object -First 1
         if (-not $zipAsset) {
-            Write-RunLogLine "no dev-null.zip in release, skipping update"
+            Write-RunLogLine "no DevNull.zip in release, skipping update"
             return
         }
 
         Write-BootStepStart "Downloading update"
-        $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "dev-null-update.zip"
-        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dev-null-update"
+        $tempZip = Join-Path ([System.IO.Path]::GetTempPath()) "DevNull-update.zip"
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DevNull-update"
         Invoke-WebRequest -Uri $zipAsset.browser_download_url -OutFile $tempZip -TimeoutSec 120
 
         if (Test-Path $tempDir) { Remove-Item $tempDir -Recurse -Force }
@@ -230,14 +231,14 @@ if ($Local) {
     # Generate a random password for auto-admin.
     $localPassword = -join ((1..32) | ForEach-Object { '{0:x}' -f (Get-Random -Maximum 16) })
 
-    $serverArgs = @("--headless", "--port", $Port, "--password", $localPassword, "--data-dir", $root)
+    $serverArgs = @("--headless", "--port", $Port, "--password", $localPassword, "--data-dir", $commonDir)
     if ($Term) { $serverArgs += "--term"; $serverArgs += $Term }
 
     Write-BootStepStart "Starting local server"
     $script:serverProc = Start-Process `
-        -FilePath (Join-Path $root "dev-null-server.exe") `
+        -FilePath (Join-Path $commonDir "DevNullServer.exe") `
         -ArgumentList $serverArgs `
-        -WorkingDirectory $root `
+        -WorkingDirectory $commonDir `
         -RedirectStandardOutput (Join-Path $logsDir "local-server-stdout.log") `
         -RedirectStandardError  (Join-Path $logsDir "local-server-stderr.log") `
         -NoNewWindow -PassThru
@@ -263,7 +264,7 @@ if ($Local) {
 
 # ── launch client ────────────────────────────────────────────────────────────
 
-Push-Location $root
+Push-Location $commonDir
 try {
     if ($NoGUI) {
         # Terminal mode: launch plain ssh instead of the GUI client binary.
@@ -292,8 +293,8 @@ try {
         if ($Resume)   { $clientArgs += "--resume"; $clientArgs += $Resume }
         $clientArgs += $positionals
 
-        Write-RunLogLine "starting dev-null client (host=$Host_ port=$Port local=$Local)"
-        & (Join-Path $root "dev-null-client.exe") @clientArgs
+        Write-RunLogLine "starting DevNull client (host=$Host_ port=$Port local=$Local)"
+        & (Join-Path $commonDir "DevNullClient.exe") @clientArgs
         if ($LASTEXITCODE) { exit $LASTEXITCODE }
     }
 } finally {
