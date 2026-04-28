@@ -13,8 +13,8 @@ func TestDefaultThemeNotNil(t *testing.T) {
 	if th == nil {
 		t.Fatal("DefaultTheme returned nil")
 	}
-	if th.Name != "norton" {
-		t.Errorf("expected name 'norton', got %q", th.Name)
+	if th.Name != "default" {
+		t.Errorf("expected name 'default', got %q", th.Name)
 	}
 }
 

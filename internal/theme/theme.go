@@ -367,10 +367,10 @@ func Load(path string) (*Theme, error) {
 	return &t, nil
 }
 
-// Default returns the built-in norton theme.
+// Default returns the built-in default theme (a Norton Commander-inspired palette).
 func Default() *Theme {
 	t := &Theme{
-		Name: "norton",
+		Name: "default",
 		Primary: Layer{Palette: Palette{
 			Bg: lipgloss.Color("#000080"), Fg: lipgloss.Color("#00AAAA"), Accent: lipgloss.Color("#FFFF55"),
 			HighlightBg: lipgloss.Color("#00AAAA"), HighlightFg: lipgloss.Color("#000000"),

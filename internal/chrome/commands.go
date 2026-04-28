@@ -24,10 +24,6 @@ func (m *Model) dispatchInput(text string) {
 			localcmd.HandleThemeList(m.api.DataDir(), m.theme.Name, m.pluginReply)
 			return
 		case "/theme-load":
-			if arg == "" {
-				m.pluginReply("Usage: /theme-load <name>")
-				return
-			}
 			if t, name := localcmd.HandleThemeLoad(arg, m.api.DataDir(), m.pluginReply); t != nil {
 				m.theme, m.themeName, m.gameWindow = t, name, nil
 				m.persistClientConfig()

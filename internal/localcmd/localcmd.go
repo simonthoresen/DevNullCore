@@ -33,9 +33,15 @@ func HandleThemeList(dataDir, currentThemeName string, output func(string)) {
 	output("Available themes:\n" + strings.Join(lines, "\n"))
 }
 
-// HandleThemeLoad loads a theme by name. Returns the loaded theme and its name
-// (both non-nil/non-empty on success), or (nil, "") if nothing changed.
+// HandleThemeLoad loads a theme by name. An empty name or "default" resets to
+// the built-in default theme (themeName == ""). Returns the new theme and the
+// file stem to track ("" for the built-in), or (nil, "") if loading failed.
 func HandleThemeLoad(name, dataDir string, output func(string)) (*theme.Theme, string) {
+	if name == "" || strings.EqualFold(name, "default") {
+		t := theme.Default()
+		output(fmt.Sprintf("Theme changed to: %s", t.Name))
+		return t, ""
+	}
 	path := filepath.Join(dataDir, "Themes", name+".json")
 	t, err := theme.Load(path)
 	if err != nil {

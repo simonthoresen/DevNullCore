@@ -111,7 +111,9 @@ type ThemeSubMenuOptions struct {
 	OnDelete     func(name, playerID string) // nil → no Del support
 }
 
-// BuildThemeSubItems returns the menu items for the Themes sub-menu.
+// BuildThemeSubItems returns the menu items for the Themes sub-menu. The
+// "default" entry represents the built-in theme (active when CurrentTheme is
+// empty); file-based themes follow it.
 func BuildThemeSubItems(opts ThemeSubMenuOptions) []domain.MenuItemDef {
 	available := theme.ListThemes(opts.DataDir)
 	var items []domain.MenuItemDef
@@ -120,6 +122,15 @@ func BuildThemeSubItems(opts ThemeSubMenuOptions) []domain.MenuItemDef {
 			domain.MenuItemDef{Label: "&Add...", Handler: opts.OnAdd},
 			domain.MenuItemDef{Label: "---"},
 		)
+	}
+	items = append(items, domain.MenuItemDef{
+		Label:   "default",
+		Toggle:  true,
+		Checked: func() bool { return opts.CurrentTheme == "" },
+		Handler: func(_ string) { opts.OnLoad("default") },
+	})
+	if len(available) > 0 {
+		items = append(items, domain.MenuItemDef{Label: "---"})
 	}
 	for _, name := range available {
 		n := name

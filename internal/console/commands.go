@@ -72,10 +72,6 @@ func (m *Model) submitInput(text string) {
 		localcmd.HandleThemeList(m.api.DataDir(), m.theme.Name, m.appendLog)
 		return
 	case "/theme-load":
-		if arg == "" {
-			m.appendLog("Usage: /theme-load <name>")
-			return
-		}
 		if t, name := localcmd.HandleThemeLoad(arg, m.api.DataDir(), m.appendLog); t != nil {
 			m.theme, m.themeName = t, name
 			m.persistServerConfig()
