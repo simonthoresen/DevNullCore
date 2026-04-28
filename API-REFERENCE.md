@@ -4,7 +4,7 @@ This document explains how to write games for DevNull. Games are plain JavaScrip
 
 See also: **[AUTHORING.md](AUTHORING.md)** for the end-to-end workflow (set up authoring, local test loop, push & share, get loaded by an admin).
 
-The contract is summarized in one page at [`docs/claude/game-contract.md`](docs/claude/game-contract.md); this file is the longer tutorial.
+The contract is summarized in one page at [`docs/game-contract.md`](docs/game-contract.md); this file is the longer tutorial.
 
 ---
 

@@ -19,7 +19,7 @@ import (
 // Error handling: These functions return "" on error intentionally.
 // They are called exclusively from View()/Render() paths where errors
 // cannot be propagated (tea.View has no error return) and logging is
-// forbidden (slog in render paths causes a feedback loop — see CLAUDE.md).
+// forbidden (slog in render paths can create a console feedback loop).
 // A missing OSC sequence degrades gracefully: the enhanced client falls
 // back to text-mode rendering.
 

@@ -11,7 +11,7 @@
 - **`install.ps1`** (repo root): one-liner installer for operators -- downloads and extracts the latest release zip verbatim into `%USERPROFILE%\DevNull\`, creates desktop shortcuts. Usage: `irm https://github.com/simonthoresen/DevNull/raw/main/install.ps1 | iex`
 - **`DevNullServer.ps1` / `DevNull.ps1`** (in `dist/` → install root): auto-updates on each launch -- checks the GitHub release for a newer version and downloads the full zip before starting.
 - **Version tracking**: `dist/Common/.version` (i.e. `~/DevNull/Common/.version`) stores the commit SHA of the installed release. Not tracked in git.
-- **Data directory bootstrap** (`internal/datadir`): on first run or version upgrade, bundled assets are copied from the install dir (the exe's dir, `~/DevNull/Common\`) to the data dir (same path in production); `.bundle-manifest.json` is used for diffing. See the "Data Directory Layout" section in `CLAUDE.md` for the full merge strategy.
+- **Data directory bootstrap** (`internal/datadir`): on first run or version upgrade, bundled assets are copied from the install dir (the exe's dir, `~/DevNull/Common\`) to the data dir (same path in production); `.bundle-manifest.json` is used for diffing. Merge/update behavior is implemented in `internal/datadir/datadir.go` (`Bootstrap`).
 
 ## Connection Strategy
 
