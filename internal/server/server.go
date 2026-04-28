@@ -26,6 +26,7 @@ import (
 	"github.com/charmbracelet/ssh"
 
 	"dev-null/internal/console"
+	"dev-null/internal/datadir"
 	"dev-null/internal/domain"
 	"dev-null/internal/engine"
 	"dev-null/internal/network"
@@ -144,10 +145,15 @@ func New(address, password, dataDir string, tickInterval time.Duration) (*Server
 	app.registerBuiltins()
 	engine.LoadFigletFonts(dataDir)
 
+	hostKeyPath := filepath.Join(datadir.ConfigDir(), "DevNull_ed25519")
+	if err := os.MkdirAll(filepath.Dir(hostKeyPath), 0o755); err != nil {
+		return nil, fmt.Errorf("create config dir: %w", err)
+	}
+
 	server, err := wish.NewServer(
 		ssh.EmulatePty(),
 		wish.WithAddress(address),
-		wish.WithHostKeyPath(filepath.Join(dataDir, "DevNull_ed25519")),
+		wish.WithHostKeyPath(hostKeyPath),
 		wish.WithMiddleware(
 			wishbubbletea.MiddlewareWithProgramHandler(app.programHandler),
 			app.sessionMiddleware(),
