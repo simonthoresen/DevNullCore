@@ -149,9 +149,9 @@ func (m *Model) handleChat(msg domain.ChatMsg) (tea.Model, tea.Cmd) {
 func (m *Model) handleGameLoaded(_ domain.GameLoadedMsg) (tea.Model, tea.Cmd) {
 	m.inActiveGame = true
 	m.gameSrcSent = false
-	// Apply the stored graphics preference, degrading gracefully if the preferred
-	// mode is not available (e.g. Pixels preference on SSH → Blocks).
-	m.applyGraphicsPrefs()
+	// Apply the stored render-location preference, degrading gracefully
+	// if local rendering is not available (e.g. SSH client).
+	m.applyRenderPrefs()
 	m.assetsSent = false
 	m.pendingSoundOSC = nil
 	m.pendingMidiOSC = nil

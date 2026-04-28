@@ -130,6 +130,64 @@ func TestBlitClipping(t *testing.T) {
 	}
 }
 
+func TestBlitOverlay(t *testing.T) {
+	// Pre-fill destination with a known pattern.
+	dst := NewImageBuffer(4, 2)
+	dst.Fill(0, 0, 4, 2, '#', red, blue, AttrBold)
+
+	// Build an overlay buffer — most cells stay default (transparent),
+	// a couple of cells have content.
+	src := NewImageBuffer(4, 2)
+	// Opaque cell with explicit char and colors.
+	src.SetChar(1, 0, 'A', green, nil, AttrNone)
+	// Opaque cell with default char but a non-nil bg (still opaque).
+	src.SetChar(2, 0, ' ', nil, white, AttrNone)
+	// Opaque cell with bold attr only (still opaque).
+	src.SetChar(3, 0, ' ', nil, nil, AttrBold)
+	// Row 1 left entirely default — should be fully transparent.
+
+	dst.BlitOverlay(0, 0, src)
+
+	// (0,0) untouched.
+	if c := dst.at(0, 0); c.Char != '#' || !ColorEq(c.Fg, red) {
+		t.Errorf("(0,0) should be untouched, got %+v", *c)
+	}
+	// (1,0) replaced with A/green.
+	if c := dst.at(1, 0); c.Char != 'A' || !ColorEq(c.Fg, green) {
+		t.Errorf("(1,0) should be A/green, got %+v", *c)
+	}
+	// (2,0) replaced with space/white-bg (still opaque due to bg).
+	if c := dst.at(2, 0); c.Char != ' ' || !ColorEq(c.Bg, white) {
+		t.Errorf("(2,0) should be space/whiteBg, got %+v", *c)
+	}
+	// (3,0) replaced because attr != AttrNone.
+	if c := dst.at(3, 0); c.Attr != AttrBold || c.Char != ' ' {
+		t.Errorf("(3,0) should be space/AttrBold, got %+v", *c)
+	}
+	// Row 1 fully transparent — destination preserved.
+	for x := 0; x < 4; x++ {
+		if c := dst.at(x, 1); c.Char != '#' {
+			t.Errorf("(%d,1) should be untouched #, got %+v", x, *c)
+		}
+	}
+}
+
+func TestBlitOverlayClipping(t *testing.T) {
+	dst := NewImageBuffer(3, 3)
+	dst.Fill(0, 0, 3, 3, '.', nil, nil, AttrNone)
+	src := NewImageBuffer(2, 2)
+	src.Fill(0, 0, 2, 2, 'Z', red, nil, AttrNone)
+
+	// Offset so only top-left of src fits.
+	dst.BlitOverlay(2, 2, src)
+	if dst.at(2, 2).Char != 'Z' {
+		t.Error("(2,2) should be Z")
+	}
+	if dst.at(0, 0).Char != '.' {
+		t.Error("(0,0) should be untouched")
+	}
+}
+
 func TestRecolorRect(t *testing.T) {
 	buf := NewImageBuffer(3, 1)
 	buf.WriteString(0, 0, "ABC", red, blue, AttrBold)

@@ -178,6 +178,7 @@ func (g *mockGame) Menus() []domain.MenuDef                                     
 func (g *mockGame) RenderCanvas(string, int, int) []byte                          { return nil }
 func (g *mockGame) RenderCanvasImage(string, int, int) *image.RGBA                { return nil }
 func (g *mockGame) HasCanvasMode() bool                                           { return false }
+func (g *mockGame) HasAsciiMode() bool                                            { return true }
 func (g *mockGame) GameSource() []domain.GameSourceFile                           { return nil }
 func (g *mockGame) GameAssets() []domain.GameAsset                                { return nil }
 func (g *mockGame) Layout(string, int, int) *domain.WidgetNode                   { return nil }

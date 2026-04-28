@@ -120,19 +120,6 @@ func (m *Model) dispatchInput(text string) {
 			}
 			m.handleSynthLoad(arg)
 			return
-		// Graphics mode commands.
-		case "/render-ascii":
-			m.setGraphicsPref(domain.ModeAscii)
-			m.persistClientConfig()
-			return
-		case "/render-blocks":
-			m.setGraphicsPref(domain.ModeBlocks)
-			m.persistClientConfig()
-			return
-		case "/render-pixels":
-			m.setGraphicsPref(domain.ModePixels)
-			m.persistClientConfig()
-			return
 		// Render location commands.
 		case "/render-local":
 			m.setRenderLocal(true)
@@ -140,12 +127,6 @@ func (m *Model) dispatchInput(text string) {
 			return
 		case "/render-remote":
 			m.setRenderLocal(false)
-			m.persistClientConfig()
-			return
-		// Legacy alias (from older client.txt files).
-		case "/render-blocks-local":
-			m.setGraphicsPref(domain.ModeBlocks)
-			m.setRenderLocal(true)
 			m.persistClientConfig()
 			return
 		// Chat size (interior rows when in-game).

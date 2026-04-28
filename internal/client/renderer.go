@@ -55,8 +55,6 @@ type ClientRenderer struct {
 	gameSrcFiles  []GameSrcFile // JS source files for the current game
 	gameStateJSON []byte        // latest decompressed game state JSON
 	renderMode    string        // "local" or "remote" (default)
-	localCanvas   *ebiten.Image // locally rendered canvas frame
-	localBuf      *render.ImageBuffer // locally rendered cell buffer (full screen)
 	playerID      string        // this client's player ID
 	chatLines     []string      // chat messages (received from ANSI stream for now)
 
@@ -393,45 +391,6 @@ func (r *ClientRenderer) Draw(w *display.Window, screen *ebiten.Image) {
 	}
 }
 
-// drawLocal renders the full screen using the client's local JS runtime + NC widgets.
-func (r *ClientRenderer) drawLocal(screen *ebiten.Image) {
-	cols := r.grid.Width
-	rows := r.grid.Height
-
-	var vpX, vpY, vpW, vpH int
-	renderFn := func(buf *render.ImageBuffer, x, y, w, h int) {
-		vpX, vpY, vpW, vpH = x, y, w, h
-		// Call the game's cell-based render locally.
-		r.localRenderer.RenderCells(r.playerID, w, h)
-		// For now, just run the cell render into the buffer.
-		cellBuf := r.localRenderer.RenderCells(r.playerID, w, h)
-		if cellBuf != nil {
-			buf.Blit(x, y, cellBuf)
-		}
-	}
-
-	// Render the full NC screen.
-	r.localBuf = r.clientScreen.RenderPlaying(cols, rows, r.chatLines, "Local render", renderFn)
-
-	// Draw cell buffer to Ebitengine screen.
-	if r.localBuf != nil {
-		r.drawImageBuffer(screen, r.localBuf, nil)
-	}
-
-	// Draw local canvas frame in the viewport if available.
-	if vpW > 0 && vpH > 0 && r.localRenderer.HasCanvas() {
-		canvasImg := r.localRenderer.RenderCanvas(r.playerID, vpW*cellW(), vpH*cellH())
-		if canvasImg != nil {
-			fop := &ebiten.DrawImageOptions{}
-			fw := float64(vpW*cellW()) / float64(canvasImg.Bounds().Dx())
-			fh := float64(vpH*cellH()) / float64(canvasImg.Bounds().Dy())
-			fop.GeoM.Scale(fw, fh)
-			fop.GeoM.Translate(float64(vpX*cellW()), float64(vpY*cellH()))
-			screen.DrawImage(canvasImg, fop)
-		}
-	}
-}
-
 // drawRemote renders from the parsed ANSI stream (server-rendered).
 func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 	vx := r.grid.ViewportX
@@ -439,72 +398,65 @@ func (r *ClientRenderer) drawRemote(screen *ebiten.Image) {
 	vw := r.grid.ViewportW
 	vh := r.grid.ViewportH
 
-	canReaderLocal := vw > 0 && vh > 0 && r.localRenderer.IsLoaded() && r.localRenderer.HasCanvas() && r.gameStateJSON != nil
+	canRenderLocal := vw > 0 && vh > 0 && r.localRenderer.IsLoaded() && r.gameStateJSON != nil
+	canCanvasLocal := canRenderLocal && r.localRenderer.HasCanvas()
+	canAsciiLocal := canRenderLocal && r.localRenderer.HasAscii()
 
-	// Blocks-local mode: render canvas locally and convert to quadrant block
-	// characters. We render into a scratch buffer and copy only into cells
-	// that still hold the CanvasCell placeholder, so any menu/dialog cells
-	// the server composited on top of the viewport are preserved.
-	if r.renderMode == "blocks-local" && canReaderLocal {
-		img := r.localRenderer.RenderCanvasImage(r.playerID, vw*2, vh*4)
-		if img != nil {
-			qbuf := render.NewImageBuffer(vw, vh)
-			render.ImageToQuadrants(img, qbuf, 0, 0, vw, vh)
-			buf := r.grid.ToImageBuffer()
-			for cy := 0; cy < vh; cy++ {
-				for cx := 0; cx < vw; cx++ {
-					if !render.IsCanvasCell(buf.CharAt(vx+cx, vy+cy)) {
-						continue
-					}
-					src := qbuf.Pixels[cy*qbuf.Width+cx]
-					buf.SetChar(vx+cx, vy+cy, src.Char, src.Fg, src.Bg, src.Attr)
+	// Local mode: composite locally-rendered canvas (as quadrant blocks)
+	// and locally-rendered ascii overlay onto the cells the server filled
+	// with CanvasCell placeholders. Cells the server painted with real
+	// content (menus, dialogs, status bar) are preserved untouched.
+	if r.renderMode == "local" && (canCanvasLocal || canAsciiLocal) {
+		buf := r.grid.ToImageBuffer()
+		// Bottom layer: canvas → quadrants. Render at 2× the cell grid
+		// (lossless for half-blocks/quadrants, ~2× cheaper than 4×).
+		var qbuf *render.ImageBuffer
+		if canCanvasLocal {
+			img := r.localRenderer.RenderCanvasImage(r.playerID, vw*2, vh*2)
+			if img != nil {
+				qbuf = render.NewImageBuffer(vw, vh)
+				render.ImageToQuadrants(img, qbuf, 0, 0, vw, vh)
+			}
+		}
+		// Top layer: ascii overlay (transparency-aware). Cells the game
+		// leaves default ({' ', nil, nil, AttrNone}) reveal the canvas
+		// underneath.
+		var abuf *render.ImageBuffer
+		if canAsciiLocal {
+			abuf = r.localRenderer.RenderCells(r.playerID, vw, vh)
+		}
+		// Composite into the placeholder region only.
+		for cy := 0; cy < vh; cy++ {
+			for cx := 0; cx < vw; cx++ {
+				if !render.IsCanvasCell(buf.CharAt(vx+cx, vy+cy)) {
+					continue
 				}
+				// Start with the canvas/blocks pixel (or default if no canvas).
+				var p render.Pixel
+				p.Char = ' '
+				if qbuf != nil {
+					p = qbuf.Pixels[cy*qbuf.Width+cx]
+				}
+				// Overlay ascii on top, honoring transparency.
+				if abuf != nil {
+					ap := abuf.Pixels[cy*abuf.Width+cx]
+					if !(ap.Char == ' ' && ap.Fg == nil && ap.Bg == nil && ap.Attr == render.AttrNone) {
+						p = ap
+					}
+				}
+				buf.SetChar(vx+cx, vy+cy, p.Char, p.Fg, p.Bg, p.Attr)
 			}
-			r.drawImageBuffer(screen, buf, nil)
-			if r.grid.CursorVisible {
-				r.drawCursor(screen)
-			}
-			return
 		}
+		r.drawImageBuffer(screen, buf, nil)
+		if r.grid.CursorVisible {
+			r.drawCursor(screen)
+		}
+		return
 	}
 
-	// Pixels mode: render canvas locally at full display pixel resolution.
-	if r.renderMode == "local" && canReaderLocal {
-		r.localCanvas = r.localRenderer.RenderCanvas(r.playerID, vw*cellW(), vh*cellH())
-	} else {
-		r.localCanvas = nil
-	}
-
-	// Canvas HD compositing: server fills viewport with CanvasCell placeholders;
-	// we draw the locally-rendered canvas first, then cells on top — skipping
-	// placeholders so the canvas shows through. Menus/dialogs that overlap
-	// replace placeholders with real cells, rendering on top automatically.
-	canvasImg := r.localCanvas
-	if canvasImg != nil && vw > 0 && vh > 0 {
-		vpPx := vx * cellW()
-		vpPy := vy * cellH()
-		vpPw := vw * cellW()
-		vpPh := vh * cellH()
-		fop := &ebiten.DrawImageOptions{}
-		fw := float64(vpPw) / float64(canvasImg.Bounds().Dx())
-		fh := float64(vpPh) / float64(canvasImg.Bounds().Dy())
-		fop.GeoM.Scale(fw, fh)
-		fop.GeoM.Translate(float64(vpPx), float64(vpPy))
-		screen.DrawImage(canvasImg, fop)
-	}
-
-	// Render cell buffer on top. Skip CanvasCell placeholders so local canvas shows through.
+	// Remote rendering: just draw the parsed cell buffer.
 	buf := r.grid.ToImageBuffer()
-	hasCanvas := canvasImg != nil && vw > 0 && vh > 0
-	var drawOpts *display.DrawOptions
-	if hasCanvas {
-		drawOpts = &display.DrawOptions{
-			SkipFunc: func(char rune, _ int, _ int) bool {
-				return render.IsCanvasCell(char)
-			},
-		}
-	}
-	r.drawImageBuffer(screen, buf, drawOpts)
+	r.drawImageBuffer(screen, buf, nil)
 
 	// Draw text cursor if visible.
 	if r.grid.CursorVisible {

@@ -665,16 +665,22 @@ func (a *Server) preRenderAllPlayers(game domain.Game, phase domain.GamePhase) {
 		if c.buf == nil || c.w != v.w || c.h != v.h {
 			c.buf = render.NewImageBuffer(v.w, v.h)
 			c.w, c.h = v.w, v.h
+		} else {
+			// Reset the buffer so stale ascii/overlay cells don't ghost
+			// when the game's renderAscii leaves cells untouched (the
+			// transparency rule for canvas+ascii compositing).
+			c.buf.Clear()
 		}
-		// Pre-render Layout tree (if the game uses NC widgets) and RenderAscii.
-		// Skip RenderAscii when the player is going to receive a canvas blit —
-		// the canvas overlays the ascii output anyway, so calling renderAscii
-		// is pure JS-VM overhead. This was costing ~3.3s/10s with 8 SSH
-		// players in wolf3d Blocks mode.
+		// Pre-render Layout tree (if the game uses NC widgets) and the
+		// ascii layer. When the game has both canvas and ascii hooks,
+		// c.buf becomes the ascii overlay (cells the game leaves
+		// default are transparent) blitted on top of the canvas.
+		// Note: previously RenderAscii was skipped whenever a canvas
+		// overlay was about to draw. Now dual-hook games re-incur one
+		// JS RenderAscii call per player per tick — accepted as the
+		// price of supporting HUD/minimap overlays.
 		c.ncTree = game.Layout(v.id, v.w, v.h)
-		canvasOverlays := v.canvasW > 0 && v.canvasH > 0 && game.HasCanvasMode()
-		if c.ncTree == nil && !canvasOverlays {
-			// Plain renderAscii game: render into our scratch buffer.
+		if c.ncTree == nil && game.HasAsciiMode() {
 			game.RenderAscii(c.buf, v.id, 0, 0, v.w, v.h)
 		}
 		c.status = game.StatusBar(v.id)

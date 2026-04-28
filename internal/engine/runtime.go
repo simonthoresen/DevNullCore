@@ -706,6 +706,10 @@ func (r *Runtime) HasCanvasMode() bool {
 	return r.renderCanvasFn != nil
 }
 
+func (r *Runtime) HasAsciiMode() bool {
+	return r.renderAsciiFn != nil
+}
+
 func (r *Runtime) RenderCanvas(playerID string, width, height int) []byte {
 	if r.renderCanvasFn == nil {
 		return nil

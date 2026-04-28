@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"dev-null/internal/datadir"
-	"dev-null/internal/domain"
 )
 
 // persistClientConfig rewrites <ConfigDir>/client.txt so that all managed
@@ -15,20 +14,13 @@ import (
 // selections. Other lines are preserved.
 func (m *Model) persistClientConfig() {
 	path := datadir.InitFilePath("client.txt")
-	// Serialize the graphics mode as a command. Blocks is default — omit it.
-	var renderPref string
-	switch m.graphicsPref {
-	case domain.ModeAscii:
-		renderPref = "/render-ascii"
-	case domain.ModePixels:
-		renderPref = "/render-pixels"
-	}
 	// Serialize the render location. Default depends on client type:
 	// GUI = local, SSH = remote. Persist only non-default.
+	var renderPref string
 	if m.IsEnhancedClient && !m.renderLocalPref {
-		renderPref += "\n/render-remote"
+		renderPref = "/render-remote"
 	} else if !m.IsEnhancedClient && m.renderLocalPref {
-		renderPref += "\n/render-local"
+		renderPref = "/render-local"
 	}
 	persistConfigFile(path, m.themeName, m.synthName, renderPref, m.chatSize, m.pluginNames, m.shaderNames)
 }

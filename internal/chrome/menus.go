@@ -55,29 +55,13 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 	}
 	menus := []domain.MenuDef{{Label: "&File", Items: fileItems}}
 
-	// Graphics menu — always visible; shows current preference as radio toggles.
-	// Pixels requires the enhanced GUI client.
-	graphicsItems := []domain.MenuItemDef{
-		{
-			Label:   "&Ascii",
-			Toggle:  true,
-			Checked: func() bool { return m.graphicsPref == domain.ModeAscii },
-			Handler: func(_ string) { m.dispatchInput("/render-ascii") },
-		},
-		{
-			Label:   "&Blocks",
-			Toggle:  true,
-			Checked: func() bool { return m.graphicsPref == domain.ModeBlocks },
-			Handler: func(_ string) { m.dispatchInput("/render-blocks") },
-		},
-		{
-			Label:    "&Pixels",
-			Toggle:   true,
-			Disabled: !m.IsEnhancedClient,
-			Checked:  func() bool { return m.graphicsPref == domain.ModePixels },
-			Handler:  func(_ string) { m.dispatchInput("/render-pixels") },
-		},
-		{Label: "---"}, // separator
+	// View menu — themes, shaders, chat size, plus the Render-locally
+	// debug toggle (enhanced clients only).
+	viewItems := []domain.MenuItemDef{
+		{Label: "&Themes", SubItems: m.buildThemeSubItems()},
+		{Label: "&Shaders", SubItems: m.buildShaderSubItems()},
+		{Label: "&Chat size", SubItems: m.buildChatSizeSubItems()},
+		{Label: "---"},
 		{
 			Label:    "Render &locally",
 			Toggle:   true,
@@ -91,14 +75,6 @@ func (m *Model) cachedMenus() []domain.MenuDef {
 				}
 			},
 		},
-	}
-	menus = append(menus, domain.MenuDef{Label: "&Graphics", Items: graphicsItems})
-
-	// View menu — themes, shaders, chat size.
-	viewItems := []domain.MenuItemDef{
-		{Label: "&Themes", SubItems: m.buildThemeSubItems()},
-		{Label: "&Shaders", SubItems: m.buildShaderSubItems()},
-		{Label: "&Chat size", SubItems: m.buildChatSizeSubItems()},
 	}
 	menus = append(menus, domain.MenuDef{Label: "&View", Items: viewItems})
 

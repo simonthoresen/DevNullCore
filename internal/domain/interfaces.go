@@ -158,6 +158,7 @@ type Game interface {
 	// instead of PNG bytes. Used by quadrant rendering to avoid encode/decode overhead.
 	RenderCanvasImage(playerID string, width, height int) *image.RGBA
 	HasCanvasMode() bool // true if game defines renderCanvas hook
+	HasAsciiMode() bool  // true if game defines renderAscii hook
 
 	// --- Properties ---
 

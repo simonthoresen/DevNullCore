@@ -97,10 +97,8 @@ func (m *Model) View() tea.View {
 		var oscData string
 		// Send local/remote mode OSC once on game load or when mode changes.
 		if !m.oscModeSent {
-			if m.graphicsMode == domain.ModePixels {
+			if m.renderLocal {
 				oscData += render.EncodeModeOSC("local")
-			} else if m.renderLocal && m.graphicsMode == domain.ModeBlocks {
-				oscData += render.EncodeModeOSC("blocks-local")
 			} else {
 				oscData += render.EncodeModeOSC("remote")
 			}
@@ -253,6 +251,9 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 		defer releaseCache()
 	}
 
+	hasCanvas := game.HasCanvasMode()
+	hasAscii := game.HasAsciiMode()
+
 	// Wire gameview rendering based on phase.
 	switch phase {
 	case domain.PhaseStarting:
@@ -276,14 +277,24 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 			m.playingGameView.OnKey = func(key string) {
 				game.OnInput(m.playerID, key)
 			}
-		} else if cachedBuf != nil {
-			// Plain renderAscii game with a pre-rendered buffer: just blit it.
+		} else if cachedBuf != nil && !hasCanvas {
+			// Pure ascii game with a pre-rendered buffer: just blit it.
 			// No JS call needed — this is the primary hot path at 16+ players.
 			m.gameWindow = nil
 			m.playingGameView.Inner = nil
 			m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
 				gbuf.Blit(x, y, cachedBuf)
 			}
+			m.playingGameView.OnKey = func(key string) {
+				game.OnInput(m.playerID, key)
+			}
+		} else if hasCanvas {
+			// Canvas game (with optional ascii overlay). The actual canvas
+			// quadrants and ascii overlay compose are wired below in the
+			// canvas-rendering block; here we just install OnKey.
+			m.gameWindow = nil
+			m.playingGameView.Inner = nil
+			m.playingGameView.RenderFn = nil
 			m.playingGameView.OnKey = func(key string) {
 				game.OnInput(m.playerID, key)
 			}
@@ -314,39 +325,41 @@ func (m *Model) renderPlaying(buf *render.ImageBuffer, menus []domain.MenuDef, g
 		}
 	}
 
-	// Blocks mode: render canvas as Unicode quadrant block characters
-	// (2x2 pixels per cell, doubling effective resolution).
-	if m.graphicsMode == domain.ModeBlocks && !m.renderLocal && phase == domain.PhasePlaying {
-		inner := m.playingGameView.RenderFn
+	// Canvas compose path: when the game has renderCanvas and the player
+	// is rendering server-side, we render the canvas as Unicode quadrant
+	// blocks (bottom layer), then BlitOverlay the cached ascii buf on
+	// top with transparency (cells untouched after Clear() let the
+	// canvas show through). When local rendering is on, the client
+	// composites the same way using its own LocalRenderer.
+	if hasCanvas && !m.renderLocal && phase == domain.PhasePlaying {
 		m.playingGameView.RenderFn = func(gbuf *render.ImageBuffer, x, y, w, h int) {
-			if inner != nil {
-				inner(gbuf, x, y, w, h)
-			}
 			// h*2 (rather than h*4) is lossless for quadrants and ~2x cheaper
 			// in JS for SSH-Blocks. Aspect correction is sacrificed but at
 			// 16-player wolf3d the alternative is dropping under 10fps.
 			canvasW, canvasH := w*2, h*2
 			// Tell the tick goroutine what size we want pre-rendered.
 			m.api.SetPlayerCanvasNeed(m.playerID, canvasW, canvasH)
-			// Use the cached image when available (the common case once
-			// chrome has reported the size and one tick has elapsed).
-			// Fall back to a synchronous JS raycast on first frame after
-			// resize/mode-change, so the user never sees a black hole.
+			// Render canvas → quadrants (bottom layer).
 			if img, release := m.api.GetPreRenderedCanvas(m.playerID, canvasW, canvasH); img != nil {
 				render.ImageToQuadrants(img, gbuf, x, y, w, h)
 				release()
-				return
+			} else {
+				t0 := time.Now()
+				img := game.RenderCanvasImage(m.playerID, canvasW, canvasH)
+				m.api.CountCanvasRender(time.Since(t0))
+				if img != nil {
+					render.ImageToQuadrants(img, gbuf, x, y, w, h)
+				}
 			}
-			t0 := time.Now()
-			img := game.RenderCanvasImage(m.playerID, canvasW, canvasH)
-			m.api.CountCanvasRender(time.Since(t0))
-			if img != nil {
-				render.ImageToQuadrants(img, gbuf, x, y, w, h)
+			// Ascii overlay (top layer, transparency-aware).
+			if hasAscii && cachedBuf != nil {
+				gbuf.BlitOverlay(x, y, cachedBuf)
 			}
 		}
-	} else if m.graphicsMode != domain.ModeBlocks || m.renderLocal {
-		// Not in SSH-Blocks mode any more — clear any stale canvas request
-		// so the tick goroutine stops rendering canvases for this player.
+	} else if !hasCanvas || m.renderLocal {
+		// Not rendering canvas server-side any more — clear any stale
+		// canvas request so the tick goroutine stops rendering canvases
+		// for this player.
 		m.api.SetPlayerCanvasNeed(m.playerID, 0, 0)
 	}
 

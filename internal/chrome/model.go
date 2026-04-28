@@ -115,15 +115,13 @@ type Model struct {
 	shaders     []domain.Shader
 	shaderNames []string // parallel to shaders; display names
 
-	// Graphics preference (Ascii/Blocks/Pixels) and location preference (local/remote).
-	// These are the user's intent; effective values are derived from these + capabilities.
-	graphicsPref    domain.GraphicsMode // preferred display mode
-	renderLocalPref bool               // preferred location: true = client-side, false = server-side
+	// Render location preference (local/remote). User intent;
+	// effective value is derived from this + capabilities.
+	renderLocalPref bool // preferred location: true = client-side, false = server-side
 
 	// Effective settings derived from preferences + capabilities; updated on game load
 	// and when the user changes preferences.
-	graphicsMode domain.GraphicsMode // effective display mode
-	renderLocal  bool               // effective location
+	renderLocal bool // effective location
 
 	// Chat size in interior rows when a game is open. Clamped to [5, 10].
 	chatSize int
@@ -283,7 +281,6 @@ func NewModel(api ServerAPI, playerID string) *Model {
 		playerID:      playerID,
 		theme:         theme.Default(),
 		ColorProfile:  colorprofile.TrueColor,
-		graphicsPref: domain.ModeBlocks, // default: prefer Blocks (canvas as Unicode blocks)
 		chatSize:     5,                        // default; overridden by client.txt
 		synthName:     "chiptune",              // default SoundFont; overridden by client.txt
 		overlay:        widget.OverlayState{OpenMenu: -1},
@@ -435,39 +432,22 @@ func (m *Model) resizeViewports() {
 	}
 }
 
-// applyGraphicsPrefs computes the effective graphicsMode and renderLocal from
-// the user's preferences and current capabilities. Handles degradation:
-//   - Local requires enhanced client; forced false for SSH.
-//   - Pixels requires enhanced client + canvas + local rendering.
-//     If any is missing it degrades to Blocks — the Render locally
-//     checkbox is the master switch.
-//   - Blocks requires canvas; degrades to Ascii.
-func (m *Model) applyGraphicsPrefs() {
-	m.api.State().RLock()
-	game := m.api.State().ActiveGame
-	m.api.State().RUnlock()
-	hasCanvas := game != nil && game.HasCanvasMode()
-
-	mode := m.graphicsPref
+// applyRenderPrefs computes the effective renderLocal flag from the
+// user's preference and current capabilities. Local rendering requires
+// the enhanced client; SSH players are always forced to remote.
+//
+// The framework no longer chooses between Ascii/Blocks/Pixels — every
+// frame composites whatever the game has: canvas (if defined) is
+// converted to quadrant blocks, and ascii (if defined) is overlaid on
+// top using transparency.
+func (m *Model) applyRenderPrefs() {
 	local := m.renderLocalPref
-
-	// Local requires enhanced client; force off for SSH. Do this first so
-	// the Pixels degradation below sees the effective local flag.
+	// Local requires enhanced client; force off for SSH.
 	if local && !m.IsEnhancedClient {
 		local = false
 	}
-	// Pixels requires enhanced client + canvas + local rendering.
-	if mode == domain.ModePixels && !(m.IsEnhancedClient && hasCanvas && local) {
-		mode = domain.ModeBlocks
-	}
-	// Blocks requires canvas.
-	if mode == domain.ModeBlocks && !hasCanvas {
-		mode = domain.ModeAscii
-	}
 
 	wasLocal := m.renderLocal
-	wasMode := m.graphicsMode
-	m.graphicsMode = mode
 	m.renderLocal = local
 
 	// Tell the server whether to skip server-side pre-rendering for this
@@ -475,12 +455,9 @@ func (m *Model) applyGraphicsPrefs() {
 	// placeholder cells, so any preRenderAllPlayers work would be wasted.
 	m.api.SetPlayerLocalRenderer(m.playerID, local)
 
-	// Re-send the mode OSC whenever the effective mode or local flag
-	// changes — the client branches on it to pick its rendering path.
-	// Without this the client stays in whatever mode the last OSC set,
-	// so e.g. Blocks→Pixels with local already on would silently keep
-	// showing blocks.
-	if wasLocal != local || wasMode != mode {
+	// Re-send the mode OSC whenever the effective local flag changes —
+	// the client branches on it to pick its rendering path.
+	if wasLocal != local {
 		m.oscModeSent = false
 	}
 	// Game source needs to reach the client before local rendering can
@@ -499,14 +476,8 @@ func (m *Model) SetDefaultRenderLocal(local bool) {
 	m.renderLocalPref = local
 }
 
-// setGraphicsPref sets the display mode preference and recomputes effective settings.
-func (m *Model) setGraphicsPref(pref domain.GraphicsMode) {
-	m.graphicsPref = pref
-	m.applyGraphicsPrefs()
-}
-
 // setRenderLocal sets the render location preference and recomputes effective settings.
 func (m *Model) setRenderLocal(local bool) {
 	m.renderLocalPref = local
-	m.applyGraphicsPrefs()
+	m.applyRenderPrefs()
 }

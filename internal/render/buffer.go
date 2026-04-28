@@ -232,6 +232,30 @@ func (b *ImageBuffer) Blit(x, y int, src *ImageBuffer) {
 	}
 }
 
+// BlitOverlay copies cells from src onto b at position (x, y), but skips
+// cells that are "transparent" (untouched after Clear()): Char==' ' AND
+// Fg==nil AND Bg==nil AND Attr==AttrNone. Used to composite an ascii
+// overlay layer on top of canvas/blocks output.
+func (b *ImageBuffer) BlitOverlay(x, y int, src *ImageBuffer) {
+	for sy := 0; sy < src.Height; sy++ {
+		dy := y + sy
+		if dy < 0 || dy >= b.Height {
+			continue
+		}
+		for sx := 0; sx < src.Width; sx++ {
+			dx := x + sx
+			if dx < 0 || dx >= b.Width {
+				continue
+			}
+			p := src.Pixels[sy*src.Width+sx]
+			if p.Char == ' ' && p.Fg == nil && p.Bg == nil && p.Attr == AttrNone {
+				continue
+			}
+			b.Pixels[dy*b.Width+dx] = p
+		}
+	}
+}
+
 // RecolorRect changes the fg, bg, and attr of cells in the given rectangle
 // without changing the character. Useful for drop shadows.
 func (b *ImageBuffer) RecolorRect(x, y, w, h int, fg, bg color.Color, attr PixelAttr) {

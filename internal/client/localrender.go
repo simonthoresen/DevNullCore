@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
-	"github.com/hajimehoshi/ebiten/v2"
 
 	"dev-null/internal/engine"
 	"dev-null/internal/render"
@@ -305,6 +304,13 @@ func (lr *LocalRenderer) HasCanvas() bool {
 	return lr.canvasFn != nil
 }
 
+// HasAscii returns true if the game has a renderAscii hook.
+func (lr *LocalRenderer) HasAscii() bool {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
+	return lr.renderAsciiFn != nil
+}
+
 // RenderCells calls Game.renderAscii() locally and returns the ImageBuffer.
 func (lr *LocalRenderer) RenderCells(playerID string, width, height int) *render.ImageBuffer {
 	lr.mu.Lock()
@@ -430,19 +436,8 @@ func (lr *LocalRenderer) minimalMe(playerID string) goja.Value {
 	return obj
 }
 
-// RenderCanvas calls Game.renderCanvas() locally and returns an Ebitengine image.
-func (lr *LocalRenderer) RenderCanvas(playerID string, pixelW, pixelH int) *ebiten.Image {
-	lr.mu.Lock()
-	defer lr.mu.Unlock()
-	img := lr.renderCanvasRaw(playerID, pixelW, pixelH)
-	if img == nil {
-		return nil
-	}
-	return ebiten.NewImageFromImage(img)
-}
-
 // RenderCanvasImage calls Game.renderCanvas() locally and returns a raw RGBA image
-// (for quadrant block conversion in blocks-local mode).
+// (for quadrant block conversion in local-render mode).
 func (lr *LocalRenderer) RenderCanvasImage(playerID string, pixelW, pixelH int) *image.RGBA {
 	lr.mu.Lock()
 	defer lr.mu.Unlock()

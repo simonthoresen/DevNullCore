@@ -197,35 +197,6 @@ const (
 	MaxPlayerNameLen = 50
 )
 
-// GraphicsMode controls how a player's game viewport is displayed.
-// Orthogonal to render location (local vs remote), which is a separate bool.
-type GraphicsMode int
-
-const (
-	// ModeAscii renders using the game's text-based renderAscii() function.
-	ModeAscii GraphicsMode = iota
-	// ModeBlocks converts canvas output to Unicode quadrant block characters
-	// (2×2 pixels per terminal cell). Requires renderCanvas.
-	ModeBlocks
-	// ModePixels renders the canvas at full window pixel resolution.
-	// Always local (client-side). Requires enhanced client + renderCanvas.
-	ModePixels
-)
-
-// Label returns a human-readable name for the mode.
-func (m GraphicsMode) Label() string {
-	switch m {
-	case ModeAscii:
-		return "Ascii"
-	case ModeBlocks:
-		return "Blocks"
-	case ModePixels:
-		return "Pixels"
-	default:
-		return "Unknown"
-	}
-}
-
 const (
 
 	// MaxConnections is the default cap on concurrent SSH sessions.
