@@ -21,7 +21,7 @@ func TestVoyageEntitiesAndPhaseTransitions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("abs: %v", err)
 	}
-	src, err := os.ReadFile(filepath.Join(repoRoot, "dist", "Games", "voyage.js"))
+	src, err := os.ReadFile(filepath.Join(repoRoot, "dist", "Common", "Games", "voyage.js"))
 	if err != nil {
 		t.Fatalf("read voyage.js: %v", err)
 	}
